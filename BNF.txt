@@ -1,0 +1,7 @@
+GET id OF table 
+GET ALL id OF table
+SET id = 123 OF table WHERE id = 22
+SET id = 123, name = "hige" OF table
+SET ALL name = "hoge" OF table WHERE id = 22
+ADD id = 123 OF table
+DEL OF table WHERE id = 22
