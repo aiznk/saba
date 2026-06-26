@@ -1,7 +1,121 @@
-GET id OF table 
-GET ALL id OF table
-SET id = 123 OF table WHERE id = 22
-SET id = 123, name = "hige" OF table
-SET ALL name = "hoge" OF table WHERE id = 22
-ADD id = 123 OF table
-DEL OF table WHERE id = 22
+# Query
+
+## Logical Nodes
+
+* Scan
+* Filter
+* Project
+* Sort
+* Limit
+* Aggregate
+* Join
+* Insert
+* Update
+* Delete
+* CreateTable
+* DropTable
+* CreateDatabase
+* DropDatabase
+* Values
+
+## Physical Nodes
+
+* CsvScan
+* CsvRewrite
+* CsvInsert
+* CsvCreate
+* CsvDrop
+* DirCreate
+* DirDrop
+
+## CREATE
+
+> CREATE DATABASE mydb;
+
+	DirCreate (create mydb directory)
+
+> CREATE TABLE mytab (
+> 	id: PRIMARY KEY AUTOINCREMENT,
+>   name: CHAR[128] NOT NULL,
+> );
+
+	CsvCreate (create mytab CSV file)
+
+## DROP
+
+> DROP DATABASE mydb;
+
+	DirDrop (delete mydb directory)
+
+> DROP TABLE mytab;
+
+	CsvDrop (delete mytab CSV file)
+
+## GET
+
+> GET name OF mytab WHERE id == 123;
+
+	Get one record.
+
+	Project (select columns)
+	- Filter (WHERE id == 123)
+	 - CsvScan (read mytab)
+
+> GET ALL id OF mytab WHERE id == 123;
+
+	Get all records.
+
+	Project (select columns)
+	- Filter (WHERE id == 123)
+	 - CsvScan (read mytab)
+
+> GET ALL COUNT(*) OF mytab WHERE id == 123;
+
+	Aggregate (COUNT(*))
+	- Filter (WHERE id == 123)
+	 - CsvScan (read mytab)
+
+## SET
+
+> SET ALL name = "taro" OF mytab WHERE id > 123;
+
+	Swap (create new CSV file. and delete old CSV file)
+	- Insert (insert updated row to new CSV file)
+	 - Update (name = "taro")
+	  - Filter (WHERE id > 123)
+	   - CsvScan (mytab)
+
+## ADD
+
+> ADD id = 1, name = "taro" OF mytab;
+
+	Insert (insert row to CSV file)
+	- Values (id = 1, name = "taro")
+
+## DEL
+
+> DEL OF mytab WHERE id > 100;
+
+	CsvRewrite (open CSV file. and save CSV file)
+	 - Filter (WHERE id > 100)
+	  - CsvScan (read mytab)
+
+## BNF
+
+query ::= { statement ';' }*
+statement ::= (get_stmt | set_stmt | add_stmt | del_stmt)
+get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' string (where)?
+set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' string (where)?
+add_stmt ::= 'ADD' (expr_list) 'OF' string
+del_stmt ::= 'DEL' 'ALL'? 'OF' string (where)
+where ::= 'WHERE' expr_list
+expr_list ::= expr { ',' expr }*
+ident ::= [a-zA-Z_]+
+expr ::= ass_expr
+ass_expr ::= compare_expr '=' compare_expr
+compare_expr ::= logic_expr ('==' | '!=') logic_expr
+logic_expr ::= operand ('&&' | '||') operand
+operand ::= (int_value | float_value | string | ident) | '(' expr ')'
+int_value ::= [0-9]+
+float_value ::= [0-9]* '.' [0-9]+
+string ::= '"' .* '"'
