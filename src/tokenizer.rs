@@ -17,6 +17,7 @@ enum TokenKind {
 	All, // ALL
 	Assign, // =
 	Semicolon, // ; 
+	Colon, // :
 }
 
 #[derive(Debug)]
@@ -197,6 +198,8 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Fail> {
 			ret.push(Token::from(TokenKind::Assign, None));
 		} else if c1 == ';' {
 			ret.push(Token::from(TokenKind::Semicolon, None));
+		} else if c1 == ':' {
+			ret.push(Token::from(TokenKind::Colon, None));
 		} else if c1 == '"' {
 			let tok = read_string(&mut i, &chars);
 			ret.push(tok);
