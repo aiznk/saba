@@ -1,7 +1,7 @@
-use crate::fail::Fail;
+use crate::error::{Error, err_runtime};
 
-#[derive(Debug)]
-enum TokenKind {
+#[derive(Debug, PartialEq)]
+pub enum TokenKind {
 	Nil,
 	Ident, // id
 	String, // "str"
@@ -14,18 +14,22 @@ enum TokenKind {
 	Of, // OF
 	Where, // WHERE
 	Eq, // ==
+	NotEq, // !=
+	And, // AND
+	Or, // OR
 	All, // ALL
 	Assign, // =
 	Semicolon, // ; 
 	Colon, // :
+	Comma, // ,
 }
 
 #[derive(Debug)]
 pub struct Token {
-	kind: TokenKind,
-	text: Option<String>,
-	int_value: Option<i64>,
-	float_value: Option<f64>,
+	pub kind: TokenKind,
+	pub text: Option<String>,
+	pub int_value: Option<i64>,
+	pub float_value: Option<f64>,
 }
 
 impl Token {
@@ -63,6 +67,50 @@ impl Token {
 			int_value: None,
 			float_value: Some(n),
 		}
+	}
+}
+
+pub struct TokenStream {
+	tokens: Vec<Token>,
+	index: usize,
+}
+
+impl TokenStream {
+	pub fn new(tokens: Vec<Token>) -> Self {
+		Self {
+			tokens,
+			index: 0,
+		}
+	}
+
+	pub fn is_end(&self) -> bool {
+		self.index >= self.tokens.len()
+	}
+
+	pub fn prev(&mut self) {
+		if self.index > 0 {
+			self.index -= 1;
+		}
+	}
+
+	pub fn next(&mut self) {
+		self.index += 1;
+	}
+
+	pub fn cur(&self) -> Result<&Token, Error> {
+		if self.index >= self.tokens.len() {
+			return err_runtime!("index out of range");
+		}
+		Ok(&self.tokens[self.index]) 
+	}
+
+	pub fn get(&mut self) -> Result<&Token, Error> {
+		if self.index >= self.tokens.len() {
+			return err_runtime!("index out of range");
+		}
+		let token = &self.tokens[self.index];
+		self.index += 1;
+		Ok(token)
 	}
 }
 
@@ -142,7 +190,7 @@ pub fn show_tokens(tokens: &Vec<Token>) {
 	}
 }
 
-pub fn tokenize(string: String) -> Result<Vec<Token>, Fail> {
+pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 	let chars: Vec<char> = string.chars().collect();
 	let mut i: usize = 0;
 	let mut ret: Vec<Token> = vec![];
@@ -185,6 +233,12 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Fail> {
 		} else if c1 == 'a' && c2 == 'l' && c3 == 'l' {
 			ret.push(Token::from(TokenKind::All, None));
 			i += 2;
+		} else if c1 == 'a' && c2 == 'n' && c3 == 'd' {
+			ret.push(Token::from(TokenKind::And, None));
+			i += 2;
+		} else if c1 == 'o' && c2 == 'r' {
+			ret.push(Token::from(TokenKind::Or, None));
+			i += 1;
 		} else if c1 == 'o' && c2 == 'f' {
 			ret.push(Token::from(TokenKind::Of, None));
 			i += 1;
@@ -194,12 +248,17 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Fail> {
 		} else if c1 == '=' && c2 == '=' {
 			ret.push(Token::from(TokenKind::Eq, None));
 			i += 1;
+		} else if c1 == '!' && c2 == '=' {
+			ret.push(Token::from(TokenKind::NotEq, None));
+			i += 1;
 		} else if c1 == '=' {
 			ret.push(Token::from(TokenKind::Assign, None));
 		} else if c1 == ';' {
 			ret.push(Token::from(TokenKind::Semicolon, None));
 		} else if c1 == ':' {
 			ret.push(Token::from(TokenKind::Colon, None));
+		} else if c1 == ',' {
+			ret.push(Token::from(TokenKind::Comma, None));
 		} else if c1 == '"' {
 			let tok = read_string(&mut i, &chars);
 			ret.push(tok);

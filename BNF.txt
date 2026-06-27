@@ -102,19 +102,21 @@
 
 ## BNF
 
-query ::= { statement ';' }*
-statement ::= (get_stmt | set_stmt | add_stmt | del_stmt)
-get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' string (where)?
-set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' string (where)?
-add_stmt ::= 'ADD' (expr_list) 'OF' string
-del_stmt ::= 'DEL' 'ALL'? 'OF' string (where)
+query ::= { stmt ';' }*
+stmt ::= (get_stmt | set_stmt | add_stmt | del_stmt)
+get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' ident where?
+set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' ident where?
+add_stmt ::= 'ADD' (expr_list) 'OF' ident
+del_stmt ::= 'DEL' 'ALL'? 'OF' ident where?
 where ::= 'WHERE' expr_list
 expr_list ::= expr { ',' expr }*
 ident ::= [a-zA-Z_]+
 expr ::= ass_expr
-ass_expr ::= compare_expr '=' compare_expr
-compare_expr ::= logic_expr ('==' | '!=') logic_expr
-logic_expr ::= operand ('&&' | '||') operand
+ass_expr ::= compare_expr ( '=' compare_expr )?
+compare_expr ::= logic_expr ( compare_op logic_expr )?
+compare_op ::= ('==' | '!=')
+logic_expr ::= operand logic_op operand
+logic_op ::= ('AND' | 'OR')
 operand ::= (int_value | float_value | string | ident) | '(' expr ')'
 int_value ::= [0-9]+
 float_value ::= [0-9]* '.' [0-9]+

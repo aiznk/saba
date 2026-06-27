@@ -1,6 +1,8 @@
 mod cli;
-mod fail;
+mod error;
 mod tokenizer;
+mod parser;
+mod utils;
 
 fn main() {
     cli::run();

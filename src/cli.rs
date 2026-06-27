@@ -1,5 +1,6 @@
-use crate::tokenizer::{tokenize};
-use crate::fail::Fail;
+use crate::tokenizer::{Token, TokenStream, tokenize};
+use crate::parser::{QueryNode, parse};
+use crate::error::Error;
 use std::io::Write;
 
 #[derive(Clone)]
@@ -31,12 +32,20 @@ The options are:
 	std::process::exit(0);
 }
 
-fn exec_query(opts: Options, query: String) -> Result<(), Fail> {
-	tokenize(query)?;
+fn exec_query(opts: Options, query: String) -> Result<(), Error> {
+	let tokens: Vec<Token> = tokenize(query)?;
+	let mut tok_strm = TokenStream::new(tokens);
+	let node: QueryNode = parse(&mut tok_strm)?;
 	Ok(())
 }
 
 fn run_shell(opts: Options) {
+	match exec_query(opts, String::from("GET id OF table WHERE name = \"hige\";")) {
+		Ok(_) => {},
+		Err(e) => eprintln!("{}", e),
+	}
+	return;
+
 	loop {
 		print!("query > ");
 		std::io::stdout().flush().unwrap();
@@ -45,6 +54,9 @@ fn run_shell(opts: Options) {
 		match std::io::stdin().read_line(&mut line) {
 			Ok(_) => {},
 			Err(e) => eprintln!("failed read line: {}", e),
+		}
+		if line.len() == 0 {
+			break;
 		}
 
 		match exec_query(opts.clone(), line) {
