@@ -113,9 +113,9 @@ expr_list ::= expr { ',' expr }*
 ident ::= [a-zA-Z_]+
 expr ::= ass_expr
 ass_expr ::= compare_expr ( '=' compare_expr )?
-compare_expr ::= logic_expr ( compare_op logic_expr )?
+compare_expr ::= logic_expr { compare_op logic_expr }*
 compare_op ::= ('==' | '!=')
-logic_expr ::= operand logic_op operand
+logic_expr ::= operand { logic_op operand }*
 logic_op ::= ('AND' | 'OR')
 operand ::= (int_value | float_value | string | ident) | '(' expr ')'
 int_value ::= [0-9]+

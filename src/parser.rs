@@ -1,9 +1,9 @@
-use crate::tokenizer::{Token, TokenKind, TokenStream};
+use crate::tokenizer::{Token, TokenKind, TokenStream, tokenize};
 use crate::error::{Error, err_parse};
 use crate::utils::{debug};
 
 pub struct QueryNode {
-	stmts: Vec<StmtNode>,
+	stmts: Vec<Box<StmtNode>>,
 }
 
 impl QueryNode {
@@ -15,10 +15,10 @@ impl QueryNode {
 }
 
 struct StmtNode {
-	get_stmt: Option<GetStmtNode>,
-	set_stmt: Option<SetStmtNode>,
-	add_stmt: Option<AddStmtNode>,
-	del_stmt: Option<DelStmtNode>,
+	get_stmt: Option<Box<GetStmtNode>>,
+	set_stmt: Option<Box<SetStmtNode>>,
+	add_stmt: Option<Box<AddStmtNode>>,
+	del_stmt: Option<Box<DelStmtNode>>,
 }
 
 impl StmtNode {
@@ -34,9 +34,9 @@ impl StmtNode {
 
 struct GetStmtNode {
 	all: bool,
-	expr_list: Option<ExprListNode>,
-	table: Option<IdentNode>,
-	where_clause: Option<WhereClauseNode>,
+	expr_list: Option<Box<ExprListNode>>,
+	table: Option<Box<IdentNode>>,
+	where_clause: Option<Box<WhereClauseNode>>,
 }
 
 impl GetStmtNode {
@@ -52,9 +52,9 @@ impl GetStmtNode {
 
 struct SetStmtNode {
 	all: bool,
-	expr_list: Option<ExprListNode>,
-	table: Option<IdentNode>,
-	where_clause: Option<WhereClauseNode>,
+	expr_list: Option<Box<ExprListNode>>,
+	table: Option<Box<IdentNode>>,
+	where_clause: Option<Box<WhereClauseNode>>,
 }
 
 impl SetStmtNode {
@@ -69,8 +69,8 @@ impl SetStmtNode {
 }
 
 struct AddStmtNode {
-	expr_list: Option<ExprListNode>,
-	table: Option<IdentNode>,
+	expr_list: Option<Box<ExprListNode>>,
+	table: Option<Box<IdentNode>>,
 }
 
 impl AddStmtNode {
@@ -84,8 +84,8 @@ impl AddStmtNode {
 
 struct DelStmtNode {
 	all: bool,
-	table: Option<IdentNode>,
-	where_clause: Option<WhereClauseNode>,
+	table: Option<Box<IdentNode>>,
+	where_clause: Option<Box<WhereClauseNode>>,
 }
 
 impl DelStmtNode {
@@ -99,7 +99,7 @@ impl DelStmtNode {
 }
 
 struct WhereClauseNode {
-	expr_list: Option<ExprListNode>,
+	expr_list: Option<Box<ExprListNode>>,
 }
 
 impl WhereClauseNode {
@@ -111,7 +111,7 @@ impl WhereClauseNode {
 }
 
 struct ExprListNode {
-	exprs: Vec<ExprNode>,
+	exprs: Vec<Box<ExprNode>>,
 }
 
 impl ExprListNode {
@@ -123,7 +123,7 @@ impl ExprListNode {
 }
 
 struct ExprNode {
-	ass_expr: Option<AssExprNode>,
+	ass_expr: Option<Box<AssExprNode>>,
 }
 
 impl ExprNode {
@@ -135,8 +135,8 @@ impl ExprNode {
 }
 
 struct AssExprNode {
-	left_compare_expr: Option<CompareExprNode>,
-	right_compare_expr: Option<CompareExprNode>,
+	left_compare_expr: Option<Box<CompareExprNode>>,
+	right_compare_expr: Option<Box<CompareExprNode>>,
 }
 
 impl AssExprNode {
@@ -148,18 +148,20 @@ impl AssExprNode {
 	}
 }
 
+enum CompareExprItemNode {
+	Left(Box<LogicExprNode>),
+	Op(Box<CompareOpNode>),
+	Right(Box<LogicExprNode>),
+}
+
 struct CompareExprNode {
-	left_logic_expr: Option<LogicExprNode>,
-	compare_op: Option<CompareOpNode>,
-	right_logic_expr: Option<LogicExprNode>,
+	nodes: Vec<CompareExprItemNode>,
 }
 
 impl CompareExprNode {
 	pub fn new() -> Self {
 		Self {
-			left_logic_expr: None,
-			compare_op: None,
-			right_logic_expr: None,
+			nodes: vec![],
 		}
 	}
 }
@@ -173,18 +175,20 @@ enum CompareOpNode {
 	NotEq,
 }
 
+enum LogicExprItemNode {
+	Left(Box<OperandNode>),
+	Op(Box<LogicOpNode>),
+	Right(Box<OperandNode>),
+}
+
 struct LogicExprNode {
-	left_operand: Option<OperandNode>,
-	logic_op: Option<LogicOpNode>,
-	right_operand: Option<OperandNode>,
+	nodes: Vec<LogicExprItemNode>,
 }
 
 impl LogicExprNode {
 	pub fn new() -> Self {
 		Self {
-			left_operand: None,
-			logic_op: None,
-			right_operand: None,
+			nodes: vec![],
 		}
 	}
 }
@@ -195,10 +199,11 @@ enum LogicOpNode {
 }
 
 struct OperandNode {
-	int_value: Option<IntValueNode>,
-	float_value: Option<FloatValueNode>,
-	string: Option<StringNode>,
-	ident: Option<IdentNode>,
+	int_value: Option<Box<IntValueNode>>,
+	float_value: Option<Box<FloatValueNode>>,
+	string: Option<Box<StringNode>>,
+	ident: Option<Box<IdentNode>>,
+	expr: Option<Box<ExprNode>>,
 }
 
 impl OperandNode {
@@ -208,6 +213,7 @@ impl OperandNode {
 			float_value: None,
 			string: None,
 			ident: None,
+			expr: None,
 		}
 	}
 }
@@ -264,7 +270,7 @@ pub fn parse(tok_strm: &mut TokenStream) -> Result<QueryNode, Error> {
 	let mut query = QueryNode::new();
 
 	while !tok_strm.is_end() {
-		let stmt: Option<StmtNode> = parse_stmt(tok_strm)?;
+		let stmt: Option<Box<StmtNode>> = parse_stmt(tok_strm)?;
 		if stmt.is_none() {
 			break;
 		}
@@ -273,7 +279,7 @@ pub fn parse(tok_strm: &mut TokenStream) -> Result<QueryNode, Error> {
 		if tok_strm.is_end() {
 			break;
 		}
-		
+
 		let tok = tok_strm.get()?;
 		if tok.kind != TokenKind::Semicolon {
 			return err_parse!("missing semicolon in stmt");
@@ -283,41 +289,41 @@ pub fn parse(tok_strm: &mut TokenStream) -> Result<QueryNode, Error> {
 	Ok(query)
 }
 
-pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<StmtNode>, Error> {
+pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<StmtNode>>, Error> {
 	let mut stmt = StmtNode::new();
 
 	let get_stmt = parse_get_stmt(tok_strm)?;
 	if !get_stmt.is_none() {
 		stmt.get_stmt = get_stmt;
-		return Ok(Some(stmt));
+		return Ok(Some(Box::new(stmt)));
 	}
 
 	let set_stmt = parse_set_stmt(tok_strm)?;
 	if !set_stmt.is_none() {
 		stmt.set_stmt = set_stmt;
-		return Ok(Some(stmt));
+		return Ok(Some(Box::new(stmt)));
 	}
 
 	let add_stmt = parse_add_stmt(tok_strm)?;
 	if !add_stmt.is_none() {
 		stmt.add_stmt = add_stmt;
-		return Ok(Some(stmt));
+		return Ok(Some(Box::new(stmt)));
 	}
 
 	let del_stmt = parse_del_stmt(tok_strm)?;
 	if !del_stmt.is_none() {
 		stmt.del_stmt = del_stmt;
-		return Ok(Some(stmt));
+		return Ok(Some(Box::new(stmt)));
 	}
 
 	return err_parse!("failed to parse stmt");
 }
 
-pub fn parse_get_stmt(tok_strm: &mut TokenStream) -> Result<Option<GetStmtNode>, Error> {
+pub fn parse_get_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<GetStmtNode>>, Error> {
 	let mut n = GetStmtNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
@@ -350,14 +356,14 @@ pub fn parse_get_stmt(tok_strm: &mut TokenStream) -> Result<Option<GetStmtNode>,
 
 	n.where_clause = parse_where_clause(tok_strm)?;
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_set_stmt(tok_strm: &mut TokenStream) -> Result<Option<SetStmtNode>, Error> {
+pub fn parse_set_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<SetStmtNode>>, Error> {
 	let mut n = SetStmtNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
@@ -392,14 +398,14 @@ pub fn parse_set_stmt(tok_strm: &mut TokenStream) -> Result<Option<SetStmtNode>,
 
 	n.where_clause = parse_where_clause(tok_strm)?;
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_add_stmt(tok_strm: &mut TokenStream) -> Result<Option<AddStmtNode>, Error> {
+pub fn parse_add_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<AddStmtNode>>, Error> {
 	let mut n = AddStmtNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
@@ -423,14 +429,14 @@ pub fn parse_add_stmt(tok_strm: &mut TokenStream) -> Result<Option<AddStmtNode>,
 		return err_parse!("missing table name in add stmt");
 	}
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_del_stmt(tok_strm: &mut TokenStream) -> Result<Option<DelStmtNode>, Error> {
+pub fn parse_del_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<DelStmtNode>>, Error> {
 	let mut n = DelStmtNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
@@ -458,14 +464,14 @@ pub fn parse_del_stmt(tok_strm: &mut TokenStream) -> Result<Option<DelStmtNode>,
 
 	n.where_clause = parse_where_clause(tok_strm)?;
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_where_clause(tok_strm: &mut TokenStream) -> Result<Option<WhereClauseNode>, Error> {
+pub fn parse_where_clause(tok_strm: &mut TokenStream) -> Result<Option<Box<WhereClauseNode>>, Error> {
 	let mut n = WhereClauseNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
@@ -477,14 +483,14 @@ pub fn parse_where_clause(tok_strm: &mut TokenStream) -> Result<Option<WhereClau
 	let expr_list = parse_expr_list(tok_strm)?;
 	n.expr_list = expr_list;
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_expr_list(tok_strm: &mut TokenStream) -> Result<Option<ExprListNode>, Error> {
+pub fn parse_expr_list(tok_strm: &mut TokenStream) -> Result<Option<Box<ExprListNode>>, Error> {
 	let mut n = ExprListNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let expr = parse_expr(tok_strm)?;
@@ -508,14 +514,14 @@ pub fn parse_expr_list(tok_strm: &mut TokenStream) -> Result<Option<ExprListNode
 		n.exprs.push(expr.unwrap());
 	}
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_expr(tok_strm: &mut TokenStream) -> Result<Option<ExprNode>, Error> {
+pub fn parse_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<ExprNode>>, Error> {
 	let mut n = ExprNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	n.ass_expr = parse_ass_expr(tok_strm)?;
@@ -523,14 +529,14 @@ pub fn parse_expr(tok_strm: &mut TokenStream) -> Result<Option<ExprNode>, Error>
 		return Ok(None);
 	}
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_ass_expr(tok_strm: &mut TokenStream) -> Result<Option<AssExprNode>, Error> {
+pub fn parse_ass_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<AssExprNode>>, Error> {
 	let mut n = AssExprNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	n.left_compare_expr = parse_compare_expr(tok_strm)?;
@@ -538,10 +544,14 @@ pub fn parse_ass_expr(tok_strm: &mut TokenStream) -> Result<Option<AssExprNode>,
 		return Ok(None);
 	}
 
+	if tok_strm.is_end() {
+		return Ok(Some(Box::new(n)));
+	}
+
 	let tok = tok_strm.get()?;
 	if tok.kind != TokenKind::Assign {
 		tok_strm.prev();
-		return Ok(Some(n));
+		return Ok(Some(Box::new(n)));
 	}
 
 	n.right_compare_expr = parse_compare_expr(tok_strm)?;
@@ -549,126 +559,165 @@ pub fn parse_ass_expr(tok_strm: &mut TokenStream) -> Result<Option<AssExprNode>,
 		return err_parse!("missing right hand operand in ass expr");
 	}
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_compare_expr(tok_strm: &mut TokenStream) -> Result<Option<CompareExprNode>, Error> {
+pub fn parse_compare_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<CompareExprNode>>, Error> {
 	let mut n = CompareExprNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
-	}
-
-	n.left_logic_expr = parse_logic_expr(tok_strm)?;
-	if n.left_logic_expr.is_none() {
 		return Ok(None);
 	}
 
-	n.compare_op = parse_compare_op(tok_strm)?;
-	if n.compare_op.is_none() {
-		return Ok(Some(n));
+	let left = parse_logic_expr(tok_strm)?;
+	if left.is_none() {
+		return Ok(None);
 	}
 
-	n.right_logic_expr = parse_logic_expr(tok_strm)?;
-	if n.right_logic_expr.is_none() {
-		return err_parse!("missing right logic expr in compare expr");
+	let node = CompareExprItemNode::Left(left.unwrap());
+	n.nodes.push(node);
+
+	while !tok_strm.is_end() {
+		let op = parse_compare_op(tok_strm)?;
+		if op.is_none() {
+			break;
+		}
+
+		let node = CompareExprItemNode::Op(op.unwrap());
+		n.nodes.push(node);
+
+		let right = parse_logic_expr(tok_strm)?;
+		if right.is_none() {
+			return err_parse!("missing right logic expr in compare expr");
+		}		
+
+		let node = CompareExprItemNode::Right(right.unwrap());
+		n.nodes.push(node);
 	}
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_compare_op(tok_strm: &mut TokenStream) -> Result<Option<CompareOpNode>, Error> {
+pub fn parse_compare_op(tok_strm: &mut TokenStream) -> Result<Option<Box<CompareOpNode>>, Error> {
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
 	if tok.kind == TokenKind::Eq {
-		return Ok(Some(CompareOpNode::Eq));
+		return Ok(Some(Box::new(CompareOpNode::Eq)));
 	} else if tok.kind == TokenKind::NotEq {
-		return Ok(Some(CompareOpNode::NotEq));
+		return Ok(Some(Box::new(CompareOpNode::NotEq)));
 	} else {
 		tok_strm.prev();
 		return Ok(None);
 	}
 }
 
-pub fn parse_logic_expr(tok_strm: &mut TokenStream) -> Result<Option<LogicExprNode>, Error> {
+pub fn parse_logic_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<LogicExprNode>>, Error> {
 	let mut n = LogicExprNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
-	}
-
-	n.left_operand = parse_operand(tok_strm)?;
-	if n.left_operand.is_none() {
 		return Ok(None);
 	}
 
-	n.logic_op = parse_logic_op(tok_strm)?;
-	if n.logic_op.is_none() {
-		return Ok(Some(n));
+	let left = parse_operand(tok_strm)?;
+	if left.is_none() {
+		return Ok(None);
 	}
 
-	n.right_operand = parse_operand(tok_strm)?;
-	if n.right_operand.is_none() {
-		return err_parse!("missing right hand operand in logic expr");
+	let node = LogicExprItemNode::Left(left.unwrap());
+	n.nodes.push(node);
+
+	while !tok_strm.is_end() {
+		let op = parse_logic_op(tok_strm)?;
+		if op.is_none() {
+			break;
+		}
+
+		let node = LogicExprItemNode::Op(op.unwrap());
+		n.nodes.push(node);
+
+		let right = parse_operand(tok_strm)?;
+		if right.is_none() {
+			return err_parse!("missing right hand operand in logic expr");
+		}
+
+		let node = LogicExprItemNode::Right(right.unwrap());
+		n.nodes.push(node);
 	}
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_logic_op(tok_strm: &mut TokenStream) -> Result<Option<LogicOpNode>, Error> {
+pub fn parse_logic_op(tok_strm: &mut TokenStream) -> Result<Option<Box<LogicOpNode>>, Error> {
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
 	if tok.kind == TokenKind::And {
-		return Ok(Some(LogicOpNode::And));
+		return Ok(Some(Box::new(LogicOpNode::And)));
 	} else if tok.kind == TokenKind::Or {
-		return Ok(Some(LogicOpNode::Or));
+		return Ok(Some(Box::new(LogicOpNode::Or)));
 	} else {
 		tok_strm.prev();
 		return Ok(None);
 	}
 }
 
-pub fn parse_operand(tok_strm: &mut TokenStream) -> Result<Option<OperandNode>, Error> {
+pub fn parse_operand(tok_strm: &mut TokenStream) -> Result<Option<Box<OperandNode>>, Error> {
 	let mut n = OperandNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
-	n.int_value = parse_int_value(tok_strm)?;
-	if !n.int_value.is_none() {
-		return Ok(Some(n));
-	}
+	let tok = tok_strm.get()?;
+	if tok.kind == TokenKind::LParen {
+		n.expr = parse_expr(tok_strm)?;
+		if n.expr.is_none() {
+			return err_parse!("missing expression in operand");
+		}
 
-	n.float_value = parse_float_value(tok_strm)?;
-	if !n.float_value.is_none() {
-		return Ok(Some(n));
-	}
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::RParen {
+			return err_parse!("missing ) in operand");
+		}
 
-	n.string = parse_string(tok_strm)?;
-	if !n.string.is_none() {
-		return Ok(Some(n));
-	}
+		return Ok(Some(Box::new(n)));
+	} else {
+		tok_strm.prev();
 
-	n.ident = parse_ident(tok_strm)?;
-	if !n.ident.is_none() {
-		return Ok(Some(n));
-	}
+		n.int_value = parse_int_value(tok_strm)?;
+		if !n.int_value.is_none() {
+			return Ok(Some(Box::new(n)));
+		}
 
-	Ok(None)
+		n.float_value = parse_float_value(tok_strm)?;
+		if !n.float_value.is_none() {
+			return Ok(Some(Box::new(n)));
+		}
+
+		n.string = parse_string(tok_strm)?;
+		if !n.string.is_none() {
+			return Ok(Some(Box::new(n)));
+		}
+
+		n.ident = parse_ident(tok_strm)?;
+		if !n.ident.is_none() {
+			return Ok(Some(Box::new(n)));
+		}
+
+		return Ok(None);
+	}
 }
 
-pub fn parse_int_value(tok_strm: &mut TokenStream) -> Result<Option<IntValueNode>, Error> {
+pub fn parse_int_value(tok_strm: &mut TokenStream) -> Result<Option<Box<IntValueNode>>, Error> {
 	let mut n = IntValueNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
@@ -679,14 +728,14 @@ pub fn parse_int_value(tok_strm: &mut TokenStream) -> Result<Option<IntValueNode
 
 	n.value = tok.int_value.unwrap();
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_float_value(tok_strm: &mut TokenStream) -> Result<Option<FloatValueNode>, Error> {
+pub fn parse_float_value(tok_strm: &mut TokenStream) -> Result<Option<Box<FloatValueNode>>, Error> {
 	let mut n = FloatValueNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
@@ -697,14 +746,14 @@ pub fn parse_float_value(tok_strm: &mut TokenStream) -> Result<Option<FloatValue
 
 	n.value = tok.float_value.unwrap();
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_string(tok_strm: &mut TokenStream) -> Result<Option<StringNode>, Error> {
+pub fn parse_string(tok_strm: &mut TokenStream) -> Result<Option<Box<StringNode>>, Error> {
 	let mut n = StringNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
@@ -715,14 +764,14 @@ pub fn parse_string(tok_strm: &mut TokenStream) -> Result<Option<StringNode>, Er
 
 	n.value = tok.text.clone().unwrap();
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_ident(tok_strm: &mut TokenStream) -> Result<Option<IdentNode>, Error> {
+pub fn parse_ident(tok_strm: &mut TokenStream) -> Result<Option<Box<IdentNode>>, Error> {
 	let mut n = IdentNode::new();
 
 	if tok_strm.is_end() {
-		return err_parse!("reached eof");
+		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
@@ -733,5 +782,45 @@ pub fn parse_ident(tok_strm: &mut TokenStream) -> Result<Option<IdentNode>, Erro
 
 	n.value = tok.text.clone().unwrap();
 
-	Ok(Some(n))
+	Ok(Some(Box::new(n)))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn do_parse(s: &str) -> bool {
+		let tokens: Vec<Token> = match tokenize(s.to_string()) {
+			Ok(v) => v,
+			Err(e) => {
+				eprintln!("{}", e);
+				return false;
+			}
+		};
+		let mut strm = TokenStream::new(tokens);
+		let node = match parse(&mut strm) {
+			Ok(v) => v,
+			Err(e) => {
+				eprintln!("{}", e);
+				return false;
+			}
+		};
+
+		true
+	}
+
+	#[test]
+	fn test_get_stmt() {
+		assert!(do_parse("GET id OF table WHERE age == 123") == true);
+		assert!(do_parse("GET id OF table WHERE age == 123;") == true);
+		assert!(do_parse("GET id OF table WHERE age == 123 AND id == 323;") == true);
+		assert!(do_parse("GET id, name OF table WHERE age == 123;") == true);
+		assert!(do_parse("GET ALL id OF table WHERE age == 123;") == true);
+	}
+
+	#[test]
+	fn test_set_stmt() {
+		assert!(do_parse("SET age = 20 OF table WHERE id == 123;") == true);
+		assert!(do_parse("SET age = 20, name = \"hige\" OF table WHERE id == 123;") == true);
+	}
 }

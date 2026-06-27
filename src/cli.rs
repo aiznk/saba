@@ -40,11 +40,11 @@ fn exec_query(opts: Options, query: String) -> Result<(), Error> {
 }
 
 fn run_shell(opts: Options) {
-	match exec_query(opts, String::from("GET id OF table WHERE name = \"hige\";")) {
-		Ok(_) => {},
-		Err(e) => eprintln!("{}", e),
-	}
-	return;
+	// match exec_query(opts, String::from("GET id OF table WHERE name = \"hige\";")) {
+	// 	Ok(_) => {},
+	// 	Err(e) => eprintln!("{}", e),
+	// }
+	// return;
 
 	loop {
 		print!("query > ");

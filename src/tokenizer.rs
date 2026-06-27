@@ -7,6 +7,8 @@ pub enum TokenKind {
 	String, // "str"
 	Int, // 1
 	Float, // 1.23
+	Create, // CREATE
+	Database, // Database
 	Get, // GET
 	Set, // SET
 	Add, // ADD
@@ -22,6 +24,8 @@ pub enum TokenKind {
 	Semicolon, // ; 
 	Colon, // :
 	Comma, // ,
+	LParen, // (
+	RParen, // )
 }
 
 #[derive(Debug)]
@@ -99,14 +103,14 @@ impl TokenStream {
 
 	pub fn cur(&self) -> Result<&Token, Error> {
 		if self.index >= self.tokens.len() {
-			return err_runtime!("index out of range");
+			return err_runtime!("index out of range (cur)");
 		}
 		Ok(&self.tokens[self.index]) 
 	}
 
 	pub fn get(&mut self) -> Result<&Token, Error> {
 		if self.index >= self.tokens.len() {
-			return err_runtime!("index out of range");
+			return err_runtime!("index out of range (get)");
 		}
 		let token = &self.tokens[self.index];
 		self.index += 1;
@@ -201,6 +205,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		let mut c3: char = '?';
 		let mut c4: char = '?';
 		let mut c5: char = '?';
+		let mut c6: char = '?';
+		let mut c7: char = '?';
+		let mut c8: char = '?';
 
 		c1 = chars[i].to_ascii_lowercase();
 		if i+1 < chars.len() {
@@ -214,6 +221,15 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		}
 		if i+4 < chars.len() {
 			c5 = chars[i+4].to_ascii_lowercase();
+		}
+		if i+5 < chars.len() {
+			c6 = chars[i+5].to_ascii_lowercase();
+		}
+		if i+6 < chars.len() {
+			c7 = chars[i+6].to_ascii_lowercase();
+		}
+		if i+7 < chars.len() {
+			c8 = chars[i+7].to_ascii_lowercase();
 		}
 
 		// println!("{} {} {}", c1, c2, c3);
@@ -245,6 +261,12 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'w' && c2 == 'h' && c3 == 'e' && c4 == 'r' && c5 == 'e' {
 			ret.push(Token::from(TokenKind::Where, None));
 			i += 4;
+		} else if c1 == 'c' && c2 == 'r' && c3 == 'e' && c4 == 'a' && c5 == 't' && c6 == 'e' {
+			ret.push(Token::from(TokenKind::Create, None));
+			i += 5;
+		} else if c1 == 'd' && c2 == 'a' && c3 == 't' && c4 == 'a' && c5 == 'b' && c6 == 'a' && c7 == 's' && c8 == 'e' {
+			ret.push(Token::from(TokenKind::Database, None));
+			i += 7;
 		} else if c1 == '=' && c2 == '=' {
 			ret.push(Token::from(TokenKind::Eq, None));
 			i += 1;
@@ -259,6 +281,10 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 			ret.push(Token::from(TokenKind::Colon, None));
 		} else if c1 == ',' {
 			ret.push(Token::from(TokenKind::Comma, None));
+		} else if c1 == '(' {
+			ret.push(Token::from(TokenKind::LParen, None));
+		} else if c1 == ')' {
+			ret.push(Token::from(TokenKind::RParen, None));
 		} else if c1 == '"' {
 			let tok = read_string(&mut i, &chars);
 			ret.push(tok);
