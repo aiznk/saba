@@ -270,6 +270,10 @@ pub fn parse(tok_strm: &mut TokenStream) -> Result<QueryNode, Error> {
 		}
 		query.stmts.push(stmt.unwrap());
 
+		if tok_strm.is_end() {
+			break;
+		}
+		
 		let tok = tok_strm.get()?;
 		if tok.kind != TokenKind::Semicolon {
 			return err_parse!("missing semicolon in stmt");
