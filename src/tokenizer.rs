@@ -1,4 +1,4 @@
-use crate::error::{Error, err_runtime};
+use crate::error::{Error, make_error, err_runtime};
 
 #[derive(Debug, PartialEq)]
 pub enum TokenKind {

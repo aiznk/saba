@@ -1,5 +1,5 @@
 use crate::tokenizer::{Token, TokenKind, TokenStream, tokenize};
-use crate::error::{Error, err_parse};
+use crate::error::{Error, make_error, err_parse};
 use crate::utils::{debug};
 
 pub struct QueryNode {
@@ -457,7 +457,7 @@ pub fn parse_create_table(tok_strm: &mut TokenStream) -> Result<Option<Box<Creat
 
 	n.ident = parse_ident(tok_strm)?;
 	if n.ident.is_none() {
-		return err_parse!("missing table name");
+		return err_parse!("missing table name in create table");
 	}
 
 	let tok = tok_strm.get()?;
@@ -474,6 +474,10 @@ pub fn parse_create_table(tok_strm: &mut TokenStream) -> Result<Option<Box<Creat
 	while !tok_strm.is_end() {
 		let tok = tok_strm.get()?;
 		if tok.kind != TokenKind::Comma {
+			break;
+		}
+
+		if tok_strm.is_end() {
 			break;
 		}
 
@@ -533,25 +537,13 @@ pub fn parse_column_type(tok_strm: &mut TokenStream) -> Result<Option<ColumnType
 	let tok = tok_strm.get()?;
 	if tok.kind == TokenKind::PrimaryKey {
 		return Ok(Some(ColumnTypeNode::PrimaryKey));		
-	}
-
-	let tok = tok_strm.get()?;
-	if tok.kind == TokenKind::AutoIncrement {
+	} else if tok.kind == TokenKind::AutoIncrement {
 		return Ok(Some(ColumnTypeNode::AutoIncrement));		
-	}
-
-	let tok = tok_strm.get()?;
-	if tok.kind == TokenKind::I64 {
+	} else if tok.kind == TokenKind::I64 {
 		return Ok(Some(ColumnTypeNode::I64));		
-	}
-
-	let tok = tok_strm.get()?;
-	if tok.kind == TokenKind::F64 {
+	} else if tok.kind == TokenKind::F64 {
 		return Ok(Some(ColumnTypeNode::F64));		
-	}
-
-	let tok = tok_strm.get()?;
-	if tok.kind == TokenKind::Char {
+	} else if tok.kind == TokenKind::Char {
 		let tok = tok_strm.get()?;
 		if tok.kind != TokenKind::LBracket {
 			return err_parse!("missing [ in char of column type");
@@ -1065,17 +1057,77 @@ mod tests {
 	}
 
 	#[test]
-	fn test_get_stmt() {
-		assert!(do_parse("GET id OF table WHERE age == 123") == true);
-		assert!(do_parse("GET id OF table WHERE age == 123;") == true);
-		assert!(do_parse("GET id OF table WHERE age == 123 AND id == 323;") == true);
-		assert!(do_parse("GET id, name OF table WHERE age == 123;") == true);
-		assert!(do_parse("GET ALL id OF table WHERE age == 123;") == true);
+	fn test_create_database_stmt() {
+		assert!(do_parse("CREATE DATABASE mydb;") == true);
 	}
 
 	#[test]
-	fn test_set_stmt() {
-		assert!(do_parse("SET age = 20 OF table WHERE id == 123;") == true);
-		assert!(do_parse("SET age = 20, name = \"hige\" OF table WHERE id == 123;") == true);
+	fn test_create_table_stmt_0() {
+		assert!(do_parse("CREATE TABLE mytab (id: I64);") == true);
+	}
+
+	fn test_create_table_stmt_1() {
+		assert!(do_parse("
+CREATE TABLE mytab (
+	id: I64 PRIMARY_KEY AUTO_INCREMENT,
+	weight: F64,
+	name: CHAR[128],
+);
+") == true);
+	}
+
+	#[test]
+	fn test_get_stmt_0() {
+		assert!(do_parse("GET id OF mytab WHERE age == 123") == true);
+	}
+
+	#[test]
+	fn test_get_stmt_1() {
+		assert!(do_parse("GET id OF mytab WHERE age == 123;") == true);
+	}
+
+	#[test]
+	fn test_get_stmt_2() {
+		assert!(do_parse("GET id OF mytab WHERE age == 123 AND id == 323;") == true);
+	}
+
+	#[test]
+	fn test_get_stmt_3() {	
+		assert!(do_parse("GET id, name OF mytab WHERE age == 123;") == true);
+	}
+
+	#[test]
+	fn test_get_stmt_4() {
+		assert!(do_parse("GET ALL id OF mytab WHERE age == 123;") == true);
+	}
+
+	#[test]
+	fn test_set_stmt_0() {
+		assert!(do_parse("SET age = 20 OF mytab WHERE id == 123;") == true);
+	}
+
+	#[test]
+	fn test_set_stmt_1() {
+		assert!(do_parse("SET age = 20, name = \"hige\" OF mytab WHERE id == 123;") == true);
+	}
+
+	#[test]
+	fn test_add_stmt_0() {
+		assert!(do_parse("ADD id = 1 OF mytab;") == true);
+	}
+
+	#[test]
+	fn test_add_stmt_1() {
+		assert!(do_parse("ADD id = 1, age = 20 OF mytab;") == true);
+	}
+
+	#[test]
+	fn test_del_stmt_0() {
+		assert!(do_parse("DEL OF mytab WHERE id == 1;") == true);
+	}
+
+	#[test]
+	fn test_del_stmt_1() {
+		assert!(do_parse("DEL ALL OF mytab;") == true);
 	}
 }
