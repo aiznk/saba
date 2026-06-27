@@ -8,7 +8,13 @@ pub enum TokenKind {
 	Int, // 1
 	Float, // 1.23
 	Create, // CREATE
-	Database, // Database
+	PrimaryKey, // PRIMARY_KEY
+	AutoIncrement, // AUTO_INCREMENT
+	Database, // DATABASE
+	Table, // TABLE
+	I64,
+	F64,
+	Char, // CHAR
 	Get, // GET
 	Set, // SET
 	Add, // ADD
@@ -26,6 +32,8 @@ pub enum TokenKind {
 	Comma, // ,
 	LParen, // (
 	RParen, // )
+	LBracket, // [
+	RBracket, // ]
 }
 
 #[derive(Debug)]
@@ -75,8 +83,8 @@ impl Token {
 }
 
 pub struct TokenStream {
-	tokens: Vec<Token>,
-	index: usize,
+	pub tokens: Vec<Token>,
+	pub index: usize,
 }
 
 impl TokenStream {
@@ -208,6 +216,12 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		let mut c6: char = '?';
 		let mut c7: char = '?';
 		let mut c8: char = '?';
+		let mut c9: char = '?';
+		let mut c10: char = '?';
+		let mut c11: char = '?';
+		let mut c12: char = '?';
+		let mut c13: char = '?';
+		let mut c14: char = '?';
 
 		c1 = chars[i].to_ascii_lowercase();
 		if i+1 < chars.len() {
@@ -231,6 +245,24 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		if i+7 < chars.len() {
 			c8 = chars[i+7].to_ascii_lowercase();
 		}
+		if i+8 < chars.len() {
+			c9 = chars[i+8].to_ascii_lowercase();
+		}
+		if i+9 < chars.len() {
+			c10 = chars[i+9].to_ascii_lowercase();
+		}
+		if i+10 < chars.len() {
+			c11 = chars[i+10].to_ascii_lowercase();
+		}
+		if i+11 < chars.len() {
+			c12 = chars[i+11].to_ascii_lowercase();
+		}
+		if i+12 < chars.len() {
+			c13 = chars[i+12].to_ascii_lowercase();
+		}
+		if i+13 < chars.len() {
+			c14 = chars[i+13].to_ascii_lowercase();
+		}
 
 		// println!("{} {} {}", c1, c2, c3);
 
@@ -252,6 +284,15 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'a' && c2 == 'n' && c3 == 'd' {
 			ret.push(Token::from(TokenKind::And, None));
 			i += 2;
+		} else if c1 == 'i' && c2 == '6' && c3 == '4' {
+			ret.push(Token::from(TokenKind::I64, None));
+			i += 2;
+		} else if c1 == 'f' && c2 == '6' && c3 == '4' {
+			ret.push(Token::from(TokenKind::F64, None));
+			i += 2;
+		} else if c1 == 'c' && c2 == 'h' && c3 == 'a' && c4 == 'r' {
+			ret.push(Token::from(TokenKind::Char, None));
+			i += 3;
 		} else if c1 == 'o' && c2 == 'r' {
 			ret.push(Token::from(TokenKind::Or, None));
 			i += 1;
@@ -261,12 +302,23 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'w' && c2 == 'h' && c3 == 'e' && c4 == 'r' && c5 == 'e' {
 			ret.push(Token::from(TokenKind::Where, None));
 			i += 4;
+		} else if c1 == 't' && c2 == 'a' && c3 == 'b' && c4 == 'l' && c5 == 'e' {
+			ret.push(Token::from(TokenKind::Table, None));
+			i += 4;
 		} else if c1 == 'c' && c2 == 'r' && c3 == 'e' && c4 == 'a' && c5 == 't' && c6 == 'e' {
 			ret.push(Token::from(TokenKind::Create, None));
 			i += 5;
 		} else if c1 == 'd' && c2 == 'a' && c3 == 't' && c4 == 'a' && c5 == 'b' && c6 == 'a' && c7 == 's' && c8 == 'e' {
 			ret.push(Token::from(TokenKind::Database, None));
 			i += 7;
+		} else if c1 == 'p' && c2 == 'r' && c3 == 'i' && c4 == 'm' && c5 == 'a' && c6 == 'r' && c7 == 'y' && c8 == '_' && c9 == 'k' && c10 == 'e' && c11 == 'y' {
+			// primary_key
+			ret.push(Token::from(TokenKind::PrimaryKey, None));
+			i += 10;
+		} else if c1 == 'a' && c2 == 'u' && c3 == 't' && c4 == 'o' && c5 == '_' && c6 == 'i' && c7 == 'n' && c8 == 'c' && c9 == 'r' && c10 == 'e' && c11 == 'm' && c12 == 'e' && c13 == 'n' && c14 == 't' {
+			// auto_increment
+			ret.push(Token::from(TokenKind::PrimaryKey, None));
+			i += 10;
 		} else if c1 == '=' && c2 == '=' {
 			ret.push(Token::from(TokenKind::Eq, None));
 			i += 1;
@@ -285,6 +337,10 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 			ret.push(Token::from(TokenKind::LParen, None));
 		} else if c1 == ')' {
 			ret.push(Token::from(TokenKind::RParen, None));
+		} else if c1 == '[' {
+			ret.push(Token::from(TokenKind::LBracket, None));
+		} else if c1 == ']' {
+			ret.push(Token::from(TokenKind::RBracket, None));
 		} else if c1 == '"' {
 			let tok = read_string(&mut i, &chars);
 			ret.push(tok);

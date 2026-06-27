@@ -103,7 +103,16 @@
 ## BNF
 
 query ::= { stmt ';' }*
-stmt ::= (get_stmt | set_stmt | add_stmt | del_stmt)
+stmt ::= (create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
+create_stmt ::= create_database | create_table
+create_table ::= 'CREATE' 'TABLE' ident '(' column_definition { ',' column_definition }* ')'
+create_database ::= 'CREATE' 'DATABASE' ident
+column_definition ::= ident ':' { column_type }+
+column_type ::= 'PRIMARY_KEY' | 
+			 'AUTO_INCREMENT' |
+             'I64' |
+             'F64' |
+             'CHAR' '[' int_value ']'
 get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' ident where?
 set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' ident where?
 add_stmt ::= 'ADD' (expr_list) 'OF' ident

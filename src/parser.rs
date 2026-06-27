@@ -15,6 +15,7 @@ impl QueryNode {
 }
 
 struct StmtNode {
+	create_stmt: Option<Box<CreateStmtNode>>,
 	get_stmt: Option<Box<GetStmtNode>>,
 	set_stmt: Option<Box<SetStmtNode>>,
 	add_stmt: Option<Box<AddStmtNode>>,
@@ -24,12 +25,75 @@ struct StmtNode {
 impl StmtNode {
 	pub fn new() -> Self {
 		Self {
+			create_stmt: None,
 			get_stmt: None,
 			set_stmt: None,
 			add_stmt: None,
 			del_stmt: None,
 		}
 	}
+}
+
+struct CreateStmtNode {
+	create_database: Option<Box<CreateDatabaseNode>>,
+	create_table: Option<Box<CreateTableNode>>,
+}
+
+impl CreateStmtNode {
+	pub fn new() -> Self {
+		Self {
+			create_database: None,
+			create_table: None,
+		}
+	}
+}
+
+struct CreateDatabaseNode {
+	ident: Option<Box<IdentNode>>,
+}
+
+impl CreateDatabaseNode {
+	pub fn new() -> Self {
+		Self {
+			ident: None,
+		}
+	}
+}
+
+struct CreateTableNode {
+	ident: Option<Box<IdentNode>>,
+	column_definitions: Vec<Box<ColumnDefinitionNode>>,
+}
+
+impl CreateTableNode {
+	pub fn new() -> Self {
+		Self {
+			ident: None,
+			column_definitions: vec![],
+		}
+	}
+}
+
+struct ColumnDefinitionNode {
+	ident: Option<Box<IdentNode>>,
+	column_types: Vec<ColumnTypeNode>,
+}
+
+impl ColumnDefinitionNode {
+	pub fn new() -> Self {
+		Self {
+			ident: None,
+			column_types: vec![],
+		}
+	}
+}
+
+enum ColumnTypeNode {
+	PrimaryKey,
+	AutoIncrement,
+	I64,
+	F64,
+	Char(usize),
 }
 
 struct GetStmtNode {
@@ -292,6 +356,12 @@ pub fn parse(tok_strm: &mut TokenStream) -> Result<QueryNode, Error> {
 pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<StmtNode>>, Error> {
 	let mut stmt = StmtNode::new();
 
+	let create_stmt = parse_create_stmt(tok_strm)?;
+	if !create_stmt.is_none() {
+		stmt.create_stmt = create_stmt;
+		return Ok(Some(Box::new(stmt)));
+	}
+
 	let get_stmt = parse_get_stmt(tok_strm)?;
 	if !get_stmt.is_none() {
 		stmt.get_stmt = get_stmt;
@@ -317,6 +387,191 @@ pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<StmtNode>>, E
 	}
 
 	return err_parse!("failed to parse stmt");
+}
+
+pub fn parse_create_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<CreateStmtNode>>, Error> {
+	let mut n = CreateStmtNode::new();
+
+	n.create_database = parse_create_database(tok_strm)?;
+	if !n.create_database.is_none() {
+		return Ok(Some(Box::new(n)));
+	}
+
+	n.create_table = parse_create_table(tok_strm)?;
+	if !n.create_table.is_none() {
+		return Ok(Some(Box::new(n)));
+	}
+
+	Ok(None)
+}
+
+pub fn parse_create_database(tok_strm: &mut TokenStream) -> Result<Option<Box<CreateDatabaseNode>>, Error> {
+	let mut n = CreateDatabaseNode::new();
+
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let i = tok_strm.index;
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Create {
+		tok_strm.index = i;
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Database {
+		tok_strm.index = i;
+		return Ok(None);
+	}
+
+	n.ident = parse_ident(tok_strm)?;
+	if n.ident.is_none() {
+		return err_parse!("missing database name");
+	}
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_create_table(tok_strm: &mut TokenStream) -> Result<Option<Box<CreateTableNode>>, Error> {
+	let mut n = CreateTableNode::new();
+
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let i = tok_strm.index;
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Create {
+		tok_strm.index = i;
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Table {
+		tok_strm.index = i;
+		return Ok(None);
+	}
+
+	n.ident = parse_ident(tok_strm)?;
+	if n.ident.is_none() {
+		return err_parse!("missing table name");
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::LParen {
+		return err_parse!("missing ( in create table");
+	}
+
+	let column_definition = parse_column_definition(tok_strm)?;
+	if column_definition.is_none() {
+		return err_parse!("missing column definition in create table");
+	}
+	n.column_definitions.push(column_definition.unwrap());
+
+	while !tok_strm.is_end() {
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::Comma {
+			break;
+		}
+
+		let column_definition = parse_column_definition(tok_strm)?;
+		if column_definition.is_none() {
+			break;
+		}
+		n.column_definitions.push(column_definition.unwrap());
+	}
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_column_definition(tok_strm: &mut TokenStream) -> Result<Option<Box<ColumnDefinitionNode>>, Error> {
+	let mut n = ColumnDefinitionNode::new();
+
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let i = tok_strm.index;
+
+	n.ident = parse_ident(tok_strm)?;
+	if n.ident.is_none() {
+		tok_strm.index = i;
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Colon {
+		tok_strm.index = i;
+		return Ok(None);
+	}
+
+	let column_type = parse_column_type(tok_strm)?;
+	if column_type.is_none() {
+		return err_parse!("missing column type in column definition");
+	}
+	n.column_types.push(column_type.unwrap());
+
+	while !tok_strm.is_end() {
+		let column_type = parse_column_type(tok_strm)?;
+		if column_type.is_none() {
+			break;
+		}
+		n.column_types.push(column_type.unwrap());
+	}
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_column_type(tok_strm: &mut TokenStream) -> Result<Option<ColumnTypeNode>, Error> {
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind == TokenKind::PrimaryKey {
+		return Ok(Some(ColumnTypeNode::PrimaryKey));		
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind == TokenKind::AutoIncrement {
+		return Ok(Some(ColumnTypeNode::AutoIncrement));		
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind == TokenKind::I64 {
+		return Ok(Some(ColumnTypeNode::I64));		
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind == TokenKind::F64 {
+		return Ok(Some(ColumnTypeNode::F64));		
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind == TokenKind::Char {
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::LBracket {
+			return err_parse!("missing [ in char of column type");
+		}
+
+		let int_value = parse_int_value(tok_strm)?;
+		if int_value.is_none() {
+			return err_parse!("missing number of char in column type");
+		}
+
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::RBracket {
+			return err_parse!("missing ] in char of column type");
+		}		
+
+		let value = int_value.unwrap().value as usize;
+		return Ok(Some(ColumnTypeNode::Char(value)))
+	}
+
+	Ok(None)
 }
 
 pub fn parse_get_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<GetStmtNode>>, Error> {
