@@ -1,8 +1,9 @@
 use crate::error::{Error, make_error, err_exec};
 use crate::planner;
 use crate::context::{Context};
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use std::fs;
+use std::io::{Write};
 
 pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Error> {
 	for plan in node.plans.iter() {
@@ -58,15 +59,22 @@ pub fn exec_csv_file_create(context: &mut Context, node: &planner::CsvFileCreate
 	let path = Path::new(&context.root_dir_path);
 	let path = path.join(&context.using_db_name);
 	let path = path.join(table_name);
-	println!("{}", path.display());
+
 	if !path.exists() {
-		match fs::File::create(path) {
-			Ok(_) => {},
+		let header = &node.csv_head_row;
+
+		let mut file = match fs::File::create(path) {
+			Ok(v) => v,
 			Err(e) => return err_exec!("failed to create CSV file. {}", e),
+		};
+		match file.write_all(header.as_bytes()) {
+			Ok(_) => {},
+			Err(e) => return err_exec!("failed to write CSV file. {}", e),
 		}
 	} else {
 		return err_exec!("{} table already exists", node.table_name);
 	}
+
 	Ok(())
 }
 
@@ -121,7 +129,9 @@ mod tests {
 		let mut context = Context::new();
 		do_exec(&mut context, "CREATE DATABASE mydb");
 		do_exec(&mut context, "USE mydb");
-		do_exec(&mut context, "CREATE TABLE MyTable (id: I64)");
+		do_exec(&mut context, "CREATE TABLE MyTable (id: I64, weight: F64)");
 		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64\n");
 	}
 }

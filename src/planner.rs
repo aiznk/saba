@@ -103,14 +103,14 @@ impl DirCreateNode {
 #[derive(Debug, Clone)]
 pub struct CsvFileCreateNode {
 	pub table_name: String,
-	pub column_definitions: Vec<Box<parser::ColumnDefinitionNode>>,
+	pub csv_head_row: String,
 }
 
 impl CsvFileCreateNode {
 	pub fn new() -> Self {
 		Self {
 			table_name: String::new(),
-			column_definitions: vec![],
+			csv_head_row: String::new(),
 		}
 	}
 }
@@ -198,11 +198,58 @@ pub fn plan_create_table(node: &Box<parser::CreateTableNode>, plan: &mut PlanNod
 		csv_file_create.table_name = unwrap_ident(&ident)?;
 	}
 
-	csv_file_create.column_definitions = node.column_definitions.clone();
+	csv_file_create.csv_head_row = gen_csv_head_row_by_column_defs(&node.column_definitions)?;
 
 	plan.csv_file_create = Some(Box::new(csv_file_create));
 
 	Ok(())
+}
+
+pub fn gen_csv_head_row_by_column_defs(column_defs: &Vec<Box<parser::ColumnDefinitionNode>>) -> Result<String, Error> {
+	let mut s = String::new();
+
+	for column_def in column_defs.iter() {
+		let col = gen_csv_head_col_by_column_def(column_def)?;
+		s.push_str(col.as_str());
+		s.push_str(",");
+	}
+
+	s.pop();
+	s.push_str("\n");
+
+	Ok(s)
+}
+
+pub fn gen_csv_head_col_by_column_def(column_def: &Box<parser::ColumnDefinitionNode>) -> Result<String, Error> {
+	let mut s = String::new();
+
+	if let Some(ident) = &column_def.ident {
+		s.push_str(&unwrap_ident(&ident)?);	
+	} else {
+		return err_planning!("missing ident");
+	}
+
+	s.push_str(": ");
+
+	for column_type in column_def.column_types.iter() {
+		let t = gen_csv_head_col_type_by_column_type(column_type)?;
+		s.push_str(&t);
+		s.push_str(" ");
+	}
+
+	s.pop();
+
+	Ok(s)
+}
+
+pub fn gen_csv_head_col_type_by_column_type(column_type: &parser::ColumnTypeNode) -> Result<String, Error> {
+	match column_type {
+		parser::ColumnTypeNode::PrimaryKey => Ok(String::from("PRIMARY_KEY")),
+		parser::ColumnTypeNode::AutoIncrement => Ok(String::from("AUTO_INCREMENT")),
+		parser::ColumnTypeNode::I64 => Ok(String::from("I64")),
+		parser::ColumnTypeNode::F64 => Ok(String::from("F64")),
+		parser::ColumnTypeNode::Char(nelems) => Ok(format!("CHAR [{}]", nelems)),
+	}
 }
 
 pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {

@@ -632,6 +632,7 @@ pub fn parse_column_type(tok_strm: &mut TokenStream) -> Result<Option<ColumnType
 		return Ok(Some(ColumnTypeNode::Char(value)))
 	}
 
+	tok_strm.prev();
 	Ok(None)
 }
 
