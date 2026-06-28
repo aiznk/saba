@@ -1,19 +1,22 @@
 use crate::tokenizer::{Token, TokenStream, tokenize};
 use crate::parser::{QueryNode, parse};
-use crate::error::Error;
+use crate::planner::{PlansNode, planning};
+use crate::executor::{exec};
+use crate::context::{Context};
+use crate::error::{Error, make_error, err_exec};
 use std::io::Write;
 
 #[derive(Clone)]
 struct Options {
 	help: bool,
-	fname: Option<String>,
+	root_dir_path: Option<String>,
 }
 
 impl Options {
 	pub fn new() -> Self {
 		Self {
 			help: false,
-			fname: None,
+			root_dir_path: None,
 		}
 	}
 }
@@ -33,9 +36,17 @@ The options are:
 }
 
 fn exec_query(opts: Options, query: String) -> Result<(), Error> {
+	if opts.root_dir_path.is_none() {
+		return err_exec!("root directory is none");
+	}
+
+	let mut context = Context::new();
+	context.root_dir_path = opts.root_dir_path.clone().unwrap();
 	let tokens: Vec<Token> = tokenize(query)?;
 	let mut tok_strm = TokenStream::new(tokens);
 	let node: QueryNode = parse(&mut tok_strm)?;
+	let node: PlansNode = planning(&node)?;
+	exec(&mut context, &node)?;
 	Ok(())
 }
 
@@ -74,7 +85,7 @@ fn parse_options(args: Vec<String>) -> Options {
 			"-h" => { opts.help = true; }
 			"--help" => { opts.help = true; }
 			&_ => {
-				opts.fname = Some(String::from(arg));
+				opts.root_dir_path = Some(String::from(arg));
 			}
 		}
 	}
@@ -92,7 +103,7 @@ pub fn run() {
 
 	if opts.help {
 		usage();
-	} else if !opts.fname.is_none() {
+	} else if !opts.root_dir_path.is_none() {
 		run_shell(opts);
 	}
 }

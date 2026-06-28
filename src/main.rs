@@ -1,8 +1,11 @@
 mod cli;
 mod error;
+mod utils;
 mod tokenizer;
 mod parser;
-mod utils;
+mod planner;
+mod executor;
+mod context;
 
 fn main() {
     cli::run();

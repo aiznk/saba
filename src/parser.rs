@@ -2,8 +2,9 @@ use crate::tokenizer::{Token, TokenKind, TokenStream, tokenize};
 use crate::error::{Error, make_error, err_parse};
 use crate::utils::{debug};
 
+#[derive(Debug, Clone)]
 pub struct QueryNode {
-	stmts: Vec<Box<StmtNode>>,
+	pub stmts: Vec<Box<StmtNode>>,
 }
 
 impl QueryNode {
@@ -14,17 +15,20 @@ impl QueryNode {
 	}
 }
 
-struct StmtNode {
-	create_stmt: Option<Box<CreateStmtNode>>,
-	get_stmt: Option<Box<GetStmtNode>>,
-	set_stmt: Option<Box<SetStmtNode>>,
-	add_stmt: Option<Box<AddStmtNode>>,
-	del_stmt: Option<Box<DelStmtNode>>,
+#[derive(Debug, Clone)]
+pub struct StmtNode {
+	pub use_stmt: Option<Box<UseStmtNode>>,
+	pub create_stmt: Option<Box<CreateStmtNode>>,
+	pub get_stmt: Option<Box<GetStmtNode>>,
+	pub set_stmt: Option<Box<SetStmtNode>>,
+	pub add_stmt: Option<Box<AddStmtNode>>,
+	pub del_stmt: Option<Box<DelStmtNode>>,
 }
 
 impl StmtNode {
 	pub fn new() -> Self {
 		Self {
+			use_stmt: None,
 			create_stmt: None,
 			get_stmt: None,
 			set_stmt: None,
@@ -34,9 +38,23 @@ impl StmtNode {
 	}
 }
 
-struct CreateStmtNode {
-	create_database: Option<Box<CreateDatabaseNode>>,
-	create_table: Option<Box<CreateTableNode>>,
+#[derive(Debug, Clone)]
+pub struct UseStmtNode {
+	pub db_name: Option<Box<IdentNode>>,
+}
+
+impl UseStmtNode {
+	pub fn new() -> Self {
+		Self {
+			db_name: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateStmtNode {
+	pub create_database: Option<Box<CreateDatabaseNode>>,
+	pub create_table: Option<Box<CreateTableNode>>,
 }
 
 impl CreateStmtNode {
@@ -48,8 +66,9 @@ impl CreateStmtNode {
 	}
 }
 
-struct CreateDatabaseNode {
-	ident: Option<Box<IdentNode>>,
+#[derive(Debug, Clone)]
+pub struct CreateDatabaseNode {
+	pub ident: Option<Box<IdentNode>>,
 }
 
 impl CreateDatabaseNode {
@@ -60,9 +79,10 @@ impl CreateDatabaseNode {
 	}
 }
 
-struct CreateTableNode {
-	ident: Option<Box<IdentNode>>,
-	column_definitions: Vec<Box<ColumnDefinitionNode>>,
+#[derive(Debug, Clone)]
+pub struct CreateTableNode {
+	pub ident: Option<Box<IdentNode>>,
+	pub column_definitions: Vec<Box<ColumnDefinitionNode>>,
 }
 
 impl CreateTableNode {
@@ -74,9 +94,10 @@ impl CreateTableNode {
 	}
 }
 
-struct ColumnDefinitionNode {
-	ident: Option<Box<IdentNode>>,
-	column_types: Vec<ColumnTypeNode>,
+#[derive(Debug, Clone)]
+pub struct ColumnDefinitionNode {
+	pub ident: Option<Box<IdentNode>>,
+	pub column_types: Vec<ColumnTypeNode>,
 }
 
 impl ColumnDefinitionNode {
@@ -88,7 +109,8 @@ impl ColumnDefinitionNode {
 	}
 }
 
-enum ColumnTypeNode {
+#[derive(Debug, Clone)]
+pub enum ColumnTypeNode {
 	PrimaryKey,
 	AutoIncrement,
 	I64,
@@ -96,11 +118,12 @@ enum ColumnTypeNode {
 	Char(usize),
 }
 
-struct GetStmtNode {
-	all: bool,
-	expr_list: Option<Box<ExprListNode>>,
-	table: Option<Box<IdentNode>>,
-	where_clause: Option<Box<WhereClauseNode>>,
+#[derive(Debug, Clone)]
+pub struct GetStmtNode {
+	pub all: bool,
+	pub expr_list: Option<Box<ExprListNode>>,
+	pub table: Option<Box<IdentNode>>,
+	pub where_clause: Option<Box<WhereClauseNode>>,
 }
 
 impl GetStmtNode {
@@ -114,11 +137,12 @@ impl GetStmtNode {
 	}
 }
 
-struct SetStmtNode {
-	all: bool,
-	expr_list: Option<Box<ExprListNode>>,
-	table: Option<Box<IdentNode>>,
-	where_clause: Option<Box<WhereClauseNode>>,
+#[derive(Debug, Clone)]
+pub struct SetStmtNode {
+	pub all: bool,
+	pub expr_list: Option<Box<ExprListNode>>,
+	pub table: Option<Box<IdentNode>>,
+	pub where_clause: Option<Box<WhereClauseNode>>,
 }
 
 impl SetStmtNode {
@@ -132,9 +156,10 @@ impl SetStmtNode {
 	}
 }
 
-struct AddStmtNode {
-	expr_list: Option<Box<ExprListNode>>,
-	table: Option<Box<IdentNode>>,
+#[derive(Debug, Clone)]
+pub struct AddStmtNode {
+	pub expr_list: Option<Box<ExprListNode>>,
+	pub table: Option<Box<IdentNode>>,
 }
 
 impl AddStmtNode {
@@ -146,10 +171,11 @@ impl AddStmtNode {
 	}
 }
 
-struct DelStmtNode {
-	all: bool,
-	table: Option<Box<IdentNode>>,
-	where_clause: Option<Box<WhereClauseNode>>,
+#[derive(Debug, Clone)]
+pub struct DelStmtNode {
+	pub all: bool,
+	pub table: Option<Box<IdentNode>>,
+	pub where_clause: Option<Box<WhereClauseNode>>,
 }
 
 impl DelStmtNode {
@@ -162,8 +188,9 @@ impl DelStmtNode {
 	}
 }
 
-struct WhereClauseNode {
-	expr_list: Option<Box<ExprListNode>>,
+#[derive(Debug, Clone)]
+pub struct WhereClauseNode {
+	pub expr_list: Option<Box<ExprListNode>>,
 }
 
 impl WhereClauseNode {
@@ -174,8 +201,9 @@ impl WhereClauseNode {
 	}
 }
 
-struct ExprListNode {
-	exprs: Vec<Box<ExprNode>>,
+#[derive(Debug, Clone)]
+pub struct ExprListNode {
+	pub exprs: Vec<Box<ExprNode>>,
 }
 
 impl ExprListNode {
@@ -186,8 +214,9 @@ impl ExprListNode {
 	}
 }
 
-struct ExprNode {
-	ass_expr: Option<Box<AssExprNode>>,
+#[derive(Debug, Clone)]
+pub struct ExprNode {
+	pub ass_expr: Option<Box<AssExprNode>>,
 }
 
 impl ExprNode {
@@ -198,9 +227,10 @@ impl ExprNode {
 	}
 }
 
-struct AssExprNode {
-	left_compare_expr: Option<Box<CompareExprNode>>,
-	right_compare_expr: Option<Box<CompareExprNode>>,
+#[derive(Debug, Clone)]
+pub struct AssExprNode {
+	pub left_compare_expr: Option<Box<CompareExprNode>>,
+	pub right_compare_expr: Option<Box<CompareExprNode>>,
 }
 
 impl AssExprNode {
@@ -212,14 +242,17 @@ impl AssExprNode {
 	}
 }
 
-enum CompareExprItemNode {
+#[derive(Debug, Clone)]
+pub enum CompareExprItemNode {
 	Left(Box<LogicExprNode>),
 	Op(Box<CompareOpNode>),
 	Right(Box<LogicExprNode>),
 }
 
-struct CompareExprNode {
-	nodes: Vec<CompareExprItemNode>,
+
+#[derive(Debug, Clone)]
+pub struct CompareExprNode {
+	pub nodes: Vec<CompareExprItemNode>,
 }
 
 impl CompareExprNode {
@@ -230,7 +263,8 @@ impl CompareExprNode {
 	}
 }
 
-enum CompareOpNode {
+#[derive(Debug, Clone)]
+pub enum CompareOpNode {
 	Gt,
 	Gte,
 	Lt,
@@ -239,14 +273,17 @@ enum CompareOpNode {
 	NotEq,
 }
 
-enum LogicExprItemNode {
+#[derive(Debug, Clone)]
+pub enum LogicExprItemNode {
 	Left(Box<OperandNode>),
 	Op(Box<LogicOpNode>),
 	Right(Box<OperandNode>),
 }
 
-struct LogicExprNode {
-	nodes: Vec<LogicExprItemNode>,
+
+#[derive(Debug, Clone)]
+pub struct LogicExprNode {
+	pub nodes: Vec<LogicExprItemNode>,
 }
 
 impl LogicExprNode {
@@ -257,17 +294,19 @@ impl LogicExprNode {
 	}
 }
 
-enum LogicOpNode {
+#[derive(Debug, Clone)]
+pub enum LogicOpNode {
 	And,
 	Or,
 }
 
-struct OperandNode {
-	int_value: Option<Box<IntValueNode>>,
-	float_value: Option<Box<FloatValueNode>>,
-	string: Option<Box<StringNode>>,
-	ident: Option<Box<IdentNode>>,
-	expr: Option<Box<ExprNode>>,
+#[derive(Debug, Clone)]
+pub struct OperandNode {
+	pub int_value: Option<Box<IntValueNode>>,
+	pub float_value: Option<Box<FloatValueNode>>,
+	pub string: Option<Box<StringNode>>,
+	pub ident: Option<Box<IdentNode>>,
+	pub expr: Option<Box<ExprNode>>,
 }
 
 impl OperandNode {
@@ -282,8 +321,9 @@ impl OperandNode {
 	}
 }
 
-struct IntValueNode {
-	value: i64,
+#[derive(Debug, Clone)]
+pub struct IntValueNode {
+	pub value: i64,
 }
 
 impl IntValueNode {
@@ -294,8 +334,10 @@ impl IntValueNode {
 	}
 }
 
-struct FloatValueNode {
-	value: f64,
+
+#[derive(Debug, Clone)]
+pub struct FloatValueNode {
+	pub value: f64,
 }
 
 impl FloatValueNode {
@@ -306,8 +348,10 @@ impl FloatValueNode {
 	}
 }
 
-struct StringNode {
-	value: String,
+
+#[derive(Debug, Clone)]
+pub struct StringNode {
+	pub value: String,
 }
 
 impl StringNode {
@@ -318,8 +362,10 @@ impl StringNode {
 	}
 }
 
-struct IdentNode {
-	value: String,
+
+#[derive(Debug, Clone)]
+pub struct IdentNode {
+	pub value: String,
 }
 
 impl IdentNode {
@@ -356,6 +402,12 @@ pub fn parse(tok_strm: &mut TokenStream) -> Result<QueryNode, Error> {
 pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<StmtNode>>, Error> {
 	let mut stmt = StmtNode::new();
 
+	let use_stmt = parse_use_stmt(tok_strm)?;
+	if !use_stmt.is_none() {
+		stmt.use_stmt = use_stmt;
+		return Ok(Some(Box::new(stmt)));
+	}
+
 	let create_stmt = parse_create_stmt(tok_strm)?;
 	if !create_stmt.is_none() {
 		stmt.create_stmt = create_stmt;
@@ -387,6 +439,23 @@ pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<StmtNode>>, E
 	}
 
 	return err_parse!("failed to parse stmt");
+}
+
+pub fn parse_use_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<UseStmtNode>>, Error> {
+	let mut n = UseStmtNode::new();
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Use {
+		tok_strm.prev();
+		return Ok(None);
+	}
+
+	n.db_name = parse_ident(tok_strm)?;
+	if n.db_name.is_none() {
+		return err_parse!("missing database name");
+	}
+
+	Ok(Some(Box::new(n)))
 }
 
 pub fn parse_create_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<CreateStmtNode>>, Error> {
@@ -1054,6 +1123,11 @@ mod tests {
 		};
 
 		true
+	}
+
+	#[test]
+	fn test_use_stmt() {
+		assert!(do_parse("USE mydb;") == true);
 	}
 
 	#[test]

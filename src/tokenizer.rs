@@ -11,6 +11,7 @@ pub enum TokenKind {
 	PrimaryKey, // PRIMARY_KEY
 	AutoIncrement, // AUTO_INCREMENT
 	Database, // DATABASE
+	Use, // USE
 	Table, // TABLE
 	I64,
 	F64,
@@ -289,6 +290,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 			i += 2;
 		} else if c1 == 'f' && c2 == '6' && c3 == '4' {
 			ret.push(Token::from(TokenKind::F64, None));
+			i += 2;
+		} else if c1 == 'u' && c2 == 's' && c3 == 'e' {
+			ret.push(Token::from(TokenKind::Use, None));
 			i += 2;
 		} else if c1 == 'c' && c2 == 'h' && c3 == 'a' && c4 == 'r' {
 			ret.push(Token::from(TokenKind::Char, None));

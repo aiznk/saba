@@ -28,6 +28,12 @@
 * DirCreate
 * DirDrop
 
+## USE
+
+> USE mydb;
+
+	UseDB
+
 ## CREATE
 
 > CREATE DATABASE mydb;
@@ -59,7 +65,7 @@
 
 	Project (select columns)
 	- Filter (WHERE id == 123)
-	 - CsvScan (read mytab)
+	- CsvScan (read mytab)
 
 > GET ALL id OF mytab WHERE id == 123;
 
@@ -67,13 +73,13 @@
 
 	Project (select columns)
 	- Filter (WHERE id == 123)
-	 - CsvScan (read mytab)
+	- CsvScan (read mytab)
 
 > GET ALL COUNT(*) OF mytab WHERE id == 123;
 
 	Aggregate (COUNT(*))
 	- Filter (WHERE id == 123)
-	 - CsvScan (read mytab)
+	- CsvScan (read mytab)
 
 ## SET
 
@@ -103,7 +109,8 @@
 ## BNF
 
 query ::= { stmt ';' }*
-stmt ::= (create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
+stmt ::= (use_stmt | create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
+use_stmt ::= 'USE' db_name:ident
 create_stmt ::= create_database | create_table
 create_table ::= 'CREATE' 'TABLE' ident '(' column_definition { ',' column_definition }* ')'
 create_database ::= 'CREATE' 'DATABASE' ident
@@ -113,10 +120,10 @@ column_type ::= 'PRIMARY_KEY' |
              'I64' |
              'F64' |
              'CHAR' '[' int_value ']'
-get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' ident where?
-set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' ident where?
-add_stmt ::= 'ADD' (expr_list) 'OF' ident
-del_stmt ::= 'DEL' 'ALL'? 'OF' ident where?
+get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' table:ident where?
+set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' table:ident where?
+add_stmt ::= 'ADD' (expr_list) 'OF' table:ident
+del_stmt ::= 'DEL' 'ALL'? 'OF' table:ident where?
 where ::= 'WHERE' expr_list
 expr_list ::= expr { ',' expr }*
 ident ::= [a-zA-Z_]+
@@ -130,3 +137,4 @@ operand ::= (int_value | float_value | string | ident) | '(' expr ')'
 int_value ::= [0-9]+
 float_value ::= [0-9]* '.' [0-9]+
 string ::= '"' .* '"'
+ident ::= [a-zA-Z_] [a-zA-Z0-9_]*

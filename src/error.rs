@@ -20,43 +20,43 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 macro_rules! make_error {
-    ($kind:ident, $msg:expr) => {
+    ($kind:ident, $($arg:tt)*) => {
         Error::$kind(format!(
             "{}:{}:{}: {}",
             file!(),
             line!(),
             column!(),
-            $msg
+            format!($($arg)*)
         ))
     };
 }
 
-macro_rules! err_tokenize {
-    ($msg:expr) => {
-        Err(make_error!(Tokenize, $msg))
-    };
-}
-
 macro_rules! err_parse {
-    ($msg:expr) => {
-        Err(make_error!(Parse, $msg))
+    ($($arg:tt)*) => {
+        Err(make_error!(Parse, $($arg)*))
     };
 }
 
 macro_rules! err_exec {
-    ($msg:expr) => {
-        Err(make_error!(Exec, $msg))
+    ($($arg:tt)*) => {
+        Err(make_error!(Exec, $($arg)*))
     };
 }
 
 macro_rules! err_runtime {
-    ($msg:expr) => {
-        Err(make_error!(Runtime, $msg))
+    ($($arg:tt)*) => {
+        Err(make_error!(Runtime, $($arg)*))
+    };
+}
+
+macro_rules! err_planning {
+    ($($arg:tt)*) => {
+        Err(make_error!(Runtime, $($arg)*))
     };
 }
 
 pub(crate) use make_error;
-pub(crate) use err_tokenize;
 pub(crate) use err_parse;
 pub(crate) use err_exec;
 pub(crate) use err_runtime;
+pub(crate) use err_planning;
