@@ -41,8 +41,8 @@ pub enum TokenKind {
 pub struct Token {
 	pub kind: TokenKind,
 	pub text: Option<String>,
-	pub int_value: Option<i64>,
-	pub float_value: Option<f64>,
+	pub i64_value: Option<i64>,
+	pub f64_value: Option<f64>,
 }
 
 impl Token {
@@ -50,8 +50,8 @@ impl Token {
 		Self {
 			kind: TokenKind::Nil,
 			text: None,
-			int_value: None,
-			float_value: None,
+			i64_value: None,
+			f64_value: None,
 		}
 	}
 
@@ -59,8 +59,8 @@ impl Token {
 		Self {
 			kind,
 			text,
-			int_value: None,
-			float_value: None,
+			i64_value: None,
+			f64_value: None,
 		}
 	}
 
@@ -68,8 +68,8 @@ impl Token {
 		Self {
 			kind: TokenKind::Int,
 			text: None,
-			int_value: Some(n),
-			float_value: None,
+			i64_value: Some(n),
+			f64_value: None,
 		}
 	}
 
@@ -77,8 +77,8 @@ impl Token {
 		Self {
 			kind: TokenKind::Float,
 			text: None,
-			int_value: None,
-			float_value: Some(n),
+			i64_value: None,
+			f64_value: Some(n),
 		}
 	}
 }

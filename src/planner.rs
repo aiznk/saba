@@ -1,4 +1,3 @@
-use std::fs::File;
 use crate::parser::{QueryNode};
 use crate::parser;
 use crate::error::{Error, make_error, err_planning};
@@ -47,7 +46,7 @@ impl UseDatabaseNode {
 
 pub struct ProjectNode {
 	pub get_stmt_idents: Vec<String>,
-	pub csv_scan: Option<Box<CsvScan>>,
+	pub csv_scan: Option<Box<CsvScanNode>>,
 	pub filter: Option<Box<FilterNode>>,
 }
 
@@ -73,16 +72,16 @@ impl FilterNode {
 	}
 }
 
-pub struct CsvScan {
-	file: Option<File>,
-	fname: String,
+pub struct CsvScanNode {
+	pub table_name: String,
+	pub all: bool,
 }
 
-impl CsvScan {
+impl CsvScanNode {
 	pub fn new() -> Self {
 		Self {
-			file: None,
-			fname: String::new(),
+			table_name: String::new(),
+			all: false,
 		}
 	}
 }
@@ -263,8 +262,9 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 	}
 
 	if let Some(table) = &node.table {
-		let mut csv_scan = CsvScan::new();
-		csv_scan.fname = unwrap_ident(&table)?;
+		let mut csv_scan = CsvScanNode::new();
+		csv_scan.table_name = unwrap_ident(&table)?;
+		csv_scan.all = node.all;
 		project.csv_scan = Some(Box::new(csv_scan));
 	}
 
@@ -272,7 +272,7 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 		let mut filter = FilterNode::new();
 		filter.where_clause = Some((*where_clause).clone());
 		project.filter = Some(Box::new(filter));
-	} 
+	}
 
 	plan.project = Some(Box::new(project));
 
@@ -287,24 +287,34 @@ fn unwrap_expr_ident(node: &Box<parser::ExprNode>) -> Result<String, Error> {
 }
 
 fn unwrap_ass_expr_ident(node: &Box<parser::AssExprNode>) -> Result<String, Error> {
-	if let Some(compare_expr) = &node.left_compare_expr {
-		return Ok(unwrap_compare_expr_ident(&compare_expr)?);
+	if let Some(logic_expr) = &node.left_logic_expr {
+		return Ok(unwrap_logic_expr_ident(&logic_expr)?);
 	}
 	err_planning!("failed")
 }
 
 fn unwrap_compare_expr_ident(node: &Box<parser::CompareExprNode>) -> Result<String, Error> {
+	if node.nodes.len() == 0 {
+		return err_planning!("nodes len is 0 in unwrap compare expr ident");
+	} else if node.nodes.len() >= 2 {
+		return err_planning!("over nodes len in unwrap compare expr ident");
+	}
 	let item: &parser::CompareExprItemNode = &node.nodes[0];
-	if let parser::CompareExprItemNode::Left(logic_expr) = item {
-		return Ok(unwrap_logic_expr_ident(logic_expr)?);
+	if let parser::CompareExprItemNode::Left(operand) = item {
+		return Ok(unwrap_operand_ident(operand)?);
 	}
 	err_planning!("failed")
 }
 
 fn unwrap_logic_expr_ident(node: &Box<parser::LogicExprNode>) -> Result<String, Error> {
+	if node.nodes.len() == 0 {
+		return err_planning!("nodes len is 0 in unwrap logic expr ident");
+	} else if node.nodes.len() >= 2 {
+		return err_planning!("over nodes len in unwrap logic expr ident");
+	}
 	let item: &parser::LogicExprItemNode = &node.nodes[0];
-	if let parser::LogicExprItemNode::Left(operand) = item {
-		return Ok(unwrap_operand_ident(&operand)?);
+	if let parser::LogicExprItemNode::Left(compare_expr) = item {
+		return Ok(unwrap_compare_expr_ident(&compare_expr)?);
 	}
 	err_planning!("failed")
 }

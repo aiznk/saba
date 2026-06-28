@@ -190,13 +190,13 @@ impl DelStmtNode {
 
 #[derive(Debug, Clone)]
 pub struct WhereClauseNode {
-	pub expr_list: Option<Box<ExprListNode>>,
+	pub expr: Option<Box<ExprNode>>,
 }
 
 impl WhereClauseNode {
 	pub fn new() -> Self {
 		Self {
-			expr_list: None,
+			expr: None,
 		}
 	}
 }
@@ -229,24 +229,24 @@ impl ExprNode {
 
 #[derive(Debug, Clone)]
 pub struct AssExprNode {
-	pub left_compare_expr: Option<Box<CompareExprNode>>,
-	pub right_compare_expr: Option<Box<CompareExprNode>>,
+	pub left_logic_expr: Option<Box<LogicExprNode>>,
+	pub right_logic_expr: Option<Box<LogicExprNode>>,
 }
 
 impl AssExprNode {
 	pub fn new() -> Self {
 		Self {
-			left_compare_expr: None,
-			right_compare_expr: None,
+			left_logic_expr: None,
+			right_logic_expr: None,
 		}
 	}
 }
 
 #[derive(Debug, Clone)]
 pub enum CompareExprItemNode {
-	Left(Box<LogicExprNode>),
-	Op(Box<CompareOpNode>),
-	Right(Box<LogicExprNode>),
+	Left(Box<OperandNode>),
+	Op(CompareOpNode),
+	Right(Box<OperandNode>),
 }
 
 
@@ -265,21 +265,20 @@ impl CompareExprNode {
 
 #[derive(Debug, Clone)]
 pub enum CompareOpNode {
-	Gt,
-	Gte,
 	Lt,
 	Lte,
+	Gt,
+	Gte,
 	Eq,
 	NotEq,
 }
 
 #[derive(Debug, Clone)]
 pub enum LogicExprItemNode {
-	Left(Box<OperandNode>),
-	Op(Box<LogicOpNode>),
-	Right(Box<OperandNode>),
+	Left(Box<CompareExprNode>),
+	Op(LogicOpNode),
+	Right(Box<CompareExprNode>),
 }
-
 
 #[derive(Debug, Clone)]
 pub struct LogicExprNode {
@@ -302,8 +301,8 @@ pub enum LogicOpNode {
 
 #[derive(Debug, Clone)]
 pub struct OperandNode {
-	pub int_value: Option<Box<IntValueNode>>,
-	pub float_value: Option<Box<FloatValueNode>>,
+	pub i64_value: Option<Box<IntValueNode>>,
+	pub f64_value: Option<Box<FloatValueNode>>,
 	pub string: Option<Box<StringNode>>,
 	pub ident: Option<Box<IdentNode>>,
 	pub expr: Option<Box<ExprNode>>,
@@ -312,8 +311,8 @@ pub struct OperandNode {
 impl OperandNode {
 	pub fn new() -> Self {
 		Self {
-			int_value: None,
-			float_value: None,
+			i64_value: None,
+			f64_value: None,
 			string: None,
 			ident: None,
 			expr: None,
@@ -618,8 +617,8 @@ pub fn parse_column_type(tok_strm: &mut TokenStream) -> Result<Option<ColumnType
 			return err_parse!("missing [ in char of column type");
 		}
 
-		let int_value = parse_int_value(tok_strm)?;
-		if int_value.is_none() {
+		let i64_value = parse_i64_value(tok_strm)?;
+		if i64_value.is_none() {
 			return err_parse!("missing number of char in column type");
 		}
 
@@ -628,7 +627,7 @@ pub fn parse_column_type(tok_strm: &mut TokenStream) -> Result<Option<ColumnType
 			return err_parse!("missing ] in char of column type");
 		}		
 
-		let value = int_value.unwrap().value as usize;
+		let value = i64_value.unwrap().value as usize;
 		return Ok(Some(ColumnTypeNode::Char(value)))
 	}
 
@@ -797,8 +796,7 @@ pub fn parse_where_clause(tok_strm: &mut TokenStream) -> Result<Option<Box<Where
 		return Ok(None);
 	}
 
-	let expr_list = parse_expr_list(tok_strm)?;
-	n.expr_list = expr_list;
+	n.expr = parse_expr(tok_strm)?;
 
 	Ok(Some(Box::new(n)))
 }
@@ -856,8 +854,8 @@ pub fn parse_ass_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<AssExprNo
 		return Ok(None);
 	}
 
-	n.left_compare_expr = parse_compare_expr(tok_strm)?;
-	if n.left_compare_expr.is_none() {
+	n.left_logic_expr = parse_logic_expr(tok_strm)?;
+	if n.left_logic_expr.is_none() {
 		return Ok(None);
 	}
 
@@ -871,8 +869,8 @@ pub fn parse_ass_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<AssExprNo
 		return Ok(Some(Box::new(n)));
 	}
 
-	n.right_compare_expr = parse_compare_expr(tok_strm)?;
-	if n.right_compare_expr.is_none() {
+	n.right_logic_expr = parse_logic_expr(tok_strm)?;
+	if n.right_logic_expr.is_none() {
 		return err_parse!("missing right hand operand in ass expr");
 	}
 
@@ -886,7 +884,7 @@ pub fn parse_compare_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<Compa
 		return Ok(None);
 	}
 
-	let left = parse_logic_expr(tok_strm)?;
+	let left = parse_operand(tok_strm)?;
 	if left.is_none() {
 		return Ok(None);
 	}
@@ -900,10 +898,10 @@ pub fn parse_compare_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<Compa
 			break;
 		}
 
-		let node = CompareExprItemNode::Op(op.unwrap());
+		let node = CompareExprItemNode::Op(*op.unwrap());
 		n.nodes.push(node);
 
-		let right = parse_logic_expr(tok_strm)?;
+		let right = parse_operand(tok_strm)?;
 		if right.is_none() {
 			return err_parse!("missing right logic expr in compare expr");
 		}		
@@ -938,7 +936,7 @@ pub fn parse_logic_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<LogicEx
 		return Ok(None);
 	}
 
-	let left = parse_operand(tok_strm)?;
+	let left = parse_compare_expr(tok_strm)?;
 	if left.is_none() {
 		return Ok(None);
 	}
@@ -952,10 +950,10 @@ pub fn parse_logic_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<LogicEx
 			break;
 		}
 
-		let node = LogicExprItemNode::Op(op.unwrap());
+		let node = LogicExprItemNode::Op(*op.unwrap());
 		n.nodes.push(node);
 
-		let right = parse_operand(tok_strm)?;
+		let right = parse_compare_expr(tok_strm)?;
 		if right.is_none() {
 			return err_parse!("missing right hand operand in logic expr");
 		}
@@ -1006,13 +1004,13 @@ pub fn parse_operand(tok_strm: &mut TokenStream) -> Result<Option<Box<OperandNod
 	} else {
 		tok_strm.prev();
 
-		n.int_value = parse_int_value(tok_strm)?;
-		if !n.int_value.is_none() {
+		n.i64_value = parse_i64_value(tok_strm)?;
+		if !n.i64_value.is_none() {
 			return Ok(Some(Box::new(n)));
 		}
 
-		n.float_value = parse_float_value(tok_strm)?;
-		if !n.float_value.is_none() {
+		n.f64_value = parse_f64_value(tok_strm)?;
+		if !n.f64_value.is_none() {
 			return Ok(Some(Box::new(n)));
 		}
 
@@ -1030,7 +1028,7 @@ pub fn parse_operand(tok_strm: &mut TokenStream) -> Result<Option<Box<OperandNod
 	}
 }
 
-pub fn parse_int_value(tok_strm: &mut TokenStream) -> Result<Option<Box<IntValueNode>>, Error> {
+pub fn parse_i64_value(tok_strm: &mut TokenStream) -> Result<Option<Box<IntValueNode>>, Error> {
 	let mut n = IntValueNode::new();
 
 	if tok_strm.is_end() {
@@ -1043,12 +1041,12 @@ pub fn parse_int_value(tok_strm: &mut TokenStream) -> Result<Option<Box<IntValue
 		return Ok(None);
 	}
 
-	n.value = tok.int_value.unwrap();
+	n.value = tok.i64_value.unwrap();
 
 	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_float_value(tok_strm: &mut TokenStream) -> Result<Option<Box<FloatValueNode>>, Error> {
+pub fn parse_f64_value(tok_strm: &mut TokenStream) -> Result<Option<Box<FloatValueNode>>, Error> {
 	let mut n = FloatValueNode::new();
 
 	if tok_strm.is_end() {
@@ -1061,7 +1059,7 @@ pub fn parse_float_value(tok_strm: &mut TokenStream) -> Result<Option<Box<FloatV
 		return Ok(None);
 	}
 
-	n.value = tok.float_value.unwrap();
+	n.value = tok.f64_value.unwrap();
 
 	Ok(Some(Box::new(n)))
 }
