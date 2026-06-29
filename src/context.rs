@@ -17,6 +17,9 @@ pub struct Context {
 	pub vars: HashMap<String, Box<Object>>,
 	pub counter_selected: usize,
 	pub is_cli: bool,
+	pub is_sequential: bool,
+	pub matched_csv_record: StringRecord,
+	pub unmatched_csv_record: StringRecord,
 }
 
 impl Context {
@@ -32,6 +35,9 @@ impl Context {
 			vars: HashMap::new(),
 			counter_selected: 0,
 			is_cli: false,
+			is_sequential: false,
+			matched_csv_record: StringRecord::new(),
+			unmatched_csv_record: StringRecord::new(),
 		}
 	}
 
@@ -64,6 +70,17 @@ impl Context {
 		}
 
 		let path = Path::new(&self.root_dir_path).join(&self.using_db_name).join(table_name.to_lowercase() + ".csv");
+
+		Ok(path)
+	}
+
+	pub fn gen_tmp_table_file_path(&self, table_name: &str) -> Result<PathBuf, Error> {
+		if self.root_dir_path.len() == 0 ||
+		   self.using_db_name.len() == 0 {
+		   	return err_runtime!("invalid state in gen table file path");
+		}
+
+		let path = Path::new(&self.root_dir_path).join(&self.using_db_name).join(table_name.to_lowercase() + ".tmp.csv");
 
 		Ok(path)
 	}

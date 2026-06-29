@@ -500,7 +500,7 @@ pub fn parse_drop_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<DropStmt
 	} else if tok.kind == TokenKind::Database {
 		n.db_name = parse_ident(tok_strm)?;	
 	} else {
-		return err_parse!("invalid state: show stmt");
+		return err_parse!("invalid state: drop stmt");
 	}
 
 	Ok(Some(Box::new(n)))

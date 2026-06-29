@@ -23,6 +23,7 @@ pub struct PlanNode {
 	pub csv_file_create: Option<Box<CsvFileCreateNode>>,
 	pub csv_file_append: Option<Box<CsvFileAppendNode>>,
 	pub csv_file_delete: Option<Box<CsvFileDeleteNode>>,
+	pub csv_file_rewrite: Option<Box<CsvFileRewriteNode>>,
 }
 
 impl PlanNode {
@@ -36,6 +37,21 @@ impl PlanNode {
 			csv_file_create: None,
 			csv_file_append: None,
 			csv_file_delete: None,
+			csv_file_rewrite: None,
+		}
+	}
+}
+
+pub struct CsvFileRewriteNode {
+	pub table_name: Option<String>,
+	pub project: Option<Box<ProjectNode>>,
+}
+
+impl CsvFileRewriteNode {
+	pub fn new() -> Self {
+		Self {
+			table_name: None,
+			project: None,
 		}
 	}
 }
@@ -224,6 +240,10 @@ pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<()
 		if let Some(add_stmt) = &node.add_stmt {
 			plan_add_stmt(&add_stmt, plan)?;
 		}
+	} else if node.del_stmt.is_some() {
+		if let Some(del_stmt) = &node.del_stmt {
+			plan_del_stmt(&del_stmt, plan)?;
+		}
 	}
 	Ok(())
 }
@@ -373,6 +393,31 @@ pub fn plan_add_stmt(node: &Box<parser::AddStmtNode>, plan: &mut PlanNode) -> Re
 	}
 	
 	plan.csv_file_append = Some(Box::new(append));
+
+	Ok(())
+}
+
+pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
+	let mut rewrite = CsvFileRewriteNode::new();
+	let mut project = ProjectNode::new();
+
+	if let Some(table) = &node.table {
+		let ident = unwrap_ident(&table)?;
+		let mut csv_scan = CsvScanNode::new();
+		csv_scan.table_name = ident.clone();
+		csv_scan.all = node.all;
+		project.csv_scan = Some(Box::new(csv_scan));
+		rewrite.table_name = Some(ident.clone());
+	}
+
+	if let Some(where_clause) = &node.where_clause {
+		let mut filter = FilterNode::new();
+		filter.where_clause = Some((*where_clause).clone());
+		project.filter = Some(Box::new(filter));
+	}
+
+	rewrite.project = Some(Box::new(project));
+	plan.csv_file_rewrite = Some(Box::new(rewrite));
 
 	Ok(())
 }

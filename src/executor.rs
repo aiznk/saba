@@ -7,8 +7,7 @@ use std::path::{Path};
 use std::fs;
 use std::fs::{OpenOptions};
 use std::io::{Write};
-use csv::{Reader, Writer};
-use serde::Serialize;
+use csv::{Reader, Writer, StringRecord};
 
 pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Error> {
 	for plan in node.plans.iter() {
@@ -50,6 +49,10 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		if let Some(csv_file_delete) = &node.csv_file_delete {
 			exec_csv_file_delete(context, &csv_file_delete)?;
 		}
+	} else if node.csv_file_rewrite.is_some() {
+		if let Some(csv_file_rewrite) = &node.csv_file_rewrite {
+			exec_csv_file_rewrite(context, &csv_file_rewrite)?;
+		}
 	}
 
 	Ok(())
@@ -62,7 +65,7 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
         .create(true)
         .open(path) {
     	Ok(v) => v,
-    	Err(e) => return err_exec!("failed to open file on append"),
+    	Err(e) => return err_exec!("failed to open file on append: {}", e),
     };
     let mut writer = Writer::from_writer(file);
 
@@ -100,7 +103,7 @@ pub fn print_selected_columns(context: &mut Context) -> Result<(), Error> {
 	Ok(())
 }
 
-pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
+pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Result<bool, Error> {
 	if node.filter.is_none() {
 		if node.csv_scan.is_none() {
 			return err_exec!("csv scan is none in project");
@@ -108,14 +111,20 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 		if let Some(csv_scan) = &node.csv_scan {
 			while exec_csv_scan(context, csv_scan)? {
 				select_get_columns(context, node)?;
+				context.matched_csv_record = context.csv_record.clone();
 				if context.is_cli {
 					print_selected_columns(context)?;
 				}
 				if !csv_scan.all {
 					context.table_csv_reader = None;
-					break;
+					return Ok(false);
+				}
+				if context.is_sequential {
+					return Ok(true);
 				}
 			}
+
+			return Ok(false);
 		}
 	} else {
 		if node.csv_scan.is_none() {
@@ -136,16 +145,29 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 						context.table_csv_reader = None;
 						break;
 					}
+					if context.is_sequential {
+						return Ok(true);
+					}
 				}
+
+				return Ok(false);
 			}
 		}		
 	}
-	Ok(())
+
+	Ok(false)
 }
 
 pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<bool, Error> {
 	if let Some(where_clause) = &node.where_clause {
 		let o = exec_where_clause(context, where_clause)?;
+		if o.bool_value {
+			context.matched_csv_record = context.csv_record.clone();
+			context.unmatched_csv_record.clear();
+		} else {
+			context.matched_csv_record.clear();
+			context.unmatched_csv_record = context.csv_record.clone();
+		}
 		Ok(o.bool_value)
 	} else {
 		Ok(false)
@@ -918,7 +940,7 @@ pub fn exec_dir_delete_all(context: &mut Context, node: &planner::DirDeleteAllNo
 	if path.as_os_str().is_empty() {
 		return err_exec!("invalid path in dir delete all");
 	}
-	fs::remove_dir_all(&path);
+	fs::remove_dir_all(&path).unwrap();
 	Ok(())
 }
 
@@ -965,11 +987,54 @@ pub fn exec_dir_create(context: &mut Context, node: &planner::DirCreateNode) -> 
 	Ok(())
 }
 
+pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewriteNode) -> Result<(), Error> {
+	if let Some(table_name) = &node.table_name {
+		if let Some(project) = &node.project {
+			let org_path = context.gen_table_file_path(&table_name)?;
+			let tmp_path = context.gen_tmp_table_file_path(&table_name)?;
+			let headers = read_table_headers(context, &table_name)?;
+			let mut writer = match Writer::from_path(&tmp_path) {
+				Ok(v) => v,
+				Err(e) => return err_exec!("failed to open CSV writer: {}", e),
+			};
+			context.is_sequential = true;
+
+			writer.write_record(&headers).unwrap();
+
+			while exec_project(context, project)? {
+				let cols = &context.unmatched_csv_record;
+				if cols.len() > 0 {
+					writer.write_record(cols).unwrap();
+				}
+			}
+
+			fs::rename(&tmp_path, &org_path).unwrap();
+
+			return Ok(());
+		}
+	}
+
+	return err_exec!("failed to csv file rewrite");
+}
+
+pub fn read_table_headers(context: &Context, table_name: &str) -> Result<StringRecord, Error> {
+	let path = context.gen_table_file_path(table_name)?;
+	let mut reader = match Reader::from_path(&path) {
+		Ok(v) => v,
+		Err(e) => return err_exec!("failed to create CSV reader: {}", e),
+	};
+	let headers = match reader.headers() {
+		Ok(v) => v,
+		Err(e) => return err_exec!("failed to read CSV headers: {}", e),
+	};
+	Ok(headers.clone())
+}
+
 pub fn exec_csv_file_delete(context: &mut Context, node: &planner::CsvFileDeleteNode) -> Result<(), Error> {
 	let table_name = node.table_name.clone().unwrap();
 	let path = context.gen_table_file_path(&table_name)?;
 	if path.exists() {
-		fs::remove_file(&path);
+		fs::remove_file(&path).unwrap();
 	}
 	Ok(())
 }
@@ -1131,4 +1196,38 @@ mod tests {
 		assert!(!path.exists());
 	}
 
+	#[test]
+	fn test_del_stmt_0() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		do_exec(&mut context, "DEL ALL OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+	}
+
+	#[test]
+	fn test_del_stmt_1() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		do_exec(&mut context, "DEL ALL OF mytable WHERE id == 1").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n");
+	}
 }
