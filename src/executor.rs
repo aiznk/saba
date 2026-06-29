@@ -26,6 +26,10 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		if let Some(dir_create) = &node.dir_create {
 			exec_dir_create(context, &dir_create)?;
 		}
+	} else if node.dir_list.is_some() {
+		if let Some(dir_list) = &node.dir_list {
+			exec_dir_list(context, &dir_list)?;
+		}
 	} else if node.csv_file_create.is_some() {
 		if let Some(csv_file_create) = &node.csv_file_create {
 			exec_csv_file_create(context, &csv_file_create)?;
@@ -96,7 +100,9 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 		if let Some(csv_scan) = &node.csv_scan {
 			while exec_csv_scan(context, csv_scan)? {
 				select_get_columns(context, node)?;
-				print_selected_columns(context)?;
+				if context.is_cli {
+					print_selected_columns(context)?;
+				}
 				if !csv_scan.all {
 					context.table_csv_reader = None;
 					break;
@@ -113,7 +119,9 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 				while exec_csv_scan(context, csv_scan)? {
 					if exec_filter(context, filter)? {
 						select_get_columns(context, node)?;
-						print_selected_columns(context)?;
+						if context.is_cli {
+							print_selected_columns(context)?;
+						}
 						context.counter_selected += 1;
 					}
 					if !csv_scan.all && context.counter_selected >= 1 {
@@ -890,6 +898,37 @@ pub fn parse_csv_header_idents(context: &mut Context) -> Result<(), Error> {
 		if let Some((left, _right)) = col.split_once(':') {
 			let val = left.trim().to_string();
 			context.csv_header_idents.push(val);
+		}
+	}
+
+	Ok(())
+}
+
+pub fn exec_dir_list(context: &mut Context, node: &planner::DirListNode) -> Result<(), Error> {
+	if node.csv_file_grep.is_some() {
+		// show tables
+		let path = context.gen_db_dir_path()?;
+		let dir = match fs::read_dir(&path) {
+			Ok(v) => v,
+			Err(e) => return err_exec!("failed to read dir: {}", e),
+		};
+		for entry in dir {
+			let entry = entry.unwrap();
+			let path = entry.path();
+			if path.extension().and_then(|s| s.to_str()) == Some("csv") {
+				println!("{}", path.display());
+			}
+		}
+	} else {
+		// show databases
+		let dir = match fs::read_dir(&context.root_dir_path) {
+			Ok(v) => v,
+			Err(e) => return err_exec!("failed to read dir: {}", e),
+		};
+		for entry in dir {
+			let entry = entry.unwrap();
+			let path = entry.path();
+			println!("{}", path.display());
 		}
 	}
 

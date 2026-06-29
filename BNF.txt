@@ -28,6 +28,17 @@
 * DirCreate
 * DirDrop
 
+## SHOW
+
+> SHOW TABLES;
+
+	DirList
+	- CsvFileGrep
+
+> SHOW DATABASES;
+
+	DirList
+
 ## USE
 
 > USE mydb;
@@ -85,7 +96,7 @@
 
 > SET ALL name = "taro" OF mytab WHERE id > 123;
 
-	Swap (create new CSV file. and delete old CSV file)
+	CsvFileSwap (create new CSV file. and delete old CSV file)
 	- Insert (insert updated row to new CSV file)
 	 - Update (name = "taro")
 	  - Filter (WHERE id > 123)
@@ -109,7 +120,8 @@
 ## BNF
 
 query ::= { stmt ';' }*
-stmt ::= (use_stmt | create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
+stmt ::= (show_stmt | use_stmt | create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
+show_stmt ::= ( 'SHOW' 'TABLES' ) | ( 'SHOW' 'DATABASES' )
 use_stmt ::= 'USE' db_name:ident
 create_stmt ::= create_database | create_table
 create_table ::= 'CREATE' 'TABLE' ident '(' column_definition { ',' column_definition }* ')'

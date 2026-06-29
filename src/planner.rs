@@ -18,6 +18,7 @@ pub struct PlanNode {
 	pub use_db: Option<Box<UseDatabaseNode>>,
 	pub project: Option<Box<ProjectNode>>,
 	pub dir_create: Option<Box<DirCreateNode>>,
+	pub dir_list: Option<Box<DirListNode>>,
 	pub csv_file_create: Option<Box<CsvFileCreateNode>>,
 	pub csv_file_append: Option<Box<CsvFileAppendNode>>,
 }
@@ -28,8 +29,33 @@ impl PlanNode {
 			use_db: None,
 			project: None,
 			dir_create: None,
+			dir_list: None,
 			csv_file_create: None,
 			csv_file_append: None,
+		}
+	}
+}
+
+pub struct DirListNode {
+	pub csv_file_grep: Option<Box<CsvFileGrepNode>>,
+}
+
+impl DirListNode {
+	pub fn new() -> Self {
+		Self {
+			csv_file_grep: None,
+		}
+	}
+}
+
+pub struct CsvFileGrepNode {
+	dummy: i32,
+}
+
+impl CsvFileGrepNode {
+	pub fn new() -> Self {
+		Self {
+			dummy: 0,
 		}
 	}
 }
@@ -146,7 +172,11 @@ pub fn plan_query(node: &QueryNode, plans: &mut PlansNode) -> Result<(), Error> 
 }
 
 pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
-	if node.use_stmt.is_some() {
+	if node.show_stmt.is_some() {
+		if let Some(show_stmt) = &node.show_stmt {
+			plan_show_stmt(&show_stmt, plan)?
+		}		
+	} else if node.use_stmt.is_some() {
 		if let Some(use_stmt) = &node.use_stmt {
 			plan_use_stmt(&use_stmt, plan)?
 		}
@@ -163,6 +193,18 @@ pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<()
 			plan_add_stmt(&add_stmt, plan)?;
 		}
 	}
+	Ok(())
+}
+
+pub fn plan_show_stmt(node: &Box<parser::ShowStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
+	let mut dir_list = DirListNode::new();
+
+	if node.tables {
+		dir_list.csv_file_grep = Some(Box::new(CsvFileGrepNode::new()));
+	}
+
+	plan.dir_list = Some(Box::new(dir_list));
+
 	Ok(())
 }
 

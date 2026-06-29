@@ -69,6 +69,7 @@ fn run_shell(opts: Options) {
 	// }
 	// return;
 	let mut context = Context::new();
+	context.is_cli = true;
 
 	loop {
 		show_prompt(&opts, &context);

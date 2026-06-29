@@ -16,6 +16,7 @@ pub struct Context {
 	pub selected_csv_columns: Vec<String>,
 	pub vars: HashMap<String, Box<Object>>,
 	pub counter_selected: usize,
+	pub is_cli: bool,
 }
 
 impl Context {
@@ -30,7 +31,19 @@ impl Context {
 			selected_csv_columns: vec![],
 			vars: HashMap::new(),
 			counter_selected: 0,
+			is_cli: false,
 		}
+	}
+
+	pub fn gen_db_dir_path(&self) -> Result<PathBuf, Error> {
+		if self.root_dir_path.len() == 0 ||
+		   self.using_db_name.len() == 0 {
+		   	return err_runtime!("invalid state in gen db dir path");
+		}
+
+		let path = Path::new(&self.root_dir_path).join(&self.using_db_name);
+
+		Ok(path)		
 	}
 
 	pub fn gen_table_file_path(&self, table_name: &str) -> Result<PathBuf, Error> {

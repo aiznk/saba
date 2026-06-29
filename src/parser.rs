@@ -1,6 +1,5 @@
-use crate::tokenizer::{Token, TokenKind, TokenStream, tokenize};
+use crate::tokenizer::{TokenKind, TokenStream};
 use crate::error::{Error, make_error, err_parse};
-use crate::utils::{debug};
 
 #[derive(Debug, Clone)]
 pub struct QueryNode {
@@ -17,6 +16,7 @@ impl QueryNode {
 
 #[derive(Debug, Clone)]
 pub struct StmtNode {
+	pub show_stmt: Option<Box<ShowStmtNode>>,
 	pub use_stmt: Option<Box<UseStmtNode>>,
 	pub create_stmt: Option<Box<CreateStmtNode>>,
 	pub get_stmt: Option<Box<GetStmtNode>>,
@@ -28,12 +28,28 @@ pub struct StmtNode {
 impl StmtNode {
 	pub fn new() -> Self {
 		Self {
+			show_stmt: None,
 			use_stmt: None,
 			create_stmt: None,
 			get_stmt: None,
 			set_stmt: None,
 			add_stmt: None,
 			del_stmt: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct ShowStmtNode {
+	pub tables: bool,
+	pub databases: bool,
+}
+
+impl ShowStmtNode {
+	pub fn new() -> Self {
+		Self {
+			tables: false,
+			databases: false,
 		}
 	}
 }
@@ -401,6 +417,12 @@ pub fn parse(tok_strm: &mut TokenStream) -> Result<QueryNode, Error> {
 pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<StmtNode>>, Error> {
 	let mut stmt = StmtNode::new();
 
+	let show_stmt = parse_show_stmt(tok_strm)?;
+	if show_stmt.is_some() {
+		stmt.show_stmt = show_stmt;
+		return Ok(Some(Box::new(stmt)));
+	}
+
 	let use_stmt = parse_use_stmt(tok_strm)?;
 	if use_stmt.is_some() {
 		stmt.use_stmt = use_stmt;
@@ -438,6 +460,27 @@ pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<StmtNode>>, E
 	}
 
 	return err_parse!("failed to parse stmt");
+}
+
+pub fn parse_show_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<ShowStmtNode>>, Error> {
+	let mut n = ShowStmtNode::new();
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Show {
+		tok_strm.prev();
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind == TokenKind::Tables {
+		n.tables = true;
+	} else if tok.kind == TokenKind::Databases {
+		n.databases = true;	
+	} else {
+		return err_parse!("invalid state: show stmt");
+	}
+
+	Ok(Some(Box::new(n)))
 }
 
 pub fn parse_use_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<UseStmtNode>>, Error> {

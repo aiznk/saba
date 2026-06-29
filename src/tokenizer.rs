@@ -11,8 +11,11 @@ pub enum TokenKind {
 	PrimaryKey, // PRIMARY_KEY
 	AutoIncrement, // AUTO_INCREMENT
 	Database, // DATABASE
+	Databases, // DATABASES
 	Use, // USE
+	Show, // SHOW
 	Table, // TABLE
+	Tables, // TABLES
 	I64,
 	F64,
 	Char, // CHAR
@@ -294,6 +297,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'u' && c2 == 's' && c3 == 'e' {
 			ret.push(Token::from(TokenKind::Use, None));
 			i += 2;
+		} else if c1 == 's' && c2 == 'h' && c3 == 'o' && c4 == 'w' {
+			ret.push(Token::from(TokenKind::Show, None));
+			i += 3;
 		} else if c1 == 'c' && c2 == 'h' && c3 == 'a' && c4 == 'r' {
 			ret.push(Token::from(TokenKind::Char, None));
 			i += 3;
@@ -306,12 +312,18 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'w' && c2 == 'h' && c3 == 'e' && c4 == 'r' && c5 == 'e' {
 			ret.push(Token::from(TokenKind::Where, None));
 			i += 4;
+		} else if c1 == 't' && c2 == 'a' && c3 == 'b' && c4 == 'l' && c5 == 'e' && c6 == 's' {
+			ret.push(Token::from(TokenKind::Tables, None));
+			i += 5;
 		} else if c1 == 't' && c2 == 'a' && c3 == 'b' && c4 == 'l' && c5 == 'e' {
 			ret.push(Token::from(TokenKind::Table, None));
 			i += 4;
 		} else if c1 == 'c' && c2 == 'r' && c3 == 'e' && c4 == 'a' && c5 == 't' && c6 == 'e' {
 			ret.push(Token::from(TokenKind::Create, None));
 			i += 5;
+		} else if c1 == 'd' && c2 == 'a' && c3 == 't' && c4 == 'a' && c5 == 'b' && c6 == 'a' && c7 == 's' && c8 == 'e' && c9 == 's' {
+			ret.push(Token::from(TokenKind::Databases, None));
+			i += 8;
 		} else if c1 == 'd' && c2 == 'a' && c3 == 't' && c4 == 'a' && c5 == 'b' && c6 == 'a' && c7 == 's' && c8 == 'e' {
 			ret.push(Token::from(TokenKind::Database, None));
 			i += 7;
