@@ -19,6 +19,7 @@ pub struct PlanNode {
 	pub project: Option<Box<ProjectNode>>,
 	pub dir_create: Option<Box<DirCreateNode>>,
 	pub csv_file_create: Option<Box<CsvFileCreateNode>>,
+	pub csv_file_append: Option<Box<CsvFileAppendNode>>,
 }
 
 impl PlanNode {
@@ -28,6 +29,7 @@ impl PlanNode {
 			project: None,
 			dir_create: None,
 			csv_file_create: None,
+			csv_file_append: None,
 		}
 	}
 }
@@ -40,6 +42,20 @@ impl UseDatabaseNode {
 	pub fn new() -> Self {
 		Self {
 			db_name: String::new(),
+		}
+	}
+}
+
+pub struct CsvFileAppendNode {
+	pub table_name: String,
+	pub expr_list: Option<Box<parser::ExprListNode>>,
+}
+
+impl CsvFileAppendNode {
+	pub fn new() -> Self {
+		Self {
+			table_name: String::new(),
+			expr_list: None,
 		}
 	}
 }
@@ -130,17 +146,21 @@ pub fn plan_query(node: &QueryNode, plans: &mut PlansNode) -> Result<(), Error> 
 }
 
 pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
-	if !node.use_stmt.is_none() {
+	if node.use_stmt.is_some() {
 		if let Some(use_stmt) = &node.use_stmt {
 			plan_use_stmt(&use_stmt, plan)?
 		}
-	} else if !node.create_stmt.is_none() {
+	} else if node.create_stmt.is_some() {
 		if let Some(create_stmt) = &node.create_stmt {
 			plan_create_stmt(&create_stmt, plan)?
 		}
-	} else if !node.get_stmt.is_none() {
+	} else if node.get_stmt.is_some() {
 		if let Some(get_stmt) = &node.get_stmt {
 			plan_get_stmt(&get_stmt, plan)?;
+		}
+	} else if node.add_stmt.is_some() {
+		if let Some(add_stmt) = &node.add_stmt {
+			plan_add_stmt(&add_stmt, plan)?;
 		}
 	}
 	Ok(())
@@ -247,8 +267,24 @@ pub fn gen_csv_head_col_type_by_column_type(column_type: &parser::ColumnTypeNode
 		parser::ColumnTypeNode::AutoIncrement => Ok(String::from("AUTO_INCREMENT")),
 		parser::ColumnTypeNode::I64 => Ok(String::from("I64")),
 		parser::ColumnTypeNode::F64 => Ok(String::from("F64")),
-		parser::ColumnTypeNode::Char(nelems) => Ok(format!("CHAR [{}]", nelems)),
+		parser::ColumnTypeNode::Char(nelems) => Ok(format!("CHAR[{}]", nelems)),
 	}
+}
+
+pub fn plan_add_stmt(node: &Box<parser::AddStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
+	let mut append = CsvFileAppendNode::new();
+
+	if let Some(expr_list) = &node.expr_list {
+		append.expr_list = Some(expr_list.clone());
+	}	
+
+	if let Some(table) = &node.table {
+		append.table_name = unwrap_ident(&table)?;
+	}
+	
+	plan.csv_file_append = Some(Box::new(append));
+
+	Ok(())
 }
 
 pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {

@@ -402,37 +402,37 @@ pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<StmtNode>>, E
 	let mut stmt = StmtNode::new();
 
 	let use_stmt = parse_use_stmt(tok_strm)?;
-	if !use_stmt.is_none() {
+	if use_stmt.is_some() {
 		stmt.use_stmt = use_stmt;
 		return Ok(Some(Box::new(stmt)));
 	}
 
 	let create_stmt = parse_create_stmt(tok_strm)?;
-	if !create_stmt.is_none() {
+	if create_stmt.is_some() {
 		stmt.create_stmt = create_stmt;
 		return Ok(Some(Box::new(stmt)));
 	}
 
 	let get_stmt = parse_get_stmt(tok_strm)?;
-	if !get_stmt.is_none() {
+	if get_stmt.is_some() {
 		stmt.get_stmt = get_stmt;
 		return Ok(Some(Box::new(stmt)));
 	}
 
 	let set_stmt = parse_set_stmt(tok_strm)?;
-	if !set_stmt.is_none() {
+	if set_stmt.is_some() {
 		stmt.set_stmt = set_stmt;
 		return Ok(Some(Box::new(stmt)));
 	}
 
 	let add_stmt = parse_add_stmt(tok_strm)?;
-	if !add_stmt.is_none() {
+	if add_stmt.is_some() {
 		stmt.add_stmt = add_stmt;
 		return Ok(Some(Box::new(stmt)));
 	}
 
 	let del_stmt = parse_del_stmt(tok_strm)?;
-	if !del_stmt.is_none() {
+	if del_stmt.is_some() {
 		stmt.del_stmt = del_stmt;
 		return Ok(Some(Box::new(stmt)));
 	}

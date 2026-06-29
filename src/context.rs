@@ -1,7 +1,9 @@
+use crate::error::{make_error, err_runtime, Error};
+use crate::objects::{Object};
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use crate::error::{make_error, err_runtime, Error};
 use csv::{Reader, StringRecord};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Context {
@@ -12,6 +14,7 @@ pub struct Context {
 	pub csv_header_idents: Vec<String>,
 	pub csv_record: StringRecord,
 	pub selected_csv_columns: Vec<String>,
+	pub vars: HashMap<String, Box<Object>>,
 }
 
 impl Context {
@@ -24,6 +27,7 @@ impl Context {
 			csv_header_idents: vec![],
 			csv_record: StringRecord::new(),
 			selected_csv_columns: vec![],
+			vars: HashMap::new(),
 		}
 	}
 

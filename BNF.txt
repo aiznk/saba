@@ -95,7 +95,7 @@
 
 > ADD id = 1, name = "taro" OF mytab;
 
-	Insert (insert row to CSV file)
+	CsvAppend (insert row to CSV file)
 	- Values (id = 1, name = "taro")
 
 ## DEL

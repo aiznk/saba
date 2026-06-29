@@ -359,6 +359,6 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		i += 1;
 	}
 
-	show_tokens(&ret);
+	// show_tokens(&ret);
 	Ok(ret)
 }

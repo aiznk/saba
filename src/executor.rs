@@ -2,87 +2,13 @@ use crate::error::{Error, make_error, err_exec};
 use crate::parser;
 use crate::planner;
 use crate::context::{Context};
+use crate::objects::{Object, ObjectKind};
 use std::path::{Path};
 use std::fs;
+use std::fs::{OpenOptions};
 use std::io::{Write};
-use csv::Reader;
-
-#[derive(Debug, Clone)]
-pub enum ObjectKind {
-	Nil,
-	Bool,
-	I64,
-	F64,
-	String,
-	Ident,
-}
-
-#[derive(Debug, Clone)]
-pub struct Object {
-	pub kind: ObjectKind,
-	pub bool_value: bool,
-	pub i64_value: i64,
-	pub f64_value: f64,
-	pub string: String,
-	pub ident: String,
-}
-
-impl Object {
-	pub fn new() -> Self {
-		Self {
-			kind: ObjectKind::Nil,
-			bool_value: false,
-			i64_value: 0,
-			f64_value: 0.0,
-			string: String::new(),
-			ident: String::new(),
-		}
-	}
-
-	pub fn from_bool(b: bool) -> Self {
-		Self {
-			kind: ObjectKind::Bool,
-			bool_value: b,
-			i64_value: 0,
-			f64_value: 0.0,
-			string: String::new(),
-			ident: String::new(),
-		}		
-	}
-
-	pub fn from_i64(n: i64) -> Self {
-		Self {
-			kind: ObjectKind::Bool,
-			bool_value: false,
-			i64_value: n,
-			f64_value: 0.0,
-			string: String::new(),
-			ident: String::new(),
-		}		
-	}
-
-	pub fn from_f64(n: f64) -> Self {
-		Self {
-			kind: ObjectKind::Bool,
-			bool_value: false,
-			i64_value: 0,
-			f64_value: n,
-			string: String::new(),
-			ident: String::new(),
-		}		
-	}
-
-	pub fn from_string(s: String) -> Self {
-		Self {
-			kind: ObjectKind::Bool,
-			bool_value: false,
-			i64_value: 0,
-			f64_value: 0.0,
-			string: s,
-			ident: String::new(),
-		}		
-	}
-}
+use csv::{Reader, Writer};
+use serde::Serialize;
 
 pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Error> {
 	for plan in node.plans.iter() {
@@ -92,28 +18,73 @@ pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Erro
 }
 
 pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), Error> {
-	if !node.use_db.is_none() {
+	if node.use_db.is_some() {
 		if let Some(use_db) = &node.use_db {
 			exec_use_db(context, &use_db)?;
 		}
-	} else if !node.project.is_none() {
-		if let Some(project) = &node.project {
-			exec_project(context, &project)?;
-		}
-	} else if !node.dir_create.is_none() {
+	} else if node.dir_create.is_some() {
 		if let Some(dir_create) = &node.dir_create {
 			exec_dir_create(context, &dir_create)?;
 		}
-	} else if !node.csv_file_create.is_none() {
+	} else if node.csv_file_create.is_some() {
 		if let Some(csv_file_create) = &node.csv_file_create {
 			exec_csv_file_create(context, &csv_file_create)?;
 		}
+	} else if node.project.is_some() {
+		if let Some(project) = &node.project {
+			exec_project(context, &project)?;
+		}
+	} else if node.csv_file_append.is_some() {
+		if let Some(csv_file_append) = &node.csv_file_append {
+			exec_csv_file_append(context, &csv_file_append)?;
+		}
 	}
+
+	Ok(())
+}
+
+pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppendNode) -> Result<(), Error> {
+	let path = context.gen_table_file_path(&node.table_name)?;
+	let file = match OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path) {
+    	Ok(v) => v,
+    	Err(e) => return err_exec!("failed to open file on append"),
+    };
+    let mut writer = Writer::from_writer(file);
+
+	let mut row: Vec<String> = vec![];
+
+	if let Some(expr_list) = &node.expr_list {
+		let objs = exec_expr_list(context, &expr_list)?;
+		for obj in objs.iter() {
+			if let Some(o) = context.vars.get(obj.to_string().as_str()) {
+				row.push(o.to_string());
+			} else {
+				return err_exec!("failed to get value of vars");
+			}
+		}
+	}
+
+	match writer.write_record(&row) {
+		Ok(_) => {},
+		Err(e) => return err_exec!("failed to write CSV record {}", e),
+	}
+
 	Ok(())
 }
 
 pub fn exec_use_db(context: &mut Context, node: &planner::UseDatabaseNode) -> Result<(), Error> {
 	context.using_db_name = node.db_name.clone();
+	Ok(())
+}
+
+pub fn print_selected_columns(context: &mut Context) -> Result<(), Error> {
+	for col in context.selected_csv_columns.iter() {
+		print!("{} ", col);
+	}
+	println!("");
 	Ok(())
 }
 
@@ -125,6 +96,10 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 		if let Some(csv_scan) = &node.csv_scan {
 			while exec_csv_scan(context, csv_scan)? {
 				select_get_columns(context, node)?;
+				print_selected_columns(context)?;
+				if !csv_scan.all {
+					break;
+				}
 			}
 		}
 	} else {
@@ -136,6 +111,10 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 				while exec_csv_scan(context, csv_scan)? {
 					if exec_filter(context, filter)? {
 						select_get_columns(context, node)?;
+						print_selected_columns(context)?;
+					}
+					if !csv_scan.all {
+						break;
 					}
 				}
 			}
@@ -161,6 +140,17 @@ pub fn exec_where_clause(context: &mut Context, node: &parser::WhereClauseNode) 
 	}
 }
 
+pub fn exec_expr_list(context: &mut Context, node: &parser::ExprListNode) -> Result<Vec<Object>, Error> {
+	let mut v: Vec<Object> = vec![];
+
+	for expr in node.exprs.iter() {
+		let o = exec_expr(context, &expr)?;
+		v.push(o);
+	}
+
+	Ok(v)
+}
+
 pub fn exec_expr(context: &mut Context, node: &parser::ExprNode) -> Result<Object, Error> {
 	if let Some(ass_expr) = &node.ass_expr {
 		Ok(exec_ass_expr(context, ass_expr)?)
@@ -170,26 +160,48 @@ pub fn exec_expr(context: &mut Context, node: &parser::ExprNode) -> Result<Objec
 }
 
 pub fn exec_ass_expr(context: &mut Context, node: &parser::AssExprNode) -> Result<Object, Error> {
-	if !node.right_logic_expr.is_none() {
-		return err_exec!("can not use assign expr in filter");
-	}
+	let lhs: Object;
+	let rhs: Object;
+
 	if let Some(logic_expr) = &node.left_logic_expr {
-		Ok(exec_logic_expr(context, logic_expr)?)
+		lhs = exec_logic_expr(context, logic_expr)?;
 	} else {
-		err_exec!("impossible")
+		return err_exec!("impossible");
 	}
+
+	if node.right_logic_expr.is_none() {
+		return Ok(lhs);
+	}
+
+	if let Some(logic_expr) = &node.right_logic_expr {
+		rhs = exec_logic_expr(context, logic_expr)?;
+	} else {
+		return err_exec!("impossible");
+	}
+
+	match lhs.kind {
+		ObjectKind::Ident => {
+			let key = lhs.ident.clone();
+			context.vars.insert(key, Box::new(rhs));
+		},
+		_ => return err_exec!("can't assign to primitive object: {:?}", lhs),
+	}
+
+	Ok(lhs)
 }
 
 pub fn exec_logic_expr(context: &mut Context, node: &parser::LogicExprNode) -> Result<Object, Error> {
 	let mut a;
 	let mut b;
-	let mut c = Object::new();
+	let mut c;
 
 	if let parser::LogicExprItemNode::Left(compare_expr) = &node.nodes[0] {
 		a = exec_compare_expr(context, &*compare_expr)?;	
 	} else {
 		return err_exec!("impossible");
 	}
+
+	c = a.clone();
 
 	for i in (1..node.nodes.len()).step_by(2) {
 		let op = &node.nodes[i];
@@ -204,7 +216,9 @@ pub fn exec_logic_expr(context: &mut Context, node: &parser::LogicExprNode) -> R
 		if let parser::LogicExprItemNode::Op(logic_op) = op {
 			c = logical_objects(context, &a, &logic_op, &b)?;
 			a = c.clone();
-		}		
+		} else {
+			return err_exec!("impossible");
+		}
 	}
 
 	Ok(c)
@@ -213,13 +227,15 @@ pub fn exec_logic_expr(context: &mut Context, node: &parser::LogicExprNode) -> R
 pub fn exec_compare_expr(context: &mut Context, node: &parser::CompareExprNode) -> Result<Object, Error> {
 	let mut a;
 	let mut b;
-	let mut c = Object::new();
+	let mut c;
 
 	if let parser::CompareExprItemNode::Left(operand) = &node.nodes[0] {
 		a = exec_operand(context, &*operand)?;	
 	} else {
 		return err_exec!("impossible");
 	}
+
+	c = a.clone();
 
 	for i in (1..node.nodes.len()).step_by(2) {
 		let op = &node.nodes[i];
@@ -234,6 +250,8 @@ pub fn exec_compare_expr(context: &mut Context, node: &parser::CompareExprNode) 
 		if let parser::CompareExprItemNode::Op(compare_op) = op {
 			c = compare_objects(context, &a, &compare_op, &b)?;
 			a = c.clone();
+		} else {
+			return err_exec!("impossible");
 		}		
 	}
 
@@ -805,10 +823,14 @@ pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) ->
 	let mut indices: Vec<usize> = vec![];
 
 	for get_ident in node.get_stmt_idents.iter() {
-		if let Some(index) = context.csv_header_idents.iter().position(|s| *s == *get_ident) {
+		if let Some(index) = context.csv_header_idents.iter().position(|s| {
+				return *s == *get_ident;
+			}) {
 			indices.push(index);
 		}	
 	}
+
+	context.selected_csv_columns.clear();
 
 	for index in indices {
 		let col = &context.csv_record[index];
@@ -830,12 +852,9 @@ pub fn exec_csv_scan(context: &mut Context, node: &planner::CsvScanNode) -> Resu
 
 		// read header
 		if let Some(reader) = context.table_csv_reader.as_mut() {
-			match reader.read_record(&mut context.csv_header) {
-				Ok(_) => {},
-				Err(_) => {
-					context.table_csv_reader = None;
-					return Ok(false);
-				}
+			context.csv_header = match reader.headers() {
+				Ok(v) => v.clone(),
+				Err(e) => return err_exec!("failed to read header of CSV file. {}", e),
 			};
 		}
 
@@ -843,7 +862,12 @@ pub fn exec_csv_scan(context: &mut Context, node: &planner::CsvScanNode) -> Resu
 	}	
 	if let Some(reader) = context.table_csv_reader.as_mut() {
 		match reader.read_record(&mut context.csv_record) {
-			Ok(_) => return Ok(true),
+			Ok(_) => {
+				if context.csv_record.len() == 0 {
+					return Ok(false);
+				}
+				return Ok(true);
+			}
 			Err(_) => {
 				context.table_csv_reader = None;
 				return Ok(false);
@@ -859,7 +883,8 @@ pub fn parse_csv_header_idents(context: &mut Context) -> Result<(), Error> {
 
 	for col in context.csv_header.iter() {
 		if let Some((left, _right)) = col.split_once(':') {
-			context.csv_header_idents.push(left.trim().to_string());
+			let val = left.trim().to_string();
+			context.csv_header_idents.push(val);
 		}
 	}
 
@@ -915,7 +940,7 @@ mod tests {
 		}
 	}
 
-	fn do_exec(context: &mut Context, query: &str) {
+	fn do_exec(context: &mut Context, query: &str) -> Result<(), Error> {
 		let tests_dir = Path::new("test_env");
 		if !tests_dir.exists() {
 			fs::create_dir(tests_dir).unwrap();
@@ -925,13 +950,13 @@ mod tests {
 		let mut tok_strm = TokenStream::new(tokens);
 		let node: QueryNode = parse(&mut tok_strm).unwrap();
 		let node: PlansNode = planning(&node).unwrap();
-		exec(context, &node).unwrap();
+		return exec(context, &node);
 	}
 
 	#[test]
 	fn test_use_db() {
 		let mut context = Context::new();
-		do_exec(&mut context, "USE hige");
+		do_exec(&mut context, "USE hige").unwrap();
 		assert!(context.using_db_name == "hige");
 	}
 
@@ -942,7 +967,7 @@ mod tests {
 			fs::remove_dir_all(&path).unwrap();
 		}
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb");
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
 		assert!(path.exists());
 	}
 
@@ -951,11 +976,61 @@ mod tests {
 		let path = Path::new("test_env").join("mydb").join("mytable.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb");
-		do_exec(&mut context, "USE mydb");
-		do_exec(&mut context, "CREATE TABLE MyTable (id: I64, weight: F64)");
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE MyTable (id: I64, weight: F64)").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64\n");
+	}
+
+	#[test]
+	fn test_csv_file_append() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+	}
+
+	#[test]
+	fn test_project() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		do_exec(&mut context, "GET id, name OF mytable").unwrap();
+		assert!(context.selected_csv_columns.len() == 2);
+		assert!(context.selected_csv_columns[0] == "1");
+		assert!(context.selected_csv_columns[1] == "hige");
+		do_exec(&mut context, "GET ALL id, name OF mytable").unwrap();
+		assert!(context.selected_csv_columns.len() == 2);
+		assert!(context.selected_csv_columns[0] == "2");
+		assert!(context.selected_csv_columns[1] == "hoge");
+		do_exec(&mut context, "GET id, name OF mytable WHERE id == 2").unwrap();
+		assert!(context.selected_csv_columns.len() == 2);
+		assert!(context.selected_csv_columns[0] == "2");
+		assert!(context.selected_csv_columns[1] == "hoge");
+		do_exec(&mut context, "GET id, name OF mytable WHERE name == \"hoge\"").unwrap();
+		assert!(context.selected_csv_columns.len() == 2);
+		assert!(context.selected_csv_columns[0] == "2");
+		assert!(context.selected_csv_columns[1] == "hoge");
 	}
 }

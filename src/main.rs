@@ -6,6 +6,7 @@ mod parser;
 mod planner;
 mod executor;
 mod context;
+mod objects;
 
 fn main() {
     cli::run();
