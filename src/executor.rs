@@ -1032,5 +1032,9 @@ mod tests {
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
 		assert!(context.selected_csv_columns[1] == "hoge");
+		do_exec(&mut context, "GET id, name OF mytable WHERE id == 1 AND name == \"hige\"").unwrap();
+		assert!(context.selected_csv_columns.len() == 2);
+		assert!(context.selected_csv_columns[0] == "1");
+		assert!(context.selected_csv_columns[1] == "hige");
 	}
 }

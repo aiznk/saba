@@ -35,19 +35,31 @@ The options are:
 	std::process::exit(0);
 }
 
-fn exec_query(opts: Options, query: String) -> Result<(), Error> {
+fn exec_query(opts: Options, query: String, context: &mut Context) -> Result<(), Error> {
 	if opts.root_dir_path.is_none() {
 		return err_exec!("root directory is none");
 	}
 
-	let mut context = Context::new();
 	context.root_dir_path = opts.root_dir_path.clone().unwrap();
 	let tokens: Vec<Token> = tokenize(query)?;
 	let mut tok_strm = TokenStream::new(tokens);
 	let node: QueryNode = parse(&mut tok_strm)?;
 	let node: PlansNode = planning(&node)?;
-	exec(&mut context, &node)?;
+	exec(context, &node)?;
 	Ok(())
+}
+
+fn show_prompt(opts: &Options, context: &Context) {
+	let a = opts.root_dir_path.is_none();
+	let b = context.using_db_name.len() == 0;
+	if a && b {
+	   	print!("invalid > ");
+	} else if !a && b {
+		print!("{} > ", opts.root_dir_path.clone().unwrap());
+	} else if !a && !b {
+	    print!("{}:{} > ", opts.root_dir_path.clone().unwrap(), context.using_db_name);
+	}
+	std::io::stdout().flush().unwrap();	
 }
 
 fn run_shell(opts: Options) {
@@ -56,10 +68,10 @@ fn run_shell(opts: Options) {
 	// 	Err(e) => eprintln!("{}", e),
 	// }
 	// return;
+	let mut context = Context::new();
 
 	loop {
-		print!("query > ");
-		std::io::stdout().flush().unwrap();
+		show_prompt(&opts, &context);
 
 		let mut line = String::new();
 		match std::io::stdin().read_line(&mut line) {
@@ -70,7 +82,7 @@ fn run_shell(opts: Options) {
 			break;
 		}
 
-		match exec_query(opts.clone(), line) {
+		match exec_query(opts.clone(), line, &mut context) {
 			Ok(_) => {},
 			Err(e) => eprintln!("{}", e),
 		}
