@@ -54,7 +54,7 @@ impl Object {
 
 	pub fn from_i64(n: i64) -> Self {
 		Self {
-			kind: ObjectKind::Bool,
+			kind: ObjectKind::I64,
 			bool_value: false,
 			i64_value: n,
 			f64_value: 0.0,
@@ -65,7 +65,7 @@ impl Object {
 
 	pub fn from_f64(n: f64) -> Self {
 		Self {
-			kind: ObjectKind::Bool,
+			kind: ObjectKind::F64,
 			bool_value: false,
 			i64_value: 0,
 			f64_value: n,
@@ -76,7 +76,7 @@ impl Object {
 
 	pub fn from_string(s: String) -> Self {
 		Self {
-			kind: ObjectKind::Bool,
+			kind: ObjectKind::String,
 			bool_value: false,
 			i64_value: 0,
 			f64_value: 0.0,

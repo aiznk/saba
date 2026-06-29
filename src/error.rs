@@ -21,13 +21,14 @@ impl std::error::Error for Error {}
 
 macro_rules! make_error {
     ($kind:ident, $($arg:tt)*) => {
-        Error::$kind(format!(
-            "{}:{}:{}: {}",
-            file!(),
-            line!(),
-            column!(),
-            format!($($arg)*)
-        ))
+        Error::$kind(format!("{}", format!($($arg)*)))
+        // Error::$kind(format!(
+        //     "{}:{}:{}: {}",
+        //     file!(),
+        //     line!(),
+        //     column!(),
+        //     format!($($arg)*)
+        // ))
     };
 }
 

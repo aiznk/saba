@@ -323,6 +323,9 @@ fn unwrap_expr_ident(node: &Box<parser::ExprNode>) -> Result<String, Error> {
 }
 
 fn unwrap_ass_expr_ident(node: &Box<parser::AssExprNode>) -> Result<String, Error> {
+	if node.right_logic_expr.is_some() {
+		return err_planning!("can't assign in ass expr: a = b");
+	}
 	if let Some(logic_expr) = &node.left_logic_expr {
 		return Ok(unwrap_logic_expr_ident(&logic_expr)?);
 	}

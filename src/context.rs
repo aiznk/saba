@@ -15,6 +15,7 @@ pub struct Context {
 	pub csv_record: StringRecord,
 	pub selected_csv_columns: Vec<String>,
 	pub vars: HashMap<String, Box<Object>>,
+	pub counter_selected: usize,
 }
 
 impl Context {
@@ -28,6 +29,7 @@ impl Context {
 			csv_record: StringRecord::new(),
 			selected_csv_columns: vec![],
 			vars: HashMap::new(),
+			counter_selected: 0,
 		}
 	}
 

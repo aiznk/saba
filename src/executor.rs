@@ -98,6 +98,7 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 				select_get_columns(context, node)?;
 				print_selected_columns(context)?;
 				if !csv_scan.all {
+					context.table_csv_reader = None;
 					break;
 				}
 			}
@@ -108,12 +109,15 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 		}
 		if let Some(csv_scan) = &node.csv_scan {
 			if let Some(filter) = &node.filter {
+				context.counter_selected = 0;
 				while exec_csv_scan(context, csv_scan)? {
 					if exec_filter(context, filter)? {
 						select_get_columns(context, node)?;
 						print_selected_columns(context)?;
+						context.counter_selected += 1;
 					}
-					if !csv_scan.all {
+					if !csv_scan.all && context.counter_selected >= 1 {
+						context.table_csv_reader = None;
 						break;
 					}
 				}
@@ -385,7 +389,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
-						_ => err_exec!("can't compare i32 and other: a < b"),
+						_ => err_exec!("can't compare i64 and other: a < b"),
 					}
 				},
 				ObjectKind::F64 => {
@@ -402,7 +406,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f32 and other: a < b"),
+						_ => err_exec!("can't compare f64 and other: a < b"),
 					}
 				}
 				ObjectKind::Ident => {
@@ -420,7 +424,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f32 and other: a < b"),						
+						_ => err_exec!("can't compare f64 and other: a < b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -442,7 +446,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
-						_ => err_exec!("can't compare i32 and other: a <= b"),
+						_ => err_exec!("can't compare i64 and other: a <= b"),
 					}
 				},
 				ObjectKind::F64 => {
@@ -459,7 +463,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f32 and other: a <= b"),
+						_ => err_exec!("can't compare f64 and other: a <= b"),
 					}
 				}
 				ObjectKind::Ident => {
@@ -477,7 +481,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f32 and other: a < b"),						
+						_ => err_exec!("can't compare f64 and other: a < b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -499,7 +503,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
-						_ => err_exec!("can't compare i32 and other: a > b"),
+						_ => err_exec!("can't compare i64 and other: a > b"),
 					}
 				},
 				ObjectKind::F64 => {
@@ -516,7 +520,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f32 and other: a > b"),
+						_ => err_exec!("can't compare f64 and other: a > b"),
 					}
 				}
 				ObjectKind::Ident => {
@@ -534,7 +538,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f32 and other: a < b"),						
+						_ => err_exec!("can't compare f64 and other: a < b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -556,7 +560,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
-						_ => err_exec!("can't compare i32 and other: a >= b"),
+						_ => err_exec!("can't compare i64 and other: a >= b"),
 					}
 				},
 				ObjectKind::F64 => {
@@ -573,7 +577,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f32 and other: a >= b"),
+						_ => err_exec!("can't compare f64 and other: a >= b"),
 					}
 				}
 				ObjectKind::Ident => {
@@ -591,7 +595,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f32 and other: a < b"),						
+						_ => err_exec!("can't compare f64 and other: a < b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -613,7 +617,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
-						_ => err_exec!("can't compare i32 and other: a == b"),
+						_ => err_exec!("can't compare i64 and other: a == b"),
 					}
 				},
 				ObjectKind::F64 => {
@@ -630,7 +634,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
-						_ => err_exec!("can't compare f32 and other: a == b"),
+						_ => err_exec!("can't compare f64 and other: a == b"),
 					}
 				}
 				ObjectKind::String => {
@@ -674,7 +678,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f32 and other: a < b"),						
+						_ => err_exec!("can't compare f64 and other: a < b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -696,7 +700,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
-						_ => err_exec!("can't compare i32 and other: a != b"),
+						_ => err_exec!("can't compare i64 and other: a != b"),
 					}
 				},
 				ObjectKind::F64 => {
@@ -713,7 +717,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
-						_ => err_exec!("can't compare f32 and other: a != b"),
+						_ => err_exec!("can't compare f64 and other: a != b"),
 					}
 				}
 				ObjectKind::String => {
@@ -757,7 +761,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f32 and other: a < b"),						
+						_ => err_exec!("can't compare f64 and other: a < b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -864,6 +868,7 @@ pub fn exec_csv_scan(context: &mut Context, node: &planner::CsvScanNode) -> Resu
 		match reader.read_record(&mut context.csv_record) {
 			Ok(_) => {
 				if context.csv_record.len() == 0 {
+					context.table_csv_reader = None;
 					return Ok(false);
 				}
 				return Ok(true);
