@@ -19,8 +19,10 @@ pub struct PlanNode {
 	pub project: Option<Box<ProjectNode>>,
 	pub dir_create: Option<Box<DirCreateNode>>,
 	pub dir_list: Option<Box<DirListNode>>,
+	pub dir_delete_all: Option<Box<DirDeleteAllNode>>,
 	pub csv_file_create: Option<Box<CsvFileCreateNode>>,
 	pub csv_file_append: Option<Box<CsvFileAppendNode>>,
+	pub csv_file_delete: Option<Box<CsvFileDeleteNode>>,
 }
 
 impl PlanNode {
@@ -30,8 +32,34 @@ impl PlanNode {
 			project: None,
 			dir_create: None,
 			dir_list: None,
+			dir_delete_all: None,
 			csv_file_create: None,
 			csv_file_append: None,
+			csv_file_delete: None,
+		}
+	}
+}
+
+pub struct DirDeleteAllNode {
+	pub db_name: Option<String>,
+}
+
+impl DirDeleteAllNode {
+	pub fn new() -> Self {
+		Self {
+			db_name: None,
+		}
+	}
+}
+
+pub struct CsvFileDeleteNode {
+	pub table_name: Option<String>,
+}
+
+impl CsvFileDeleteNode {
+	pub fn new() -> Self {
+		Self {
+			table_name: None,
 		}
 	}
 }
@@ -176,6 +204,10 @@ pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<()
 		if let Some(show_stmt) = &node.show_stmt {
 			plan_show_stmt(&show_stmt, plan)?
 		}		
+	} else if node.drop_stmt.is_some() {
+		if let Some(drop_stmt) = &node.drop_stmt {
+			plan_drop_stmt(&drop_stmt, plan)?
+		}	
 	} else if node.use_stmt.is_some() {
 		if let Some(use_stmt) = &node.use_stmt {
 			plan_use_stmt(&use_stmt, plan)?
@@ -193,6 +225,22 @@ pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<()
 			plan_add_stmt(&add_stmt, plan)?;
 		}
 	}
+	Ok(())
+}
+
+pub fn plan_drop_stmt(node: &Box<parser::DropStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
+	if node.table_name.is_some() {
+		let mut csv_file_delete = CsvFileDeleteNode::new();
+		csv_file_delete.table_name = Some(unwrap_ident(&node.table_name.clone().unwrap())?);
+		plan.csv_file_delete = Some(Box::new(csv_file_delete));
+	} else if node.db_name.is_some() {
+		let mut dir_delete_all = DirDeleteAllNode::new();
+		dir_delete_all.db_name = Some(unwrap_ident(&node.db_name.clone().unwrap())?);
+		plan.dir_delete_all = Some(Box::new(dir_delete_all));
+	} else {
+		return err_planning!("invalid state: drop stmt");
+	}
+
 	Ok(())
 }
 

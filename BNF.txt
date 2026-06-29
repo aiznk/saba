@@ -62,11 +62,11 @@
 
 > DROP DATABASE mydb;
 
-	DirDrop (delete mydb directory)
+	DirDeleteAll (delete mydb directory)
 
 > DROP TABLE mytab;
 
-	CsvDrop (delete mytab CSV file)
+	CsvFileDelete (delete mytab CSV file)
 
 ## GET
 
@@ -120,7 +120,8 @@
 ## BNF
 
 query ::= { stmt ';' }*
-stmt ::= (show_stmt | use_stmt | create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
+stmt ::= (drop_stmt | show_stmt | use_stmt | create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
+drop_stmt ::= ( 'DROP' 'TABLE' ident ) | ( 'DROP' 'DATABASE' ident )
 show_stmt ::= ( 'SHOW' 'TABLES' ) | ( 'SHOW' 'DATABASES' )
 use_stmt ::= 'USE' db_name:ident
 create_stmt ::= create_database | create_table

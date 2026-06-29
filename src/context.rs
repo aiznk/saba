@@ -35,10 +35,21 @@ impl Context {
 		}
 	}
 
-	pub fn gen_db_dir_path(&self) -> Result<PathBuf, Error> {
+	pub fn gen_db_dir_path(&self, db_name: &str) -> Result<PathBuf, Error> {
+		if self.root_dir_path.len() == 0 ||
+		   db_name.len() == 0 {
+		   	return err_runtime!("invalid state in gen db dir path");
+		}
+
+		let path = Path::new(&self.root_dir_path).join(db_name);
+
+		Ok(path)		
+	}
+
+	pub fn gen_using_db_dir_path(&self) -> Result<PathBuf, Error> {
 		if self.root_dir_path.len() == 0 ||
 		   self.using_db_name.len() == 0 {
-		   	return err_runtime!("invalid state in gen db dir path");
+		   	return err_runtime!("invalid state in gen using db dir path");
 		}
 
 		let path = Path::new(&self.root_dir_path).join(&self.using_db_name);

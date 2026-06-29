@@ -14,6 +14,7 @@ pub enum TokenKind {
 	Databases, // DATABASES
 	Use, // USE
 	Show, // SHOW
+	Drop, // DROP
 	Table, // TABLE
 	Tables, // TABLES
 	I64,
@@ -297,6 +298,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'u' && c2 == 's' && c3 == 'e' {
 			ret.push(Token::from(TokenKind::Use, None));
 			i += 2;
+		} else if c1 == 'd' && c2 == 'r' && c3 == 'o' && c4 == 'p' {
+			ret.push(Token::from(TokenKind::Drop, None));
+			i += 3;
 		} else if c1 == 's' && c2 == 'h' && c3 == 'o' && c4 == 'w' {
 			ret.push(Token::from(TokenKind::Show, None));
 			i += 3;

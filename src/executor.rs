@@ -22,6 +22,10 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		if let Some(use_db) = &node.use_db {
 			exec_use_db(context, &use_db)?;
 		}
+	} else if node.project.is_some() {
+		if let Some(project) = &node.project {
+			exec_project(context, &project)?;
+		}
 	} else if node.dir_create.is_some() {
 		if let Some(dir_create) = &node.dir_create {
 			exec_dir_create(context, &dir_create)?;
@@ -30,17 +34,21 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		if let Some(dir_list) = &node.dir_list {
 			exec_dir_list(context, &dir_list)?;
 		}
-	} else if node.csv_file_create.is_some() {
-		if let Some(csv_file_create) = &node.csv_file_create {
-			exec_csv_file_create(context, &csv_file_create)?;
-		}
-	} else if node.project.is_some() {
-		if let Some(project) = &node.project {
-			exec_project(context, &project)?;
+	} else if node.dir_delete_all.is_some() {
+		if let Some(dir_delete_all) = &node.dir_delete_all {
+			exec_dir_delete_all(context, &dir_delete_all)?;
 		}
 	} else if node.csv_file_append.is_some() {
 		if let Some(csv_file_append) = &node.csv_file_append {
 			exec_csv_file_append(context, &csv_file_append)?;
+		}
+	} else if node.csv_file_create.is_some() {
+		if let Some(csv_file_create) = &node.csv_file_create {
+			exec_csv_file_create(context, &csv_file_create)?;
+		}
+	} else if node.csv_file_delete.is_some() {
+		if let Some(csv_file_delete) = &node.csv_file_delete {
+			exec_csv_file_delete(context, &csv_file_delete)?;
 		}
 	}
 
@@ -904,10 +912,20 @@ pub fn parse_csv_header_idents(context: &mut Context) -> Result<(), Error> {
 	Ok(())
 }
 
+pub fn exec_dir_delete_all(context: &mut Context, node: &planner::DirDeleteAllNode) -> Result<(), Error> {
+	let db_name = node.db_name.clone().unwrap();
+	let path = context.gen_db_dir_path(&db_name)?;
+	if path.as_os_str().is_empty() {
+		return err_exec!("invalid path in dir delete all");
+	}
+	fs::remove_dir_all(&path);
+	Ok(())
+}
+
 pub fn exec_dir_list(context: &mut Context, node: &planner::DirListNode) -> Result<(), Error> {
 	if node.csv_file_grep.is_some() {
 		// show tables
-		let path = context.gen_db_dir_path()?;
+		let path = context.gen_using_db_dir_path()?;
 		let dir = match fs::read_dir(&path) {
 			Ok(v) => v,
 			Err(e) => return err_exec!("failed to read dir: {}", e),
@@ -943,6 +961,15 @@ pub fn exec_dir_create(context: &mut Context, node: &planner::DirCreateNode) -> 
 			Ok(_) => {},
 			Err(e) => return err_exec!("failed to create directory. {}", e),
 		}
+	}
+	Ok(())
+}
+
+pub fn exec_csv_file_delete(context: &mut Context, node: &planner::CsvFileDeleteNode) -> Result<(), Error> {
+	let table_name = node.table_name.clone().unwrap();
+	let path = context.gen_table_file_path(&table_name)?;
+	if path.exists() {
+		fs::remove_file(&path);
 	}
 	Ok(())
 }
@@ -1081,4 +1108,27 @@ mod tests {
 		assert!(context.selected_csv_columns[0] == "1");
 		assert!(context.selected_csv_columns[1] == "hige");
 	}
+
+	#[test]
+	fn test_drop_db() {
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		assert!(Path::new("test_env").join("mydb").exists());
+		do_exec(&mut context, "DROP DATABASE mydb").unwrap();
+		assert!(!Path::new("test_env").join("mydb").exists());
+	}
+
+	#[test]
+	fn test_drop_table() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		do_exec(&mut context, "DROP TABLE mytable").unwrap();
+		assert!(!path.exists());
+	}
+
 }
