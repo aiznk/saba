@@ -16,8 +16,14 @@ pub struct Context {
 	pub selected_csv_columns: Vec<String>,
 	pub vars: HashMap<String, Box<Object>>,
 	pub counter_selected: usize,
+
+	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
+
+	// if enable sequentil mode on exec_project, set true
 	pub is_sequential: bool,
+
+	// if filter matched/unmatched store record
 	pub matched_csv_record: StringRecord,
 	pub unmatched_csv_record: StringRecord,
 }
