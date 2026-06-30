@@ -17,42 +17,24 @@ pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Erro
 }
 
 pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), Error> {
-	if node.use_db.is_some() {
-		if let Some(use_db) = &node.use_db {
-			exec_use_db(context, &use_db)?;
-		}
-	} else if node.project.is_some() {
-		if let Some(project) = &node.project {
-			exec_project(context, &project)?;
-		}
-	} else if node.dir_create.is_some() {
-		if let Some(dir_create) = &node.dir_create {
-			exec_dir_create(context, &dir_create)?;
-		}
-	} else if node.dir_list.is_some() {
-		if let Some(dir_list) = &node.dir_list {
-			exec_dir_list(context, &dir_list)?;
-		}
-	} else if node.dir_delete_all.is_some() {
-		if let Some(dir_delete_all) = &node.dir_delete_all {
-			exec_dir_delete_all(context, &dir_delete_all)?;
-		}
-	} else if node.csv_file_append.is_some() {
-		if let Some(csv_file_append) = &node.csv_file_append {
-			exec_csv_file_append(context, &csv_file_append)?;
-		}
-	} else if node.csv_file_create.is_some() {
-		if let Some(csv_file_create) = &node.csv_file_create {
-			exec_csv_file_create(context, &csv_file_create)?;
-		}
-	} else if node.csv_file_delete.is_some() {
-		if let Some(csv_file_delete) = &node.csv_file_delete {
-			exec_csv_file_delete(context, &csv_file_delete)?;
-		}
-	} else if node.csv_file_rewrite.is_some() {
-		if let Some(csv_file_rewrite) = &node.csv_file_rewrite {
-			exec_csv_file_rewrite(context, &csv_file_rewrite)?;
-		}
+	if let Some(use_db) = &node.use_db {
+		exec_use_db(context, &use_db)?;
+	} else if let Some(project) = &node.project {
+		exec_project(context, &project)?;
+	} else if let Some(dir_create) = &node.dir_create {
+		exec_dir_create(context, &dir_create)?;
+	} else if let Some(dir_list) = &node.dir_list {
+		exec_dir_list(context, &dir_list)?;
+	} else if let Some(dir_delete_all) = &node.dir_delete_all {
+		exec_dir_delete_all(context, &dir_delete_all)?;
+	} else if let Some(csv_file_append) = &node.csv_file_append {
+		exec_csv_file_append(context, &csv_file_append)?;
+	} else if let Some(csv_file_create) = &node.csv_file_create {
+		exec_csv_file_create(context, &csv_file_create)?;
+	} else if let Some(csv_file_delete) = &node.csv_file_delete {
+		exec_csv_file_delete(context, &csv_file_delete)?;
+	} else if let Some(csv_file_rewrite) = &node.csv_file_rewrite {
+		exec_csv_file_rewrite(context, &csv_file_rewrite)?;
 	}
 
 	Ok(())
