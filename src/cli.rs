@@ -3,20 +3,21 @@ use crate::parser::{QueryNode, parse};
 use crate::planner::{PlansNode, planning};
 use crate::executor::{exec};
 use crate::context::{Context};
-use crate::error::{Error, make_error, err_exec};
+use crate::error::{Error};
 use std::io::Write;
+use std::path::{PathBuf};
 
 #[derive(Clone)]
 struct Options {
 	help: bool,
-	root_dir_path: Option<String>,
+	root_dir_path: PathBuf,
 }
 
 impl Options {
 	pub fn new() -> Self {
 		Self {
 			help: false,
-			root_dir_path: None,
+			root_dir_path: PathBuf::new(),
 		}
 	}
 }
@@ -36,11 +37,7 @@ The options are:
 }
 
 fn exec_query(opts: Options, query: String, context: &mut Context) -> Result<(), Error> {
-	if opts.root_dir_path.is_none() {
-		return err_exec!("root directory is none");
-	}
-
-	context.root_dir_path = opts.root_dir_path.clone().unwrap();
+	context.root_dir_path = opts.root_dir_path.clone();
 	let tokens: Vec<Token> = tokenize(query)?;
 	let mut tok_strm = TokenStream::new(tokens);
 	let node: QueryNode = parse(&mut tok_strm)?;
@@ -50,24 +47,15 @@ fn exec_query(opts: Options, query: String, context: &mut Context) -> Result<(),
 }
 
 fn show_prompt(opts: &Options, context: &Context) {
-	let a = opts.root_dir_path.is_none();
-	let b = context.using_db_name.len() == 0;
-	if a && b {
-	   	print!("invalid > ");
-	} else if !a && b {
-		print!("{} > ", opts.root_dir_path.clone().unwrap());
-	} else if !a && !b {
-	    print!("{}:{} > ", opts.root_dir_path.clone().unwrap(), context.using_db_name);
+	if context.using_db_name.len() == 0 {
+		print!("{} > ", opts.root_dir_path.display());
+	} else {
+	    print!("{}:{} > ", opts.root_dir_path.display(), context.using_db_name);
 	}
 	std::io::stdout().flush().unwrap();	
 }
 
 fn run_shell(opts: Options) {
-	// match exec_query(opts, String::from("GET id OF table WHERE name = \"hige\";")) {
-	// 	Ok(_) => {},
-	// 	Err(e) => eprintln!("{}", e),
-	// }
-	// return;
 	let mut context = Context::new();
 	context.is_cli = true;
 
@@ -98,7 +86,7 @@ fn parse_options(args: Vec<String>) -> Options {
 			"-h" => { opts.help = true; }
 			"--help" => { opts.help = true; }
 			&_ => {
-				opts.root_dir_path = Some(String::from(arg));
+				opts.root_dir_path = PathBuf::from(arg);
 			}
 		}
 	}
@@ -113,10 +101,13 @@ pub fn run() {
 	}
 
 	let opts = parse_options(args);
+	if !opts.root_dir_path.exists() {
+		eprintln!("\"{}\" does not exists path", opts.root_dir_path.display());
+	}
 
 	if opts.help {
 		usage();
-	} else if !opts.root_dir_path.is_none() {
+	} else {
 		run_shell(opts);
 	}
 }

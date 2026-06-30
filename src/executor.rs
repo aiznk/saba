@@ -3,7 +3,7 @@ use crate::parser;
 use crate::planner;
 use crate::context::{Context};
 use crate::objects::{Object, ObjectKind};
-use std::path::{Path};
+use std::path::{Path, PathBuf};
 use std::fs;
 use std::fs::{OpenOptions};
 use std::io::{Write};
@@ -115,6 +115,9 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 				if context.is_cli {
 					print_selected_columns(context)?;
 				}
+				if let Some(records) = context.test_get_records.as_mut() {
+					records.push(context.csv_record.clone());
+				}
 				if !csv_scan.all {
 					context.table_csv_reader = None;
 					return Ok(false);
@@ -140,6 +143,9 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 							print_selected_columns(context)?;
 						}
 						context.counter_selected += 1;
+						if let Some(records) = context.test_get_records.as_mut() {
+							records.push(context.csv_record.clone());
+						}
 					}
 					if !csv_scan.all && context.counter_selected >= 1 {
 						context.table_csv_reader = None;
@@ -703,13 +709,11 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 => {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
-							Ok(compare_objects(context, &lo, op, rhs)?)
-						},
-						ObjectKind::F64 => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							Ok(compare_objects(context, &lo, op, rhs)?)
+							Ok(compare_objects(context, &lo, op, rhs)?)									
 						},
 						ObjectKind::Ident => {
 							let lo = refer_ident(context, &lhs.ident)?;
@@ -786,11 +790,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							Ok(compare_objects(context, &lo, op, rhs)?)
-						},
-						ObjectKind::F64 => {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
 						},
@@ -987,31 +989,119 @@ pub fn exec_dir_create(context: &mut Context, node: &planner::DirCreateNode) -> 
 	Ok(())
 }
 
-pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewriteNode) -> Result<(), Error> {
-	if let Some(table_name) = &node.table_name {
-		if let Some(project) = &node.project {
-			let org_path = context.gen_table_file_path(&table_name)?;
-			let tmp_path = context.gen_tmp_table_file_path(&table_name)?;
-			let headers = read_table_headers(context, &table_name)?;
-			let mut writer = match Writer::from_path(&tmp_path) {
-				Ok(v) => v,
-				Err(e) => return err_exec!("failed to open CSV writer: {}", e),
-			};
+pub fn exec_row_delete(context: &mut Context, node: &planner::RowDeleteNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+	if let Some(project) = &node.project {
+		let seq = context.is_sequential;
+		context.is_sequential = true;
+
+		while exec_project(context, project)? {
+			let cols = &context.unmatched_csv_record;
+			if cols.len() > 0 {
+				writer.write_record(cols).unwrap();
+			}
+		}
+
+		context.is_sequential = seq;
+	}
+
+	Ok(())
+}
+
+pub fn replace_columns_by_objs(context: &mut Context, cols: &StringRecord, update_expr_list_objs: &Vec<Object>) -> Result<Vec<String>, Error> {
+	let idents = &context.csv_header_idents;
+	let mut row: Vec<String> = vec![];
+
+	for col in cols {
+		row.push(col.to_string());
+	}
+
+	for obj in update_expr_list_objs.iter() {
+		let key = obj.to_string();
+		if let Some(o) = context.vars.get(&key) {
+			if let Some(index) = idents.iter().position(|s| *s == key) {
+				row[index] = o.to_string();
+			}
+		}
+	}
+
+	Ok(row)
+}
+
+pub fn exec_row_update(context: &mut Context, node: &planner::RowUpdateNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+	if let Some(project) = &node.project {
+		if let Some(expr_list) = &node.expr_list {
+			let update_expr_list_objs = exec_expr_list(context, expr_list)?;
+
+			let seq = context.is_sequential;
 			context.is_sequential = true;
 
-			writer.write_record(&headers).unwrap();
+			if node.all {
+				while exec_project(context, project)? {
+					if context.matched_csv_record.len() > 0 {
+						let cols = context.matched_csv_record.clone();
+						let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
+						writer.write_record(&cols).unwrap();
+					} else if context.unmatched_csv_record.len() > 0 {
+						let cols = context.unmatched_csv_record.clone();
+						writer.write_record(&cols).unwrap();
+					} else {
+						return err_exec!("invalid state: row update");
+					}
+				}
+			} else {
+				let mut writted = false;
 
-			while exec_project(context, project)? {
-				let cols = &context.unmatched_csv_record;
-				if cols.len() > 0 {
-					writer.write_record(cols).unwrap();
+				while exec_project(context, project)? {
+					if writted {
+						let cols = context.csv_record.clone();
+						writer.write_record(&cols).unwrap();
+					} else {
+						if context.matched_csv_record.len() > 0 {
+							let cols = context.matched_csv_record.clone();
+							let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
+							writer.write_record(&cols).unwrap();
+							writted = true;
+						} else if context.unmatched_csv_record.len() > 0 {
+							let cols = context.unmatched_csv_record.clone();
+							writer.write_record(&cols).unwrap();
+						} else {
+							return err_exec!("invalid state: row update");
+						}
+					}
 				}
 			}
 
-			fs::rename(&tmp_path, &org_path).unwrap();
+			context.is_sequential = seq;
 
 			return Ok(());
 		}
+	}
+
+	return err_exec!("failed to row update");
+}
+
+pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewriteNode) -> Result<(), Error> {
+	if let Some(table_name) = &node.table_name {
+		let org_path = context.gen_table_file_path(&table_name)?;
+		let tmp_path = context.gen_tmp_table_file_path(&table_name)?;
+		let headers = read_table_headers(context, &table_name)?;
+		let mut writer = match Writer::from_path(&tmp_path) {
+			Ok(v) => v,
+			Err(e) => return err_exec!("failed to open CSV writer: {}", e),
+		};
+		writer.write_record(&headers).unwrap();
+
+		if let Some(row_delete) = &node.row_delete {
+			exec_row_delete(context, row_delete, &mut writer)?;
+		} else if let Some(row_update) = &node.row_update {
+			exec_row_update(context, row_update, &mut writer)?;
+		} else {
+			return err_exec!("invalid state: csv file rewrite");
+		}
+
+		fs::rename(&tmp_path, &org_path).unwrap();
+
+		return Ok(());
 	}
 
 	return err_exec!("failed to csv file rewrite");
@@ -1081,7 +1171,7 @@ mod tests {
 		if !tests_dir.exists() {
 			fs::create_dir(tests_dir).unwrap();
 		}
-		context.root_dir_path = String::from("test_env");
+		context.root_dir_path = PathBuf::from("test_env");
 		let tokens: Vec<Token> = tokenize(query.to_string()).unwrap();
 		let mut tok_strm = TokenStream::new(tokens);
 		let node: QueryNode = parse(&mut tok_strm).unwrap();
@@ -1138,7 +1228,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_project() {
+	fn test_get_stmt_0() {
 		let path = Path::new("test_env").join("mydb").join("mytable.csv");
 		remove_file(&path);
 		let mut context = Context::new();
@@ -1172,6 +1262,79 @@ mod tests {
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "1");
 		assert!(context.selected_csv_columns[1] == "hige");
+	}
+
+	fn csv_records_to_string(context: &mut Context) -> String {
+		let mut writer = Writer::from_writer(vec![]);
+		for rec in context.test_get_records.clone().unwrap().iter() {
+			writer.write_record(rec).unwrap();
+		}
+		let bytes = writer.into_inner().unwrap();
+		let csv = String::from_utf8(bytes).unwrap();
+		return csv;
+	}
+
+	#[test]
+	fn test_get_stmt_or_0() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id, name OF mytable WHERE id == 1 OR name == \"hoge\"").unwrap();
+		let s = csv_records_to_string(&mut context);
+		assert!(s == "1,3.14,hige\n2,3.14,hoge\n")
+	}
+
+	#[test]
+	fn test_get_stmt_and_0() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id, name OF mytable WHERE id == 1 AND name == \"hige\"").unwrap();
+		let s = csv_records_to_string(&mut context);
+		assert!(s == "1,3.14,hige\n")
+	}
+
+	#[test]
+	fn test_get_stmt_or_and_0() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id, name OF mytable WHERE id == 1 OR weight == 3.14 AND name == \"hige\"").unwrap();
+		let s = csv_records_to_string(&mut context);
+		assert!(s == "1,3.14,hige\n")
 	}
 
 	#[test]
@@ -1229,5 +1392,73 @@ mod tests {
 		do_exec(&mut context, "DEL ALL OF mytable WHERE id == 1").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n");
+	}
+
+	#[test]
+	fn test_set_stmt_0() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		do_exec(&mut context, "SET ALL id=10 OF mytable WHERE weight == 3.14").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n10,3.14,hige\n10,3.14,hoge\n");
+	}
+
+	#[test]
+	fn test_set_stmt_0a() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		do_exec(&mut context, "SET ALL id=10, name=\"HOGE\" OF mytable WHERE weight == 1234").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+	}
+
+	#[test]
+	fn test_set_stmt_1() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF mytable WHERE weight == 3.14").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n10,3.14,HOGE\n2,3.14,hoge\n");
+	}
+
+	#[test]
+	fn test_set_stmt_2() {
+		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "USE mydb").unwrap();
+		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF mytable WHERE name == \"hoge\"").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n10,3.14,HOGE\n");
 	}
 }

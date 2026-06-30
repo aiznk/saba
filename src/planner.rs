@@ -44,14 +44,44 @@ impl PlanNode {
 
 pub struct CsvFileRewriteNode {
 	pub table_name: Option<String>,
-	pub project: Option<Box<ProjectNode>>,
+	pub row_delete: Option<Box<RowDeleteNode>>,
+	pub row_update: Option<Box<RowUpdateNode>>,
 }
 
 impl CsvFileRewriteNode {
 	pub fn new() -> Self {
 		Self {
 			table_name: None,
+			row_delete: None,
+			row_update: None,
+		}
+	}
+}
+
+pub struct RowDeleteNode {
+	pub project: Option<Box<ProjectNode>>,
+}
+
+impl RowDeleteNode {
+	pub fn new() -> Self {
+		Self {
 			project: None,
+		}
+	}
+}
+
+pub struct RowUpdateNode {
+	pub project: Option<Box<ProjectNode>>,
+	pub expr_list: Option<Box<parser::ExprListNode>>,
+	pub all: bool,
+}
+
+impl RowUpdateNode {
+	pub fn new() -> Self {
+		Self {
+			project: None,
+			expr_list: None,
+			all: false,
 		}
 	}
 }
@@ -236,6 +266,10 @@ pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<()
 		if let Some(get_stmt) = &node.get_stmt {
 			plan_get_stmt(&get_stmt, plan)?;
 		}
+	} else if node.set_stmt.is_some() {
+		if let Some(set_stmt) = &node.set_stmt {
+			plan_set_stmt(&set_stmt, plan)?;
+		}
 	} else if node.add_stmt.is_some() {
 		if let Some(add_stmt) = &node.add_stmt {
 			plan_add_stmt(&add_stmt, plan)?;
@@ -399,6 +433,7 @@ pub fn plan_add_stmt(node: &Box<parser::AddStmtNode>, plan: &mut PlanNode) -> Re
 
 pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
 	let mut rewrite = CsvFileRewriteNode::new();
+	let mut row_delete = RowDeleteNode::new();
 	let mut project = ProjectNode::new();
 
 	if let Some(table) = &node.table {
@@ -416,7 +451,44 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 		project.filter = Some(Box::new(filter));
 	}
 
-	rewrite.project = Some(Box::new(project));
+	row_delete.project = Some(Box::new(project));
+	rewrite.row_delete = Some(Box::new(row_delete));
+	plan.csv_file_rewrite = Some(Box::new(rewrite));
+
+	Ok(())
+}
+
+pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
+	let mut rewrite = CsvFileRewriteNode::new();
+	let mut row_update = RowUpdateNode::new();
+	let mut project = ProjectNode::new();
+
+	if let Some(expr_list) = &node.expr_list {
+		row_update.expr_list = Some(expr_list.clone());
+	} else {
+		return err_planning!("missing expr list in set stmt");
+	}
+
+	if let Some(table) = &node.table {
+		let mut csv_scan = CsvScanNode::new();
+		let table_name = unwrap_ident(&table)?;
+		csv_scan.table_name = table_name.clone();
+		csv_scan.all = true; // the set stmt always needs all on csv_scan
+		project.csv_scan = Some(Box::new(csv_scan));
+		rewrite.table_name = Some(table_name);
+	} else {
+		return err_planning!("missing table name in set stmt");
+	}
+
+	if let Some(where_clause) = &node.where_clause {
+		let mut filter = FilterNode::new();
+		filter.where_clause = Some((*where_clause).clone());
+		project.filter = Some(Box::new(filter));
+	}
+
+	row_update.all = node.all;
+	row_update.project = Some(Box::new(project));	
+	rewrite.row_update = Some(Box::new(row_update));
 	plan.csv_file_rewrite = Some(Box::new(rewrite));
 
 	Ok(())

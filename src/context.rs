@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Context {
-	pub root_dir_path: String,
+	pub root_dir_path: PathBuf,
 	pub using_db_name: String,
 	pub table_csv_reader: Option<Reader<File>>,
 	pub csv_header: StringRecord,
@@ -26,12 +26,14 @@ pub struct Context {
 	// if filter matched/unmatched store record
 	pub matched_csv_record: StringRecord,
 	pub unmatched_csv_record: StringRecord,
+
+	pub test_get_records: Option<Vec<StringRecord>>,
 }
 
 impl Context {
 	pub fn new() -> Self {
 		Self {
-			root_dir_path: String::new(),
+			root_dir_path: PathBuf::new(),
 			using_db_name: String::new(),
 			table_csv_reader: None,
 			csv_header: StringRecord::new(),
@@ -44,11 +46,12 @@ impl Context {
 			is_sequential: false,
 			matched_csv_record: StringRecord::new(),
 			unmatched_csv_record: StringRecord::new(),
+			test_get_records: None,
 		}
 	}
 
 	pub fn gen_db_dir_path(&self, db_name: &str) -> Result<PathBuf, Error> {
-		if self.root_dir_path.len() == 0 ||
+		if self.root_dir_path.as_os_str().is_empty() ||
 		   db_name.len() == 0 {
 		   	return err_runtime!("invalid state in gen db dir path");
 		}
@@ -59,7 +62,7 @@ impl Context {
 	}
 
 	pub fn gen_using_db_dir_path(&self) -> Result<PathBuf, Error> {
-		if self.root_dir_path.len() == 0 ||
+		if self.root_dir_path.as_os_str().is_empty() ||
 		   self.using_db_name.len() == 0 {
 		   	return err_runtime!("invalid state in gen using db dir path");
 		}
@@ -70,7 +73,7 @@ impl Context {
 	}
 
 	pub fn gen_table_file_path(&self, table_name: &str) -> Result<PathBuf, Error> {
-		if self.root_dir_path.len() == 0 ||
+		if self.root_dir_path.as_os_str().is_empty() ||
 		   self.using_db_name.len() == 0 {
 		   	return err_runtime!("invalid state in gen table file path");
 		}
@@ -81,7 +84,7 @@ impl Context {
 	}
 
 	pub fn gen_tmp_table_file_path(&self, table_name: &str) -> Result<PathBuf, Error> {
-		if self.root_dir_path.len() == 0 ||
+		if self.root_dir_path.as_os_str().is_empty() ||
 		   self.using_db_name.len() == 0 {
 		   	return err_runtime!("invalid state in gen table file path");
 		}

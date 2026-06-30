@@ -92,22 +92,25 @@
 	- Filter (WHERE id == 123)
 	- CsvScan (read mytab)
 
-## SET
-
-> SET ALL name = "taro" OF mytab WHERE id > 123;
-
-	CsvFileRewrite (create new CSV file. and delete old CSV file)
-	- Insert (insert updated row to new CSV file)
-	 - Update (name = "taro")
-	  - Filter (WHERE id > 123)
-	   - CsvScan (mytab)
-
 ## ADD
 
 > ADD id = 1, name = "taro" OF mytab;
 
 	CsvAppend (insert row to CSV file)
 	- Values (id = 1, name = "taro")
+
+## SET
+
+> SET name = "taro" OF mytab;
+> SET name = "taro" OF mytab WHERE id > 123;
+> SET ALL name = "taro" OF mytab WHERE id > 123;
+> SET ALL name = "taro" OF mytab;
+
+	CsvFileRewrite (create new CSV file. and delete old CSV file)
+	 - RowUpdate
+	  - Project
+	   - Filter (WHERE id > 123)
+	   - CsvScan (mytab)
 
 ## DEL
 
@@ -116,9 +119,10 @@
 > DEL OF mytab;
 
 	CsvFileRewrite (open CSV file. and save CSV file)
-	 - Project 
-	  - Filter (WHERE id > 100)
-      - CsvScan (read mytab)
+	 - RowDelete
+	  - Project 
+	   - Filter (WHERE id > 100)
+       - CsvScan (read mytab)
 
 ## BNF
 
