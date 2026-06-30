@@ -78,10 +78,12 @@ pub fn exec_use_db(context: &mut Context, node: &planner::UseDatabaseNode) -> Re
 }
 
 pub fn print_selected_columns(context: &mut Context) -> Result<(), Error> {
-	for col in context.selected_csv_columns.iter() {
-		print!("{} ", col);
+	if context.selected_csv_columns.len() > 0 {
+		for col in context.selected_csv_columns.iter() {
+			print!("{} ", col);
+		}
+		println!("");
 	}
-	println!("");
 	Ok(())
 }
 
@@ -1518,7 +1520,7 @@ mod tests {
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,HOGE\n2,3.14,HOGE\n");
 	}
-	
+
 	#[test]
 	fn test_set_stmt_4() {
 		let path = Path::new("test_env").join("test_db").join("test_table.csv");
