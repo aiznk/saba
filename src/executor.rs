@@ -65,16 +65,14 @@ fn csv_header_to_idents(headers: &StringRecord) -> Vec<String> {
 pub fn find_header_position(headers: &StringRecord, col_name: &str) -> Result<Option<usize>, Error> {
 	let header_idents = csv_header_to_idents(headers);
 
-	if let Some(index) = header_idents.iter().position(|s| {
-		println!("s[{}] col_name[{}]", *s, col_name);
-		*s == col_name
-	}) {
+	if let Some(index) = header_idents.iter().position(|s| *s == col_name) {
 		return Ok(Some(index));
 	}
 
 	Ok(None)
 }
 
+#[allow(dead_code)]
 fn print_vec_string(v: &Vec<String>) {
 	for el in v.iter() {
 		print!("[{}] ", el);
@@ -106,14 +104,7 @@ fn open_append_writer(path: &PathBuf) -> Result<Writer<fs::File>, Error> {
 
 pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppendNode) -> Result<(), Error> {
 	let path = context.gen_table_file_path(&node.table_name)?;
-    
-    let headers: StringRecord = {
-    	let mut reader = open_reader(&path)?;
-    	match reader.headers() {
-    		Ok(v) => v.clone(),
-    		Err(e) => return err_exec!("failed to read CSV headers. {}", e),
-    	}
-    };
+    let headers = read_table_headers(context, &node.table_name)?;
 	let mut row: Vec<String> = gen_default_record(&headers)?;
     let mut writer = open_append_writer(&path)?;
 
@@ -124,7 +115,6 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
 			if let Some(o) = context.vars.get(key.as_str()) {
 				let index = find_header_position(&headers, key.as_str())?;
 				if let Some(index) = index {
-					println!("[{}] [{}]", index, o.to_string());
 					row[index] = o.to_string();
 				}
 			} else {
