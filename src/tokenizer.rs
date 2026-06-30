@@ -55,6 +55,7 @@ pub struct Token {
 }
 
 impl Token {
+	#[allow(dead_code)]
 	pub fn new() -> Self {
 		Self {
 			kind: TokenKind::Nil,
@@ -115,10 +116,12 @@ impl TokenStream {
 		}
 	}
 
+	#[allow(dead_code)]
 	pub fn next(&mut self) {
 		self.index += 1;
 	}
 
+	#[allow(dead_code)]
 	pub fn cur(&self) -> Result<&Token, Error> {
 		if self.index >= self.tokens.len() {
 			return err_runtime!("index out of range (cur)");
@@ -206,6 +209,7 @@ fn read_ident(i: &mut usize, chars: &Vec<char>) -> Token {
 	Token::from(TokenKind::Ident, Some(text))
 }
 
+#[allow(dead_code)]
 pub fn show_tokens(tokens: &Vec<Token>) {
 	for (i, tok) in (*tokens).iter().enumerate() {
 		println!("{}: {:?}", i, tok);
@@ -218,7 +222,7 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 	let mut ret: Vec<Token> = vec![];
 
 	while i < chars.len() {
-		let mut c1: char = '?';
+		let c1: char;
 		let mut c2: char = '?';
 		let mut c3: char = '?';
 		let mut c4: char = '?';

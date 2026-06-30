@@ -589,19 +589,6 @@ fn unwrap_compare_expr_object(node: &Box<parser::CompareExprNode>) -> Result<Obj
 	err_planning!("failed")
 }
 
-fn unwrap_logic_expr_object(node: &Box<parser::LogicExprNode>) -> Result<Object, Error> {
-	if node.nodes.len() == 0 {
-		return err_planning!("nodes len is 0 in unwrap logic expr object");
-	} else if node.nodes.len() >= 2 {
-		return err_planning!("over nodes len in unwrap logic expr object");
-	}
-	let item: &parser::LogicExprItemNode = &node.nodes[0];
-	if let parser::LogicExprItemNode::Left(compare_expr) = item {
-		return Ok(unwrap_compare_expr_object(&compare_expr)?);
-	}
-	err_planning!("failed")
-}
-
 fn unwrap_operand_object(node: &Box<parser::OperandNode>) -> Result<Object, Error> {
 	if let Some(ident) = &node.ident {
 		return Ok(unwrap_ident_object(&ident)?);

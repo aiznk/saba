@@ -72,6 +72,7 @@ impl Context {
 		Ok(path)		
 	}
 
+	#[allow(dead_code)]
 	pub fn gen_using_db_dir_path(&self) -> Result<PathBuf, Error> {
 		if self.root_dir_path.as_os_str().is_empty() ||
 		   self.using_db_name.len() == 0 {

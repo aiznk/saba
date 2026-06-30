@@ -336,32 +336,6 @@ pub enum CompareOpNode {
 }
 
 #[derive(Debug, Clone)]
-pub enum LogicExprItemNode {
-	Left(Box<CompareExprNode>),
-	Op(LogicOpNode),
-	Right(Box<CompareExprNode>),
-}
-
-#[derive(Debug, Clone)]
-pub struct LogicExprNode {
-	pub nodes: Vec<LogicExprItemNode>,
-}
-
-impl LogicExprNode {
-	pub fn new() -> Self {
-		Self {
-			nodes: vec![],
-		}
-	}
-}
-
-#[derive(Debug, Clone)]
-pub enum LogicOpNode {
-	And,
-	Or,
-}
-
-#[derive(Debug, Clone)]
 pub struct OperandNode {
 	pub i64_value: Option<Box<IntValueNode>>,
 	pub f64_value: Option<Box<FloatValueNode>>,
@@ -1131,58 +1105,6 @@ pub fn parse_compare_op(tok_strm: &mut TokenStream) -> Result<Option<Box<Compare
 	}
 }
 
-pub fn parse_logic_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<LogicExprNode>>, Error> {
-	let mut n = LogicExprNode::new();
-
-	if tok_strm.is_end() {
-		return Ok(None);
-	}
-
-	let left = parse_compare_expr(tok_strm)?;
-	if left.is_none() {
-		return Ok(None);
-	}
-
-	let node = LogicExprItemNode::Left(left.unwrap());
-	n.nodes.push(node);
-
-	while !tok_strm.is_end() {
-		let op = parse_logic_op(tok_strm)?;
-		if op.is_none() {
-			break;
-		}
-
-		let node = LogicExprItemNode::Op(*op.unwrap());
-		n.nodes.push(node);
-
-		let right = parse_compare_expr(tok_strm)?;
-		if right.is_none() {
-			return err_parse!("missing right hand operand in logic expr");
-		}
-
-		let node = LogicExprItemNode::Right(right.unwrap());
-		n.nodes.push(node);
-	}
-
-	Ok(Some(Box::new(n)))
-}
-
-pub fn parse_logic_op(tok_strm: &mut TokenStream) -> Result<Option<Box<LogicOpNode>>, Error> {
-	if tok_strm.is_end() {
-		return Ok(None);
-	}
-
-	let tok = tok_strm.get()?;
-	if tok.kind == TokenKind::And {
-		return Ok(Some(Box::new(LogicOpNode::And)));
-	} else if tok.kind == TokenKind::Or {
-		return Ok(Some(Box::new(LogicOpNode::Or)));
-	} else {
-		tok_strm.prev();
-		return Ok(None);
-	}
-}
-
 pub fn parse_operand(tok_strm: &mut TokenStream) -> Result<Option<Box<OperandNode>>, Error> {
 	let mut n = OperandNode::new();
 
@@ -1321,7 +1243,7 @@ mod tests {
 			}
 		};
 		let mut strm = TokenStream::new(tokens);
-		let node = match parse(&mut strm) {
+		match parse(&mut strm) {
 			Ok(v) => v,
 			Err(e) => {
 				eprintln!("{}", e);
