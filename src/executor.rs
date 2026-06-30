@@ -41,8 +41,58 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 	Ok(())
 }
 
-pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppendNode) -> Result<(), Error> {
-	let path = context.gen_table_file_path(&node.table_name)?;
+pub fn gen_default_record(headers: &StringRecord) -> Result<Vec<String>, Error> {
+	let len = headers.len();
+	let mut v: Vec<String> = vec![];
+
+	for _ in 0..len {
+		v.push("".to_string());
+	}
+
+	Ok(v)
+}
+
+fn csv_header_to_idents(headers: &StringRecord) -> Vec<String> {
+	let mut header_idents: Vec<String> = vec![];
+	for header in headers.iter() {
+		if let Some((left, _right)) = header.split_once(":") {
+			header_idents.push(left.trim().to_string());
+		}
+	}
+	header_idents
+}
+
+pub fn find_header_position(headers: &StringRecord, col_name: &str) -> Result<Option<usize>, Error> {
+	let header_idents = csv_header_to_idents(headers);
+
+	if let Some(index) = header_idents.iter().position(|s| {
+		println!("s[{}] col_name[{}]", *s, col_name);
+		*s == col_name
+	}) {
+		return Ok(Some(index));
+	}
+
+	Ok(None)
+}
+
+fn print_vec_string(v: &Vec<String>) {
+	for el in v.iter() {
+		print!("[{}] ", el);
+	}
+	println!("");
+	std::io::stdout().flush().unwrap();
+}
+
+fn open_reader(path: &PathBuf) -> Result<Reader<fs::File>, Error> {
+	let file = match fs::File::open(&path) {
+    	Ok(v) => v,
+    	Err(e) => return err_exec!("failed to open file on append: {}", e),
+    };
+    let reader = Reader::from_reader(file);
+    Ok(reader)
+}
+
+fn open_append_writer(path: &PathBuf) -> Result<Writer<fs::File>, Error> {
 	let file = match OpenOptions::new()
         .append(true)
         .create(true)
@@ -50,19 +100,39 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
     	Ok(v) => v,
     	Err(e) => return err_exec!("failed to open file on append: {}", e),
     };
-    let mut writer = Writer::from_writer(file);
+    let writer = Writer::from_writer(file);
+    Ok(writer)
+}
 
-	let mut row: Vec<String> = vec![];
+pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppendNode) -> Result<(), Error> {
+	let path = context.gen_table_file_path(&node.table_name)?;
+    
+    let headers: StringRecord = {
+    	let mut reader = open_reader(&path)?;
+    	match reader.headers() {
+    		Ok(v) => v.clone(),
+    		Err(e) => return err_exec!("failed to read CSV headers. {}", e),
+    	}
+    };
+	let mut row: Vec<String> = gen_default_record(&headers)?;
+    let mut writer = open_append_writer(&path)?;
 
 	if let Some(expr_list) = &node.expr_list {
 		let objs = exec_expr_list(context, &expr_list)?;
 		for obj in objs.iter() {
-			if let Some(o) = context.vars.get(obj.to_string().as_str()) {
-				row.push(o.to_string());
+			let key = obj.to_string();
+			if let Some(o) = context.vars.get(key.as_str()) {
+				let index = find_header_position(&headers, key.as_str())?;
+				if let Some(index) = index {
+					println!("[{}] [{}]", index, o.to_string());
+					row[index] = o.to_string();
+				}
 			} else {
 				return err_exec!("failed to get value of vars");
 			}
 		}
+	} else {
+		return err_exec!("invalid state: csv file append");
 	}
 
 	match writer.write_record(&row) {
@@ -1210,7 +1280,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_csv_file_append() {
+	fn test_add_stmt_0() {
 		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
@@ -1224,6 +1294,24 @@ mod tests {
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+	}
+
+	#[test]
+	fn test_add_stmt_1() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1 OF test_table").unwrap();
+		do_exec(&mut context, "ADD weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,,\n,3.14,hoge\n");
 	}
 
 	#[test]
