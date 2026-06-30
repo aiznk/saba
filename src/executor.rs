@@ -1093,7 +1093,7 @@ pub fn exec_dir_delete_all(context: &mut Context, node: &planner::DirDeleteAllNo
 pub fn exec_dir_list(context: &mut Context, node: &planner::DirListNode) -> Result<(), Error> {
 	if node.csv_file_grep.is_some() {
 		// show tables
-		let path = context.gen_using_db_dir_path()?;
+		let path = context.gen_using_db_tables_path()?;
 		let dir = match fs::read_dir(&path) {
 			Ok(v) => v,
 			Err(e) => return err_exec!("failed to read dir: {}", e),
@@ -1370,7 +1370,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_csv_file_create() {
+	fn test_create_table_stmt_0() {
 		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
@@ -1381,6 +1381,20 @@ mod tests {
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64\n");
+	}
+
+	#[test]
+	fn test_create_table_stmt_1() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64 PRIMARY_KEY AUTO_INCREMENT, weight: F64, name: CHAR[4])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64 PRIMARY_KEY AUTO_INCREMENT,weight: F64,name: CHAR[4]\n");
 	}
 
 	#[test]

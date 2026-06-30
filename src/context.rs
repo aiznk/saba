@@ -61,6 +61,17 @@ impl Context {
 		Ok(path)		
 	}
 
+	pub fn gen_using_db_tables_path(&self) -> Result<PathBuf, Error> {
+		if self.root_dir_path.as_os_str().is_empty() ||
+		   self.using_db_name.len() == 0 {
+		   	return err_runtime!("invalid state in gen using db dir path");
+		}
+
+		let path = Path::new(&self.root_dir_path).join(&self.using_db_name).join("tables");
+
+		Ok(path)		
+	}
+
 	pub fn gen_using_db_dir_path(&self) -> Result<PathBuf, Error> {
 		if self.root_dir_path.as_os_str().is_empty() ||
 		   self.using_db_name.len() == 0 {
