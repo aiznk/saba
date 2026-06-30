@@ -1,6 +1,7 @@
 use crate::parser::{QueryNode};
 use crate::parser;
 use crate::error::{Error, make_error, err_planning};
+use crate::tokenizer::{TokenKind};
 
 pub struct PlansNode {
 	pub plans: Vec<PlanNode>,
@@ -161,6 +162,7 @@ impl CsvFileAppendNode {
 }
 
 pub struct ProjectNode {
+	pub method: TokenKind,
 	pub get_stmt_idents: Vec<String>,
 	pub csv_scan: Option<Box<CsvScanNode>>,
 	pub filter: Option<Box<FilterNode>>,
@@ -169,6 +171,7 @@ pub struct ProjectNode {
 impl ProjectNode {
 	pub fn new() -> Self {
 		Self {
+			method: TokenKind::Nil,
 			get_stmt_idents: vec![],
 			csv_scan: None,
 			filter: None,
@@ -436,6 +439,8 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 	let mut row_delete = RowDeleteNode::new();
 	let mut project = ProjectNode::new();
 
+	project.method = TokenKind::Del;
+
 	if let Some(table) = &node.table {
 		let ident = unwrap_ident(&table)?;
 		let mut csv_scan = CsvScanNode::new();
@@ -463,6 +468,8 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 	let mut row_update = RowUpdateNode::new();
 	let mut project = ProjectNode::new();
 
+	project.method = TokenKind::Set;
+	
 	if let Some(expr_list) = &node.expr_list {
 		row_update.expr_list = Some(expr_list.clone());
 	} else {
@@ -496,6 +503,8 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 
 pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
 	let mut project = ProjectNode::new();
+
+	project.method = TokenKind::Get;
 
 	if let Some(expr_list) = &node.expr_list {
 		for expr in expr_list.exprs.iter() {

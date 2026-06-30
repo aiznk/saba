@@ -1,6 +1,7 @@
 use crate::error::{Error, make_error, err_exec};
 use crate::parser;
 use crate::planner;
+use crate::tokenizer::{TokenKind};
 use crate::context::{Context};
 use crate::objects::{Object, ObjectKind};
 use std::path::{Path, PathBuf};
@@ -94,10 +95,12 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 		}
 		if let Some(csv_scan) = &node.csv_scan {
 			while exec_csv_scan(context, csv_scan)? {
-				select_get_columns(context, node)?;
 				context.matched_csv_record = context.csv_record.clone();
-				if context.is_cli {
-					print_selected_columns(context)?;
+				if node.method == TokenKind::Get {
+					select_get_columns(context, node)?;
+					if context.is_cli {
+						print_selected_columns(context)?;
+					}
 				}
 				if let Some(records) = context.test_get_records.as_mut() {
 					records.push(context.csv_record.clone());
