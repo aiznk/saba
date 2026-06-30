@@ -422,6 +422,7 @@ pub fn gen_csv_head_col_type_by_column_type(column_type: &parser::ColumnTypeNode
 		parser::ColumnTypeNode::I64 => Ok(String::from("I64")),
 		parser::ColumnTypeNode::F64 => Ok(String::from("F64")),
 		parser::ColumnTypeNode::Char(nelems) => Ok(format!("CHAR[{}]", nelems)),
+		parser::ColumnTypeNode::Bool => Ok(String::from("BOOL")),
 	}
 }
 

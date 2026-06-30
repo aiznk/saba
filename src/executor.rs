@@ -1440,6 +1440,7 @@ mod tests {
 			Err(e) => eprintln!("OK: {}", e),
 		}
 	}
+	
 	#[test]
 	fn test_get_stmt_0() {
 		let path = gen_test_table_path();

@@ -20,6 +20,7 @@ pub enum TokenKind {
 	Tables, // TABLES
 	I64,
 	F64,
+	Bool,
 	Char, // CHAR
 	If, // IF
 	Exists, // EXISTS
@@ -314,6 +315,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'c' && c2 == 'h' && c3 == 'a' && c4 == 'r' {
 			ret.push(Token::from(TokenKind::Char, None));
 			i += 3;
+		} else if c1 == 'b' && c2 == 'o' && c3 == 'o' && c4 == 'l' {
+			ret.push(Token::from(TokenKind::Bool, None));
+			i += 3;
 		} else if c1 == 'o' && c2 == 'r' {
 			ret.push(Token::from(TokenKind::Or, None));
 			i += 1;
@@ -347,8 +351,8 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 			i += 10;
 		} else if c1 == 'a' && c2 == 'u' && c3 == 't' && c4 == 'o' && c5 == '_' && c6 == 'i' && c7 == 'n' && c8 == 'c' && c9 == 'r' && c10 == 'e' && c11 == 'm' && c12 == 'e' && c13 == 'n' && c14 == 't' {
 			// auto_increment
-			ret.push(Token::from(TokenKind::PrimaryKey, None));
-			i += 10;
+			ret.push(Token::from(TokenKind::AutoIncrement, None));
+			i += 13;
 		} else if c1 == 'i' && c2 == 'f' {
 			ret.push(Token::from(TokenKind::If, None));
 			i += 1;

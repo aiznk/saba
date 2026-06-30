@@ -150,6 +150,7 @@ pub enum ColumnTypeNode {
 	AutoIncrement,
 	I64,
 	F64,
+	Bool,
 	Char(usize),
 }
 
@@ -454,7 +455,7 @@ pub fn parse(tok_strm: &mut TokenStream) -> Result<QueryNode, Error> {
 
 		let tok = tok_strm.get()?;
 		if tok.kind != TokenKind::Semicolon {
-			return err_parse!("missing semicolon in stmt");
+			return err_parse!("missing semicolon in stmt: {:?}", tok);
 		}
 	}
 
@@ -675,6 +676,7 @@ pub fn parse_create_table(tok_strm: &mut TokenStream) -> Result<Option<Box<Creat
 	while !tok_strm.is_end() {
 		let tok = tok_strm.get()?;
 		if tok.kind != TokenKind::Comma {
+			tok_strm.prev();
 			break;
 		}
 
@@ -687,6 +689,11 @@ pub fn parse_create_table(tok_strm: &mut TokenStream) -> Result<Option<Box<Creat
 			break;
 		}
 		n.column_definitions.push(column_definition.unwrap());
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::RParen {
+		return err_parse!("missing ) in create table");
 	}
 
 	Ok(Some(Box::new(n)))
@@ -744,6 +751,8 @@ pub fn parse_column_type(tok_strm: &mut TokenStream) -> Result<Option<ColumnType
 		return Ok(Some(ColumnTypeNode::I64));		
 	} else if tok.kind == TokenKind::F64 {
 		return Ok(Some(ColumnTypeNode::F64));		
+	} else if tok.kind == TokenKind::Bool {
+		return Ok(Some(ColumnTypeNode::Bool));		
 	} else if tok.kind == TokenKind::Char {
 		let tok = tok_strm.get()?;
 		if tok.kind != TokenKind::LBracket {
@@ -1338,6 +1347,14 @@ mod tests {
 		assert!(do_parse("CREATE TABLE mytab (id: I64);") == true);
 	}
 
+	#[test]
+	fn test_create_table_stmt_0a() {
+		assert!(do_parse("
+create table mytab (id: i64 auto_increment)
+") == true);
+	}
+
+	#[test]
 	fn test_create_table_stmt_1() {
 		assert!(do_parse("
 CREATE TABLE mytab (
