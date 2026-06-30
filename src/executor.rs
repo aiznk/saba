@@ -455,11 +455,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							Ok(compare_objects(context, &lo, op, rhs)?)
-						},
-						ObjectKind::F64 => {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
 						},
@@ -512,11 +510,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							Ok(compare_objects(context, &lo, op, rhs)?)
-						},
-						ObjectKind::F64 => {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
 						},
@@ -569,11 +565,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							Ok(compare_objects(context, &lo, op, rhs)?)
-						},
-						ObjectKind::F64 => {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
 						},
@@ -626,11 +620,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							Ok(compare_objects(context, &lo, op, rhs)?)
-						},
-						ObjectKind::F64 => {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
 						},
@@ -1160,6 +1152,14 @@ mod tests {
 	use crate::parser::{QueryNode, parse};
 	use crate::planner::{PlansNode, planning};
 
+	fn setup(context: &mut Context) {
+		if Path::new("test_env/test_db").exists() {
+			fs::remove_dir_all("test_env/test_db").unwrap();
+		}
+		do_exec(context, "CREATE DATABASE test_db").unwrap();
+		do_exec(context, "USE test_db").unwrap();
+	}
+
 	fn remove_file<P: AsRef<Path>>(path: P) {
 		if path.as_ref().exists() {
 			fs::remove_file(path).unwrap();
@@ -1188,23 +1188,23 @@ mod tests {
 
 	#[test]
 	fn test_dir_create() {
-		let path = Path::new("test_env").join("mydb");
+		let path = Path::new("test_env").join("test_db");
 		if path.exists() {
 			fs::remove_dir_all(&path).unwrap();
 		}
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		assert!(path.exists());
 	}
 
 	#[test]
 	fn test_csv_file_create() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE MyTable (id: I64, weight: F64)").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64)").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64\n");
@@ -1212,53 +1212,53 @@ mod tests {
 
 	#[test]
 	fn test_csv_file_append() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 	}
 
 	#[test]
 	fn test_get_stmt_0() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
-		do_exec(&mut context, "GET id, name OF mytable").unwrap();
+		do_exec(&mut context, "GET id, name OF test_table").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "1");
 		assert!(context.selected_csv_columns[1] == "hige");
-		do_exec(&mut context, "GET ALL id, name OF mytable").unwrap();
+		do_exec(&mut context, "GET ALL id, name OF test_table").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
 		assert!(context.selected_csv_columns[1] == "hoge");
-		do_exec(&mut context, "GET id, name OF mytable WHERE id == 2").unwrap();
+		do_exec(&mut context, "GET id, name OF test_table WHERE id == 2").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
 		assert!(context.selected_csv_columns[1] == "hoge");
-		do_exec(&mut context, "GET id, name OF mytable WHERE name == \"hoge\"").unwrap();
+		do_exec(&mut context, "GET id, name OF test_table WHERE name == \"hoge\"").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
 		assert!(context.selected_csv_columns[1] == "hoge");
-		do_exec(&mut context, "GET id, name OF mytable WHERE id == 1 AND name == \"hige\"").unwrap();
+		do_exec(&mut context, "GET id, name OF test_table WHERE id == 1 AND name == \"hige\"").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "1");
 		assert!(context.selected_csv_columns[1] == "hige");
@@ -1276,63 +1276,63 @@ mod tests {
 
 	#[test]
 	fn test_get_stmt_or_0() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		context.test_get_records = Some(vec![]);
-		do_exec(&mut context, "GET ALL id, name OF mytable WHERE id == 1 OR name == \"hoge\"").unwrap();
+		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR name == \"hoge\"").unwrap();
 		let s = csv_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n")
 	}
 
 	#[test]
 	fn test_get_stmt_and_0() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		context.test_get_records = Some(vec![]);
-		do_exec(&mut context, "GET ALL id, name OF mytable WHERE id == 1 AND name == \"hige\"").unwrap();
+		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n")
 	}
 
 	#[test]
 	fn test_get_stmt_or_and_0() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		context.test_get_records = Some(vec![]);
-		do_exec(&mut context, "GET ALL id, name OF mytable WHERE id == 1 OR weight == 3.14 AND name == \"hige\"").unwrap();
+		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR weight == 3.14 AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n")
 	}
@@ -1340,38 +1340,38 @@ mod tests {
 	#[test]
 	fn test_drop_db() {
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		assert!(Path::new("test_env").join("mydb").exists());
-		do_exec(&mut context, "DROP DATABASE mydb").unwrap();
-		assert!(!Path::new("test_env").join("mydb").exists());
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		assert!(Path::new("test_env").join("test_db").exists());
+		do_exec(&mut context, "DROP DATABASE test_db").unwrap();
+		assert!(!Path::new("test_env").join("test_db").exists());
 	}
 
 	#[test]
 	fn test_drop_table() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
 		assert!(path.exists());
-		do_exec(&mut context, "DROP TABLE mytable").unwrap();
+		do_exec(&mut context, "DROP TABLE test_table").unwrap();
 		assert!(!path.exists());
 	}
 
 	#[test]
 	fn test_del_stmt_0() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
-		do_exec(&mut context, "DEL ALL OF mytable").unwrap();
+		do_exec(&mut context, "DEL ALL OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		println!("[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
@@ -1379,85 +1379,85 @@ mod tests {
 
 	#[test]
 	fn test_del_stmt_1() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
-		do_exec(&mut context, "DEL ALL OF mytable WHERE id == 1").unwrap();
+		do_exec(&mut context, "DEL ALL OF test_table WHERE id == 1").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n");
 	}
 
 	#[test]
 	fn test_set_stmt_0() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
-		do_exec(&mut context, "SET ALL id=10 OF mytable WHERE weight == 3.14").unwrap();
+		do_exec(&mut context, "SET ALL id=10 OF test_table WHERE weight == 3.14").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n10,3.14,hige\n10,3.14,hoge\n");
 	}
 
 	#[test]
 	fn test_set_stmt_0a() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
-		do_exec(&mut context, "SET ALL id=10, name=\"HOGE\" OF mytable WHERE weight == 1234").unwrap();
+		do_exec(&mut context, "SET ALL id=10, name=\"HOGE\" OF test_table WHERE weight == 1234").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 	}
 
 	#[test]
 	fn test_set_stmt_1() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
-		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF mytable WHERE weight == 3.14").unwrap();
+		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF test_table WHERE weight == 3.14").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n10,3.14,HOGE\n2,3.14,hoge\n");
 	}
 
 	#[test]
 	fn test_set_stmt_2() {
-		let path = Path::new("test_env").join("mydb").join("mytable.csv");
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
 		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE mydb").unwrap();
-		do_exec(&mut context, "USE mydb").unwrap();
-		do_exec(&mut context, "CREATE TABLE mytable (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF mytable").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF mytable").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
-		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF mytable WHERE name == \"hoge\"").unwrap();
+		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF test_table WHERE name == \"hoge\"").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n10,3.14,HOGE\n");
 	}
