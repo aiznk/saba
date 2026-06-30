@@ -1492,15 +1492,8 @@ mod tests {
 	#[test]
 	fn test_set_stmt_1() {
 		let path = Path::new("test_env").join("test_db").join("test_table.csv");
-		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
-		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		setup_records!(context);
 		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF test_table WHERE weight == 3.14").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n10,3.14,HOGE\n2,3.14,hoge\n");
@@ -1509,17 +1502,30 @@ mod tests {
 	#[test]
 	fn test_set_stmt_2() {
 		let path = Path::new("test_env").join("test_db").join("test_table.csv");
-		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
-		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		setup_records!(context);
 		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF test_table WHERE name == \"hoge\"").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n10,3.14,HOGE\n");
+	}
+
+	#[test]
+	fn test_set_stmt_3() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let mut context = Context::new();
+		setup_records!(context);
+		do_exec(&mut context, "SET ALL name=\"HOGE\" OF test_table WHERE weight == 3.14").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,HOGE\n2,3.14,HOGE\n");
+	}
+	
+	#[test]
+	fn test_set_stmt_4() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let mut context = Context::new();
+		setup_records!(context);
+		do_exec(&mut context, "SET ALL name=\"HOGE\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,HOGE\n2,3.14,HOGE\n");
 	}
 }
