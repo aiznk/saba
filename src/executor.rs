@@ -1310,21 +1310,27 @@ mod tests {
 		assert!(s == "1,3.14,hige\n");
 	}
 
+	macro_rules! setup_records {
+	    ($context:ident) => {
+    		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+			remove_file(&path);
+			do_exec(&mut $context, "CREATE DATABASE test_db").unwrap();
+			do_exec(&mut $context, "USE test_db").unwrap();
+			do_exec(&mut $context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+			assert!(path.exists());
+			let s = fs::read_to_string(&path).unwrap();
+			assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+			do_exec(&mut $context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+			do_exec(&mut $context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+			let s = fs::read_to_string(&path).unwrap();
+			assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+	    };
+	}
+
 	#[test]
 	fn test_get_stmt_or_and_0() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
-		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
-		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		assert!(path.exists());
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR weight == 3.14 AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
@@ -1333,19 +1339,8 @@ mod tests {
 
 	#[test]
 	fn test_get_stmt_or_and_1() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
-		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
-		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		assert!(path.exists());
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR weight == 100.0 AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
@@ -1354,19 +1349,8 @@ mod tests {
 
 	#[test]
 	fn test_get_stmt_or_and_2() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
-		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
-		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		assert!(path.exists());
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 0 OR weight == 100.0 AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
@@ -1375,19 +1359,8 @@ mod tests {
 
 	#[test]
 	fn test_get_stmt_or_and_3() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
-		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
-		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		assert!(path.exists());
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 0 OR weight == 3.14 AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
@@ -1396,19 +1369,8 @@ mod tests {
 
 	#[test]
 	fn test_get_stmt_or_and_4() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
-		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
-		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		assert!(path.exists());
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE (id == 0 OR weight == 3.14) AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
@@ -1417,19 +1379,8 @@ mod tests {
 
 	#[test]
 	fn test_get_stmt_or_and_4a() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
-		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
-		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		assert!(path.exists());
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE (id == 1 OR weight == 60) AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
@@ -1439,19 +1390,8 @@ mod tests {
 
 	#[test]
 	fn test_get_stmt_or_and_5() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
-		remove_file(&path);
 		let mut context = Context::new();
-		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
-		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
-		assert!(path.exists());
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
-		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
-		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
-		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE (id == 0 OR weight == 3.14) AND name == \"moge\"").unwrap();
 		let s = csv_records_to_string(&mut context);
