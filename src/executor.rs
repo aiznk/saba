@@ -113,9 +113,10 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
 		for obj in objs.iter() {
 			let key = obj.to_string();
 			if let Some(o) = context.vars.get(key.as_str()) {
-				let index = find_header_position(&headers, key.as_str())?;
-				if let Some(index) = index {
+				if let Some(index) = find_header_position(&headers, key.as_str())? {
 					row[index] = o.to_string();
+				} else {
+					return err_exec!("invalid column: {}", key);
 				}
 			} else {
 				return err_exec!("failed to get value of vars");
@@ -922,7 +923,9 @@ pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) ->
 				return *s == *get_ident;
 			}) {
 			indices.push(index);
-		}	
+		} else {
+			return err_exec!("invalid column: {}", get_ident);
+		}
 	}
 
 	context.selected_csv_columns.clear();
@@ -1536,6 +1539,24 @@ mod tests {
 		do_exec(&mut context, "DEL ALL OF test_table WHERE id == 1").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n");
+	}
+
+	#[test]
+	fn test_del_stmt_2() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n");
+		do_exec(&mut context, "DEL ALL OF test_table WHERE id == 2").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n3,3.14,moge\n");
 	}
 
 	#[test]
