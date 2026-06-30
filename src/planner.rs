@@ -530,13 +530,33 @@ fn unwrap_expr_ident(node: &Box<parser::ExprNode>) -> Result<String, Error> {
 }
 
 fn unwrap_ass_expr_ident(node: &Box<parser::AssExprNode>) -> Result<String, Error> {
-	if node.right_logic_expr.is_some() {
+	if node.right_or_expr.is_some() {
 		return err_planning!("can't assign in ass expr: a = b");
 	}
-	if let Some(logic_expr) = &node.left_logic_expr {
-		return Ok(unwrap_logic_expr_ident(&logic_expr)?);
+	if let Some(or_expr) = &node.left_or_expr {
+		return Ok(unwrap_or_expr_ident(or_expr)?);
 	}
 	err_planning!("failed")
+}
+
+fn unwrap_or_expr_ident(node: &Box<parser::OrExprNode>) -> Result<String, Error> {
+	if node.nodes.len() == 0 {
+		return err_planning!("nodes len is 0 in unwrap or expr ident");
+	} else if node.nodes.len() >= 2 {
+		return err_planning!("over nodes len in unwrap or expr ident");
+	}
+	let n = &node.nodes[0];
+	return Ok(unwrap_and_expr_ident(n)?);
+}
+
+fn unwrap_and_expr_ident(node: &Box<parser::AndExprNode>) -> Result<String, Error> {
+	if node.nodes.len() == 0 {
+		return err_planning!("nodes len is 0 in unwrap or expr ident");
+	} else if node.nodes.len() >= 2 {
+		return err_planning!("over nodes len in unwrap or expr ident");
+	}
+	let n = &node.nodes[0];
+	return Ok(unwrap_compare_expr_ident(n)?);
 }
 
 fn unwrap_compare_expr_ident(node: &Box<parser::CompareExprNode>) -> Result<String, Error> {

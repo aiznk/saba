@@ -262,15 +262,41 @@ impl ExprNode {
 
 #[derive(Debug, Clone)]
 pub struct AssExprNode {
-	pub left_logic_expr: Option<Box<LogicExprNode>>,
-	pub right_logic_expr: Option<Box<LogicExprNode>>,
+	pub left_or_expr: Option<Box<OrExprNode>>,
+	pub right_or_expr: Option<Box<OrExprNode>>,
 }
 
 impl AssExprNode {
 	pub fn new() -> Self {
 		Self {
-			left_logic_expr: None,
-			right_logic_expr: None,
+			left_or_expr: None,
+			right_or_expr: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct OrExprNode {
+	pub nodes: Vec<Box<AndExprNode>>,
+}
+
+impl OrExprNode {
+	pub fn new() -> Self {
+		Self {
+			nodes: vec![],
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct AndExprNode {
+	pub nodes: Vec<Box<CompareExprNode>>,
+}
+
+impl AndExprNode {
+	pub fn new() -> Self {
+		Self {
+			nodes: vec![],
 		}
 	}
 }
@@ -941,8 +967,8 @@ pub fn parse_ass_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<AssExprNo
 		return Ok(None);
 	}
 
-	n.left_logic_expr = parse_logic_expr(tok_strm)?;
-	if n.left_logic_expr.is_none() {
+	n.left_or_expr = parse_or_expr(tok_strm)?;
+	if n.left_or_expr.is_none() {
 		return Ok(None);
 	}
 
@@ -956,9 +982,69 @@ pub fn parse_ass_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<AssExprNo
 		return Ok(Some(Box::new(n)));
 	}
 
-	n.right_logic_expr = parse_logic_expr(tok_strm)?;
-	if n.right_logic_expr.is_none() {
+	n.right_or_expr = parse_or_expr(tok_strm)?;
+	if n.right_or_expr.is_none() {
 		return err_parse!("missing right hand operand in ass expr");
+	}
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_or_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<OrExprNode>>, Error> {
+	let mut n = OrExprNode::new();
+
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let and_expr = parse_and_expr(tok_strm)?;
+	if and_expr.is_none() {
+		return Ok(None);
+	}
+	n.nodes.push(and_expr.unwrap());
+
+	while !tok_strm.is_end() {
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::Or {
+			tok_strm.prev();
+			break;
+		}
+
+		let and_expr = parse_and_expr(tok_strm)?;
+		if and_expr.is_none() {
+			return err_parse!("failed to parse and expr in or expr");
+		}
+		n.nodes.push(and_expr.unwrap());
+	}
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_and_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<AndExprNode>>, Error> {
+	let mut n = AndExprNode::new();
+
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let compare_expr = parse_compare_expr(tok_strm)?;
+	if compare_expr.is_none() {
+		return Ok(None);
+	}
+	n.nodes.push(compare_expr.unwrap());
+
+	while !tok_strm.is_end() {
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::And {
+			tok_strm.prev();
+			break;
+		}
+
+		let compare_expr = parse_compare_expr(tok_strm)?;
+		if compare_expr.is_none() {
+			return err_parse!("failed to parse and expr in or expr");
+		}
+		n.nodes.push(compare_expr.unwrap());
 	}
 
 	Ok(Some(Box::new(n)))

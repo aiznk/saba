@@ -211,18 +211,18 @@ pub fn exec_ass_expr(context: &mut Context, node: &parser::AssExprNode) -> Resul
 	let lhs: Object;
 	let rhs: Object;
 
-	if let Some(logic_expr) = &node.left_logic_expr {
-		lhs = exec_logic_expr(context, logic_expr)?;
+	if let Some(or_expr) = &node.left_or_expr {
+		lhs = exec_or_expr(context, or_expr)?;
 	} else {
 		return err_exec!("impossible");
 	}
 
-	if node.right_logic_expr.is_none() {
+	if node.right_or_expr.is_none() {
 		return Ok(lhs);
 	}
 
-	if let Some(logic_expr) = &node.right_logic_expr {
-		rhs = exec_logic_expr(context, logic_expr)?;
+	if let Some(or_expr) = &node.right_or_expr {
+		rhs = exec_or_expr(context, or_expr)?;
 	} else {
 		return err_exec!("impossible");
 	}
@@ -238,35 +238,115 @@ pub fn exec_ass_expr(context: &mut Context, node: &parser::AssExprNode) -> Resul
 	Ok(lhs)
 }
 
-pub fn exec_logic_expr(context: &mut Context, node: &parser::LogicExprNode) -> Result<Object, Error> {
+pub fn or_objects(context: &mut Context, a: &Object, b: &Object) -> Result<Object, Error> {
+	match a.kind {
+		ObjectKind::Bool => {
+			match b.kind {
+				ObjectKind::Bool => {
+					let n = a.bool_value || b.bool_value;
+					Ok(Object::from_bool(n))
+				}
+				ObjectKind::Ident => {
+					let bo = refer_ident(context, &b.ident)?;
+					Ok(or_objects(context, a, &bo)?)
+				}
+				_ => return err_exec!("can't compare or"),
+			}
+		}
+		ObjectKind::Ident => {
+			match b.kind {
+				ObjectKind::Bool => {
+					let ao = refer_ident(context, &a.ident)?;
+					Ok(or_objects(context, &ao, b)?)
+				}
+				ObjectKind::Ident => {
+					let ao = refer_ident(context, &a.ident)?;
+					let bo = refer_ident(context, &b.ident)?;
+					Ok(or_objects(context, &ao, &bo)?)
+				}
+				_ => return err_exec!("can't compare or"),
+			}
+		}
+		_ => return err_exec!("can't compare or (2)"),
+	}	
+}
+
+pub fn and_objects(context: &mut Context, a: &Object, b: &Object) -> Result<Object, Error> {
+	match a.kind {
+		ObjectKind::Bool => {
+			match b.kind {
+				ObjectKind::Bool => {
+					let n = a.bool_value && b.bool_value;
+					Ok(Object::from_bool(n))
+				}
+				ObjectKind::Ident => {
+					let bo = refer_ident(context, &b.ident)?;
+					Ok(or_objects(context, a, &bo)?)
+				}
+				_ => return err_exec!("can't compare or"),
+			}
+		}
+		ObjectKind::Ident => {
+			match b.kind {
+				ObjectKind::Bool => {
+					let ao = refer_ident(context, &a.ident)?;
+					Ok(or_objects(context, &ao, b)?)
+				}
+				ObjectKind::Ident => {
+					let ao = refer_ident(context, &a.ident)?;
+					let bo = refer_ident(context, &b.ident)?;
+					Ok(or_objects(context, &ao, &bo)?)
+				}
+				_ => return err_exec!("can't compare or"),
+			}
+		}
+		_ => return err_exec!("can't compare or (2)"),
+	}	
+}
+
+pub fn exec_or_expr(context: &mut Context, node: &parser::OrExprNode) -> Result<Object, Error> {
 	let mut a;
 	let mut b;
 	let mut c;
 
-	if let parser::LogicExprItemNode::Left(compare_expr) = &node.nodes[0] {
-		a = exec_compare_expr(context, &*compare_expr)?;	
-	} else {
-		return err_exec!("impossible");
-	}
-
+	let lhs = &node.nodes[0];
+	a = exec_and_expr(context, &*lhs)?;
 	c = a.clone();
 
-	for i in (1..node.nodes.len()).step_by(2) {
-		let op = &node.nodes[i];
-		let rhs = &node.nodes[i+1];
+	if a.kind == ObjectKind::Bool &&
+	   a.bool_value {
+	   	return Ok(a);
+	}
 
-		if let parser::LogicExprItemNode::Right(compare_expr) = rhs {
-			b = exec_compare_expr(context, &*compare_expr)?;
-		} else {
-			return err_exec!("impossible");
-		}
+	for i in 1..node.nodes.len() {
+		let rhs = &node.nodes[i];
 
-		if let parser::LogicExprItemNode::Op(logic_op) = op {
-			c = logical_objects(context, &a, &logic_op, &b)?;
-			a = c.clone();
-		} else {
-			return err_exec!("impossible");
+		b = exec_and_expr(context, &*rhs)?;
+		c = or_objects(context, &a, &b)?;
+		a = c.clone();
+		if c.kind == ObjectKind::Bool &&
+		   c.bool_value {
+		   	break;
 		}
+	}
+
+	Ok(c)
+}
+
+pub fn exec_and_expr(context: &mut Context, node: &parser::AndExprNode) -> Result<Object, Error> {
+	let mut a;
+	let mut b;
+	let mut c;
+
+	let lhs = &node.nodes[0];
+	a = exec_compare_expr(context, &*lhs)?;
+	c = a.clone();
+
+	for i in 1..node.nodes.len() {
+		let rhs = &node.nodes[i];
+		b = exec_compare_expr(context, &*rhs)?;
+		c = and_objects(context, &a, &b)?;
+		a = c.clone();
 	}
 
 	Ok(c)
@@ -345,74 +425,6 @@ pub fn refer_ident(context: &mut Context, ident: &String) -> Result<Object, Erro
 	}
 }
 
-pub fn logical_objects(context: &mut Context, lhs: &Object, op: &parser::LogicOpNode, rhs: &Object) -> Result<Object, Error> {
-	match op {
-		parser::LogicOpNode::And => {
-			match lhs.kind {
-				ObjectKind::Bool => {
-					match rhs.kind {
-						ObjectKind::Bool => {
-							let b = lhs.bool_value && rhs.bool_value;
-							Ok(Object::from_bool(b))
-						},
-						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
-							Ok(logical_objects(context, lhs, op, &ro)?)
-						},
-						_ => err_exec!("can't compare: a && b"),
-					}
-				},
-				ObjectKind::Ident => {
-					match rhs.kind {
-						ObjectKind::Bool => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							Ok(logical_objects(context, &lo, op, rhs)?)
-						},
-						ObjectKind::Ident => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							let ro = refer_ident(context, &rhs.ident)?;
-							Ok(logical_objects(context, &lo, op, &ro)?)
-						},
-						_ => err_exec!("can't compare: a && b (2)")
-					}
-				}
-				_ => err_exec!("can't compare: a && b (3)")
-			}
-		},
-		parser::LogicOpNode::Or => {
-			match lhs.kind {
-				ObjectKind::Bool => {
-					match rhs.kind {
-						ObjectKind::Bool => {
-							let b = lhs.bool_value || rhs.bool_value;
-							Ok(Object::from_bool(b))
-						}
-						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
-							Ok(logical_objects(context, lhs, op, &ro)?)
-						},
-						_ => err_exec!("can't compare: a || b"),
-					}
-				},
-				ObjectKind::Ident => {
-					match rhs.kind {
-						ObjectKind::Bool => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							Ok(logical_objects(context, &lo, op, rhs)?)
-						},
-						ObjectKind::Ident => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							let ro = refer_ident(context, &rhs.ident)?;
-							Ok(logical_objects(context, &lo, op, &ro)?)
-						},
-						_ => err_exec!("can't compare: a && b (2)")
-					}
-				}
-				_ => err_exec!("can't compare: a || b (2)")
-			}
-		},
-	}
-}
 
 pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::CompareOpNode, rhs: &Object) -> Result<Object, Error> {
 	match op {
@@ -1152,14 +1164,14 @@ mod tests {
 	use crate::parser::{QueryNode, parse};
 	use crate::planner::{PlansNode, planning};
 
-	fn setup(context: &mut Context) {
+/*	fn setup(context: &mut Context) {
 		if Path::new("test_env/test_db").exists() {
 			fs::remove_dir_all("test_env/test_db").unwrap();
 		}
 		do_exec(context, "CREATE DATABASE test_db").unwrap();
 		do_exec(context, "USE test_db").unwrap();
 	}
-
+*/
 	fn remove_file<P: AsRef<Path>>(path: P) {
 		if path.as_ref().exists() {
 			fs::remove_file(path).unwrap();
@@ -1292,7 +1304,7 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR name == \"hoge\"").unwrap();
 		let s = csv_records_to_string(&mut context);
-		assert!(s == "1,3.14,hige\n2,3.14,hoge\n")
+		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
 	}
 
 	#[test]
@@ -1313,7 +1325,7 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
-		assert!(s == "1,3.14,hige\n")
+		assert!(s == "1,3.14,hige\n");
 	}
 
 	#[test]
@@ -1334,7 +1346,134 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR weight == 3.14 AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
-		assert!(s == "1,3.14,hige\n")
+		assert!(s == "1,3.14,hige\n");
+	}
+
+	#[test]
+	fn test_get_stmt_or_and_1() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR weight == 100.0 AND name == \"hige\"").unwrap();
+		let s = csv_records_to_string(&mut context);
+		assert!(s == "1,3.14,hige\n");
+	}
+
+	#[test]
+	fn test_get_stmt_or_and_2() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 0 OR weight == 100.0 AND name == \"hige\"").unwrap();
+		let s = csv_records_to_string(&mut context);
+		assert!(s == "");
+	}
+
+	#[test]
+	fn test_get_stmt_or_and_3() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 0 OR weight == 3.14 AND name == \"hige\"").unwrap();
+		let s = csv_records_to_string(&mut context);
+		assert!(s == "1,3.14,hige\n");
+	}
+
+	#[test]
+	fn test_get_stmt_or_and_4() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id, name OF test_table WHERE (id == 0 OR weight == 3.14) AND name == \"hige\"").unwrap();
+		let s = csv_records_to_string(&mut context);
+		assert!(s == "1,3.14,hige\n");
+	}
+
+	#[test]
+	fn test_get_stmt_or_and_4a() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id, name OF test_table WHERE (id == 1 OR weight == 60) AND name == \"hige\"").unwrap();
+		let s = csv_records_to_string(&mut context);
+		println!("[{}]", s);
+		assert!(s == "1,3.14,hige\n");
+	}
+
+	#[test]
+	fn test_get_stmt_or_and_5() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id, name OF test_table WHERE (id == 0 OR weight == 3.14) AND name == \"moge\"").unwrap();
+		let s = csv_records_to_string(&mut context);
+		assert!(s == "");
 	}
 
 	#[test]

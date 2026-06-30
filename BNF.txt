@@ -148,9 +148,9 @@ where ::= 'WHERE' expr
 expr_list ::= expr { ',' expr }*
 ident ::= [a-zA-Z_]+
 expr ::= ass_expr
-ass_expr ::= logic_expr ( '=' logic_expr )?
-logic_expr ::= compare_expr { logic_op compare_expr }*
-logic_op ::= ('AND' | 'OR')
+ass_expr ::= or_expr ( '=' or_expr )?
+or_expr ::= and_expr { 'OR' and_expr }*
+and_expr ::= compare_expr { 'AND' compare_expr }*
 compare_expr ::= operand { compare_op operand }*
 compare_op ::= ('==' | '!=')
 operand ::= (i64_value | f64_value | string | ident) | '(' expr ')'
