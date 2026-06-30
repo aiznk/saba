@@ -2,6 +2,7 @@ use crate::parser::{QueryNode};
 use crate::parser;
 use crate::error::{Error, make_error, err_planning};
 use crate::tokenizer::{TokenKind};
+use crate::objects::{Object};
 
 pub struct PlansNode {
 	pub plans: Vec<PlanNode>,
@@ -163,7 +164,7 @@ impl CsvFileAppendNode {
 
 pub struct ProjectNode {
 	pub method: TokenKind,
-	pub get_stmt_idents: Vec<String>,
+	pub get_stmt_objs: Vec<Object>,
 	pub csv_scan: Option<Box<CsvScanNode>>,
 	pub filter: Option<Box<FilterNode>>,
 }
@@ -172,7 +173,7 @@ impl ProjectNode {
 	pub fn new() -> Self {
 		Self {
 			method: TokenKind::Nil,
-			get_stmt_idents: vec![],
+			get_stmt_objs: vec![],
 			csv_scan: None,
 			filter: None,
 		}
@@ -288,11 +289,11 @@ pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<()
 pub fn plan_drop_stmt(node: &Box<parser::DropStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
 	if node.table_name.is_some() {
 		let mut csv_file_delete = CsvFileDeleteNode::new();
-		csv_file_delete.table_name = Some(unwrap_ident(&node.table_name.clone().unwrap())?);
+		csv_file_delete.table_name = Some(unwrap_ident_object(&node.table_name.clone().unwrap())?.to_string());
 		plan.csv_file_delete = Some(Box::new(csv_file_delete));
 	} else if node.db_name.is_some() {
 		let mut dir_delete_all = DirDeleteAllNode::new();
-		dir_delete_all.db_name = Some(unwrap_ident(&node.db_name.clone().unwrap())?);
+		dir_delete_all.db_name = Some(unwrap_ident_object(&node.db_name.clone().unwrap())?.to_string());
 		plan.dir_delete_all = Some(Box::new(dir_delete_all));
 	} else {
 		return err_planning!("invalid state: drop stmt");
@@ -317,7 +318,7 @@ pub fn plan_use_stmt(node: &Box<parser::UseStmtNode>, plan: &mut PlanNode) -> Re
 	let mut use_db = UseDatabaseNode::new();
 
 	if let Some(db_name) = &node.db_name {
-		use_db.db_name = unwrap_ident(&db_name)?;
+		use_db.db_name = unwrap_ident_object(&db_name)?.to_string();
 	} else {
 		return err_planning!("missing database name in use stmt");
 	}
@@ -349,7 +350,7 @@ pub fn plan_create_database(node: &Box<parser::CreateDatabaseNode>, plan: &mut P
 	let mut dir_create = DirCreateNode::new();
 
 	if let Some(ident) = &node.ident {
-		dir_create.dir_name = unwrap_ident(&ident)?;
+		dir_create.dir_name = unwrap_ident_object(&ident)?.to_string();
 	}
 
 	plan.dir_create = Some(Box::new(dir_create));
@@ -361,7 +362,7 @@ pub fn plan_create_table(node: &Box<parser::CreateTableNode>, plan: &mut PlanNod
 	let mut csv_file_create = CsvFileCreateNode::new();
 
 	if let Some(ident) = &node.ident {
-		csv_file_create.table_name = unwrap_ident(&ident)?;
+		csv_file_create.table_name = unwrap_ident_object(&ident)?.to_string();
 	}
 
 	csv_file_create.csv_head_row = gen_csv_head_row_by_column_defs(&node.column_definitions)?;
@@ -390,7 +391,7 @@ pub fn gen_csv_head_col_by_column_def(column_def: &Box<parser::ColumnDefinitionN
 	let mut s = String::new();
 
 	if let Some(ident) = &column_def.ident {
-		s.push_str(&unwrap_ident(&ident)?);	
+		s.push_str(&unwrap_ident_object(&ident)?.to_string());	
 	} else {
 		return err_planning!("missing ident");
 	}
@@ -426,7 +427,7 @@ pub fn plan_add_stmt(node: &Box<parser::AddStmtNode>, plan: &mut PlanNode) -> Re
 	}	
 
 	if let Some(table) = &node.table {
-		append.table_name = unwrap_ident(&table)?;
+		append.table_name = unwrap_ident_object(&table)?.to_string();
 	}
 	
 	plan.csv_file_append = Some(Box::new(append));
@@ -442,7 +443,7 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 	project.method = TokenKind::Del;
 
 	if let Some(table) = &node.table {
-		let ident = unwrap_ident(&table)?;
+		let ident = unwrap_ident_object(&table)?.to_string();
 		let mut csv_scan = CsvScanNode::new();
 		csv_scan.table_name = ident.clone();
 		csv_scan.all = node.all;
@@ -478,7 +479,7 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 
 	if let Some(table) = &node.table {
 		let mut csv_scan = CsvScanNode::new();
-		let table_name = unwrap_ident(&table)?;
+		let table_name = unwrap_ident_object(&table)?.to_string();
 		csv_scan.table_name = table_name.clone();
 		csv_scan.all = true; // the set stmt always needs all on csv_scan
 		project.csv_scan = Some(Box::new(csv_scan));
@@ -508,14 +509,14 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 
 	if let Some(expr_list) = &node.expr_list {
 		for expr in expr_list.exprs.iter() {
-			let ident: String = unwrap_expr_ident(&expr)?;
-			project.get_stmt_idents.push(ident);
+			let obj: Object = unwrap_expr_object(&expr)?;
+			project.get_stmt_objs.push(obj);
 		}
 	}
 
 	if let Some(table) = &node.table {
 		let mut csv_scan = CsvScanNode::new();
-		csv_scan.table_name = unwrap_ident(&table)?;
+		csv_scan.table_name = unwrap_ident_object(&table)?.to_string();
 		csv_scan.all = node.all;
 		project.csv_scan = Some(Box::new(csv_scan));
 	}
@@ -531,77 +532,79 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 	Ok(())
 }
 
-fn unwrap_expr_ident(node: &Box<parser::ExprNode>) -> Result<String, Error> {
+fn unwrap_expr_object(node: &Box<parser::ExprNode>) -> Result<Object, Error> {
 	if let Some(ass_expr) = &node.ass_expr {
-		return Ok(unwrap_ass_expr_ident(&ass_expr)?);
+		return Ok(unwrap_ass_expr_object(&ass_expr)?);
 	}
 	err_planning!("failed")
 }
 
-fn unwrap_ass_expr_ident(node: &Box<parser::AssExprNode>) -> Result<String, Error> {
+fn unwrap_ass_expr_object(node: &Box<parser::AssExprNode>) -> Result<Object, Error> {
 	if node.right_or_expr.is_some() {
 		return err_planning!("can't assign in ass expr: a = b");
 	}
 	if let Some(or_expr) = &node.left_or_expr {
-		return Ok(unwrap_or_expr_ident(or_expr)?);
+		return Ok(unwrap_or_expr_object(or_expr)?);
 	}
 	err_planning!("failed")
 }
 
-fn unwrap_or_expr_ident(node: &Box<parser::OrExprNode>) -> Result<String, Error> {
+fn unwrap_or_expr_object(node: &Box<parser::OrExprNode>) -> Result<Object, Error> {
 	if node.nodes.len() == 0 {
-		return err_planning!("nodes len is 0 in unwrap or expr ident");
+		return err_planning!("nodes len is 0 in unwrap or expr object");
 	} else if node.nodes.len() >= 2 {
-		return err_planning!("over nodes len in unwrap or expr ident");
+		return err_planning!("over nodes len in unwrap or expr object");
 	}
 	let n = &node.nodes[0];
-	return Ok(unwrap_and_expr_ident(n)?);
+	return Ok(unwrap_and_expr_object(n)?);
 }
 
-fn unwrap_and_expr_ident(node: &Box<parser::AndExprNode>) -> Result<String, Error> {
+fn unwrap_and_expr_object(node: &Box<parser::AndExprNode>) -> Result<Object, Error> {
 	if node.nodes.len() == 0 {
-		return err_planning!("nodes len is 0 in unwrap or expr ident");
+		return err_planning!("nodes len is 0 in unwrap or expr object");
 	} else if node.nodes.len() >= 2 {
-		return err_planning!("over nodes len in unwrap or expr ident");
+		return err_planning!("over nodes len in unwrap or expr object");
 	}
 	let n = &node.nodes[0];
-	return Ok(unwrap_compare_expr_ident(n)?);
+	return Ok(unwrap_compare_expr_object(n)?);
 }
 
-fn unwrap_compare_expr_ident(node: &Box<parser::CompareExprNode>) -> Result<String, Error> {
+fn unwrap_compare_expr_object(node: &Box<parser::CompareExprNode>) -> Result<Object, Error> {
 	if node.nodes.len() == 0 {
-		return err_planning!("nodes len is 0 in unwrap compare expr ident");
+		return err_planning!("nodes len is 0 in unwrap compare expr object");
 	} else if node.nodes.len() >= 2 {
-		return err_planning!("over nodes len in unwrap compare expr ident");
+		return err_planning!("over nodes len in unwrap compare expr object");
 	}
 	let item: &parser::CompareExprItemNode = &node.nodes[0];
 	if let parser::CompareExprItemNode::Left(operand) = item {
-		return Ok(unwrap_operand_ident(operand)?);
+		return Ok(unwrap_operand_object(operand)?);
 	}
 	err_planning!("failed")
 }
 
-fn unwrap_logic_expr_ident(node: &Box<parser::LogicExprNode>) -> Result<String, Error> {
+fn unwrap_logic_expr_object(node: &Box<parser::LogicExprNode>) -> Result<Object, Error> {
 	if node.nodes.len() == 0 {
-		return err_planning!("nodes len is 0 in unwrap logic expr ident");
+		return err_planning!("nodes len is 0 in unwrap logic expr object");
 	} else if node.nodes.len() >= 2 {
-		return err_planning!("over nodes len in unwrap logic expr ident");
+		return err_planning!("over nodes len in unwrap logic expr object");
 	}
 	let item: &parser::LogicExprItemNode = &node.nodes[0];
 	if let parser::LogicExprItemNode::Left(compare_expr) = item {
-		return Ok(unwrap_compare_expr_ident(&compare_expr)?);
+		return Ok(unwrap_compare_expr_object(&compare_expr)?);
 	}
 	err_planning!("failed")
 }
 
-fn unwrap_operand_ident(node: &Box<parser::OperandNode>) -> Result<String, Error> {
+fn unwrap_operand_object(node: &Box<parser::OperandNode>) -> Result<Object, Error> {
 	if let Some(ident) = &node.ident {
-		return Ok(unwrap_ident(&ident)?);
+		return Ok(unwrap_ident_object(&ident)?);
+	} else if node.star {
+		return Ok(Object::from_star());
 	}
 	err_planning!("failed")
 }
 
-fn unwrap_ident(node: &Box<parser::IdentNode>) -> Result<String, Error> {
-	Ok(node.value.clone())
+fn unwrap_ident_object(node: &Box<parser::IdentNode>) -> Result<Object, Error> {
+	Ok(Object::from_ident(&node.value))
 }
 

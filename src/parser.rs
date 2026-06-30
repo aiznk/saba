@@ -365,6 +365,7 @@ pub struct OperandNode {
 	pub string: Option<Box<StringNode>>,
 	pub ident: Option<Box<IdentNode>>,
 	pub expr: Option<Box<ExprNode>>,
+	pub star: bool,
 }
 
 impl OperandNode {
@@ -375,6 +376,7 @@ impl OperandNode {
 			string: None,
 			ident: None,
 			expr: None,
+			star: false,
 		}
 	}
 }
@@ -1178,22 +1180,28 @@ pub fn parse_operand(tok_strm: &mut TokenStream) -> Result<Option<Box<OperandNod
 		tok_strm.prev();
 
 		n.i64_value = parse_i64_value(tok_strm)?;
-		if !n.i64_value.is_none() {
+		if n.i64_value.is_some() {
 			return Ok(Some(Box::new(n)));
 		}
 
 		n.f64_value = parse_f64_value(tok_strm)?;
-		if !n.f64_value.is_none() {
+		if n.f64_value.is_some() {
 			return Ok(Some(Box::new(n)));
 		}
 
 		n.string = parse_string(tok_strm)?;
-		if !n.string.is_none() {
+		if n.string.is_some() {
 			return Ok(Some(Box::new(n)));
 		}
 
 		n.ident = parse_ident(tok_strm)?;
-		if !n.ident.is_none() {
+		if n.ident.is_some() {
+			return Ok(Some(Box::new(n)));
+		}
+
+		let tok = tok_strm.get()?;
+		if tok.kind == TokenKind::Star {
+			n.star = true;
 			return Ok(Some(Box::new(n)));
 		}
 

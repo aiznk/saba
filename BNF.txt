@@ -153,7 +153,7 @@ or_expr ::= and_expr { 'OR' and_expr }*
 and_expr ::= compare_expr { 'AND' compare_expr }*
 compare_expr ::= operand { compare_op operand }*
 compare_op ::= ('==' | '!=')
-operand ::= (i64_value | f64_value | string | ident) | '(' expr ')'
+operand ::= (i64_value | f64_value | string | ident | '*') | '(' expr ')'
 i64_value ::= [0-9]+
 f64_value ::= [0-9]* '.' [0-9]+
 string ::= '"' .* '"'

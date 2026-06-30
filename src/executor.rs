@@ -863,26 +863,18 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 }
 
 pub fn exec_operand(context: &mut Context, node: &parser::OperandNode) -> Result<Object, Error> {
-	if node.i64_value.is_some() {
-		if let Some(i64_value) = &node.i64_value {
-			return Ok(exec_i64_value(context, i64_value)?);
-		}
-	} else if node.f64_value.is_some() {
-		if let Some(f64_value) = &node.f64_value {
-			return Ok(exec_f64_value(context, f64_value)?);
-		}
-	} else if node.string.is_some() {
-		if let Some(string) = &node.string {
-			return Ok(exec_string(context, string)?);
-		}
-	} else if node.ident.is_some() {
-		if let Some(ident) = &node.ident {
-			return Ok(exec_ident(context, ident)?);
-		}
-	} else if node.expr.is_some() {
-		if let Some(expr) = &node.expr {
-			return Ok(exec_expr(context, expr)?);
-		}
+	if let Some(i64_value) = &node.i64_value {
+		return Ok(exec_i64_value(context, i64_value)?);
+	} else if let Some(f64_value) = &node.f64_value {
+		return Ok(exec_f64_value(context, f64_value)?);
+	} else if let Some(string) = &node.string {
+		return Ok(exec_string(context, string)?);
+	} else if let Some(ident) = &node.ident {
+		return Ok(exec_ident(context, ident)?);
+	} else if let Some(expr) = &node.expr {
+		return Ok(exec_expr(context, expr)?);
+	} else if node.star {
+		return Ok(Object::from_star());
 	}
 	err_exec!("invalid state of operand in exec")
 }
@@ -918,13 +910,21 @@ pub fn exec_ident(_: &mut Context, node: &parser::IdentNode) -> Result<Object, E
 pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
 	let mut indices: Vec<usize> = vec![];
 
-	for get_ident in node.get_stmt_idents.iter() {
+	if node.get_stmt_objs.len() == 1 &&
+	   node.get_stmt_objs[0].kind == ObjectKind::Star {
+	   	for col in context.csv_record.iter() {
+	   		context.selected_csv_columns.push(col.to_string());
+	   	}
+	   	return Ok(());
+	}
+
+	for get_obj in node.get_stmt_objs.iter() {
 		if let Some(index) = context.csv_header_idents.iter().position(|s| {
-				return *s == *get_ident;
+				return *s == *get_obj.to_string();
 			}) {
 			indices.push(index);
 		} else {
-			return err_exec!("invalid column: {}", get_ident);
+			return err_exec!("invalid column: {}", get_obj.to_string());
 		}
 	}
 
@@ -1342,6 +1342,33 @@ mod tests {
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "1");
 		assert!(context.selected_csv_columns[1] == "hige");
+	}
+
+	#[test]
+	fn test_get_stmt_1() {
+		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		do_exec(&mut context, "GET * OF test_table").unwrap();
+		assert!(context.selected_csv_columns.len() == 3);
+		assert!(context.selected_csv_columns[0] == "1");
+		assert!(context.selected_csv_columns[1] == "3.14");
+		assert!(context.selected_csv_columns[2] == "hige");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL * OF test_table").unwrap();
+		let s = csv_records_to_string(&mut context);
+		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
 	}
 
 	fn csv_records_to_string(context: &mut Context) -> String {

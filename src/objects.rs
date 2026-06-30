@@ -6,6 +6,7 @@ pub enum ObjectKind {
 	F64,
 	String,
 	Ident,
+	Star,
 }
 
 #[derive(Debug, Clone)]
@@ -38,7 +39,30 @@ impl Object {
 			ObjectKind::F64 => { format!("{}", self.f64_value) }
 			ObjectKind::String => { self.string.clone() }
 			ObjectKind::Ident => { self.ident.clone() }
+			ObjectKind::Star => { String::from("*") }
 		}
+	}
+
+	pub fn from_ident(ident: &str) -> Self {
+		Self {
+			kind: ObjectKind::Ident,
+			bool_value: false,
+			i64_value: 0,
+			f64_value: 0.0,
+			string: String::new(),
+			ident: String::from(ident),
+		}		
+	}
+
+	pub fn from_star() -> Self {
+		Self {
+			kind: ObjectKind::Star,
+			bool_value: false,
+			i64_value: 0,
+			f64_value: 0.0,
+			string: String::new(),
+			ident: String::new(),
+		}		
 	}
 
 	pub fn from_bool(b: bool) -> Self {
