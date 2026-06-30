@@ -3,12 +3,13 @@ use crate::parser;
 use crate::planner;
 use crate::tokenizer::{TokenKind};
 use crate::context::{Context};
-use crate::objects::{Object, ObjectKind};
+use crate::objects::{Object, ObjectKind, HeaderType};
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::fs::{OpenOptions};
 use std::io::{Write};
 use csv::{Reader, Writer, StringRecord};
+use regex::Regex;
 
 pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Error> {
 	for plan in node.plans.iter() {
@@ -22,8 +23,8 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		exec_use_db(context, &use_db)?;
 	} else if let Some(project) = &node.project {
 		exec_project(context, &project)?;
-	} else if let Some(dir_create) = &node.dir_create {
-		exec_dir_create(context, &dir_create)?;
+	} else if let Some(database_create) = &node.database_create {
+		exec_database_create(context, &database_create)?;
 	} else if let Some(dir_list) = &node.dir_list {
 		exec_dir_list(context, &dir_list)?;
 	} else if let Some(dir_delete_all) = &node.dir_delete_all {
@@ -42,11 +43,12 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 }
 
 pub fn gen_default_record(headers: &StringRecord) -> Result<Vec<String>, Error> {
-	let len = headers.len();
 	let mut v: Vec<String> = vec![];
+	let types = parse_csv_headers_as_types(headers)?;
 
-	for _ in 0..len {
-		v.push("".to_string());
+	for i in 0..types.len() {
+		let typ = &types[i];
+		v.push(typ.to_default_string()?);
 	}
 
 	Ok(v)
@@ -102,19 +104,14 @@ fn open_append_writer(path: &PathBuf) -> Result<Writer<fs::File>, Error> {
     Ok(writer)
 }
 
-pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppendNode) -> Result<(), Error> {
-	let path = context.gen_table_file_path(&node.table_name)?;
-    let headers = read_table_headers(context, &node.table_name)?;
-	let mut row: Vec<String> = gen_default_record(&headers)?;
-    let mut writer = open_append_writer(&path)?;
-
+fn update_append_record(context: &mut Context, node: &planner::CsvFileAppendNode, record: &mut Vec<String>, headers: &StringRecord) -> Result<(), Error> {
 	if let Some(expr_list) = &node.expr_list {
 		let objs = exec_expr_list(context, &expr_list)?;
 		for obj in objs.iter() {
 			let key = obj.to_string();
 			if let Some(o) = context.vars.get(key.as_str()) {
 				if let Some(index) = find_header_position(&headers, key.as_str())? {
-					row[index] = o.to_string();
+					record[index] = o.to_string();
 				} else {
 					return err_exec!("invalid column: {}", key);
 				}
@@ -126,7 +123,78 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
 		return err_exec!("invalid state: csv file append");
 	}
 
-	match writer.write_record(&row) {
+	Ok(())
+}
+
+fn parse_csv_headers_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>, Error> {
+	let mut v: Vec<HeaderType> = vec![];
+
+	for header in headers.iter() {
+		if let Some((_left, right)) = header.split_once(":") {
+			let mut typ = HeaderType::new();
+			let stype = right.to_lowercase();
+			if stype.contains("i64") {
+				typ.is_i64 = true;
+			} else if stype.contains("f64") {
+				typ.is_f64 = true;
+			} else if stype.contains("bool") {
+				typ.is_bool = true;
+			} else if stype.contains("char") {
+				typ.is_char = true;
+				let re = Regex::new(r"char\s*\[\s*(\d+)\s*\]").unwrap();
+				if let Some(caps) = re.captures(stype.as_str()) {
+					let size: usize = match caps[1].parse() {
+						Ok(v) => v,
+						Err(e) => return err_exec!("failed to parse CHAR[n]. {}", e),
+					};
+					typ.char_size = size;
+				}
+			}
+			if stype.contains("auto_increment") {
+				typ.is_auto_increment = true;
+			}
+			if stype.contains("primary_key") {
+				typ.is_primary_key = true;
+			}
+
+			v.push(typ);
+		} else {
+			return err_exec!("failed to split header. maybe this is invalid header");
+		}
+	}
+
+	Ok(v)
+}
+
+fn check_invalid_append_record(record: &Vec<String>, headers: &StringRecord) -> Result<(), Error> {
+	let types = parse_csv_headers_as_types(headers)?;
+	
+	if types.len() != record.len() {
+		return err_exec!("invalid record length");
+	}
+
+	for i in 0..record.len() {
+		let typ = &types[i];
+		let col = &record[i];
+		match typ.parse_str(col) {
+			Ok(_) => {},
+			Err(e) => return err_exec!("failed to parse column by type. invalid column found. {}", e),
+		}
+	}
+
+	Ok(())
+}
+
+pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppendNode) -> Result<(), Error> {
+	let path = context.gen_table_file_path(&node.table_name)?;
+    let headers = read_table_headers(context, &node.table_name)?;
+	let mut record: Vec<String> = gen_default_record(&headers)?;
+    let mut writer = open_append_writer(&path)?;
+
+    update_append_record(context, node, &mut record, &headers)?;
+    check_invalid_append_record(&record, &headers)?;
+
+	match writer.write_record(&record) {
 		Ok(_) => {},
 		Err(e) => return err_exec!("failed to write CSV record {}", e),
 	}
@@ -140,12 +208,19 @@ pub fn exec_use_db(context: &mut Context, node: &planner::UseDatabaseNode) -> Re
 }
 
 pub fn print_selected_columns(context: &mut Context) -> Result<(), Error> {
-	if context.selected_csv_columns.len() > 0 {
-		for col in context.selected_csv_columns.iter() {
-			print!("{} ", col);
-		}
-		println!("");
+	if context.selected_csv_columns.len() == 0 {
+		return Ok(());
 	}
+
+	let mut s = String::new();
+
+	for col in context.selected_csv_columns.iter() {
+		s.push_str(col);
+		s.push_str(",");
+	}
+	s.pop();
+	println!("{}", s);
+
 	Ok(())
 }
 
@@ -910,6 +985,8 @@ pub fn exec_ident(_: &mut Context, node: &parser::IdentNode) -> Result<Object, E
 pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
 	let mut indices: Vec<usize> = vec![];
 
+	context.selected_csv_columns.clear();
+
 	if node.get_stmt_objs.len() == 1 &&
 	   node.get_stmt_objs[0].kind == ObjectKind::Star {
 	   	for col in context.csv_record.iter() {
@@ -927,8 +1004,6 @@ pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) ->
 			return err_exec!("invalid column: {}", get_obj.to_string());
 		}
 	}
-
-	context.selected_csv_columns.clear();
 
 	for index in indices {
 		let col = &context.csv_record[index];
@@ -992,11 +1067,26 @@ pub fn parse_csv_header_idents(context: &mut Context) -> Result<(), Error> {
 
 pub fn exec_dir_delete_all(context: &mut Context, node: &planner::DirDeleteAllNode) -> Result<(), Error> {
 	let db_name = node.db_name.clone().unwrap();
+	if db_name == context.using_db_name {
+		return err_exec!("{} database is using now. can't delete", db_name);
+	}
 	let path = context.gen_db_dir_path(&db_name)?;
 	if path.as_os_str().is_empty() {
 		return err_exec!("invalid path in dir delete all");
 	}
-	fs::remove_dir_all(&path).unwrap();
+	if node.if_exists {
+		if path.exists() {
+			match fs::remove_dir_all(&path) {
+				Ok(_) => {},
+				Err(e) => return err_exec!("failed to remove directory. {}", e),
+			}
+		}
+	} else {
+		match fs::remove_dir_all(&path) {
+			Ok(_) => {},
+			Err(e) => return err_exec!("failed to remove directory. {}", e),
+		}		
+	}
 	Ok(())
 }
 
@@ -1031,15 +1121,24 @@ pub fn exec_dir_list(context: &mut Context, node: &planner::DirListNode) -> Resu
 	Ok(())
 }
 
-pub fn exec_dir_create(context: &mut Context, node: &planner::DirCreateNode) -> Result<(), Error> {
-	let path = Path::new(&context.root_dir_path);
-	let path = path.join(&node.dir_name);
-	if !path.exists() {
-		match fs::create_dir(path) {
-			Ok(_) => {},
-			Err(e) => return err_exec!("failed to create directory. {}", e),
-		}
+pub fn exec_database_create(context: &mut Context, node: &planner::DatabaseCreateNode) -> Result<(), Error> {
+	let path = context.gen_db_dir_path(&node.db_name)?;
+	if path.exists() {
+		return err_exec!("{} database already exists", node.db_name);
 	}
+
+	match fs::create_dir(&path) {
+		Ok(_) => {},
+		Err(e) => return err_exec!("failed to create database directory. {}", e),
+	}
+	match fs::create_dir(&path.join("tables")) {
+		Ok(_) => {},
+		Err(e) => return err_exec!("failed to create tables directory. {}", e),
+	}		
+	match fs::create_dir(&path.join("id")) {
+		Ok(_) => {},
+		Err(e) => return err_exec!("failed to create id directory. {}", e),
+	}		
 	Ok(())
 }
 
@@ -1177,17 +1276,21 @@ pub fn read_table_headers(context: &Context, table_name: &str) -> Result<StringR
 pub fn exec_csv_file_delete(context: &mut Context, node: &planner::CsvFileDeleteNode) -> Result<(), Error> {
 	let table_name = node.table_name.clone().unwrap();
 	let path = context.gen_table_file_path(&table_name)?;
-	if path.exists() {
-		fs::remove_file(&path).unwrap();
+	if node.if_exists {
+		if path.exists() {
+			fs::remove_file(&path).unwrap();
+		}		
+	} else {
+		match fs::remove_file(&path) {
+			Ok(_) => {},
+			Err(e) => return err_exec!("failed to remove CSV file. {}", e),
+		}
 	}
 	Ok(())
 }
 
 pub fn exec_csv_file_create(context: &mut Context, node: &planner::CsvFileCreateNode) -> Result<(), Error> {
-	let table_name = node.table_name.to_lowercase() + ".csv";
-	let path = Path::new(&context.root_dir_path);
-	let path = path.join(&context.using_db_name);
-	let path = path.join(table_name);
+	let path = context.gen_table_file_path(&node.table_name)?;
 
 	if !path.exists() {
 		let header = &node.csv_head_row;
@@ -1249,21 +1352,29 @@ mod tests {
 	}
 
 	#[test]
-	fn test_dir_create() {
+	fn test_database_create() {
 		let path = Path::new("test_env").join("test_db");
 		if path.exists() {
 			fs::remove_dir_all(&path).unwrap();
 		}
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		assert!(path.exists());
+		assert!(path.join("tables").exists());
+		assert!(path.join("id").exists());
+	}
+
+	fn gen_test_table_path() -> PathBuf {
+		Path::new("test_env").join("test_db").join("tables").join("test_table.csv")
 	}
 
 	#[test]
 	fn test_csv_file_create() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64)").unwrap();
@@ -1274,9 +1385,10 @@ mod tests {
 
 	#[test]
 	fn test_add_stmt_0() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1291,9 +1403,10 @@ mod tests {
 
 	#[test]
 	fn test_add_stmt_1() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1304,14 +1417,35 @@ mod tests {
 		do_exec(&mut context, "ADD weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		println!("[{}]", s);
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,,\n,3.14,hoge\n");
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,0.0,\n0,3.14,hoge\n");
 	}
 
 	#[test]
-	fn test_get_stmt_0() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+	fn test_add_stmt_check_char_size() {
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, name: CHAR[4])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,name: CHAR[4]\n");
+		do_exec(&mut context, "ADD id = 1, name = \"hige\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,name: CHAR[4]\n1,hige\n");
+		match do_exec(&mut context, "ADD id = 2, name = \"hogehoge\" OF test_table") {
+			Ok(_) => panic!("why ok?"),
+			Err(e) => eprintln!("OK: {}", e),
+		}
+	}
+	#[test]
+	fn test_get_stmt_0() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1346,9 +1480,10 @@ mod tests {
 
 	#[test]
 	fn test_get_stmt_1() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1383,9 +1518,10 @@ mod tests {
 
 	#[test]
 	fn test_get_stmt_or_0() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1404,9 +1540,10 @@ mod tests {
 
 	#[test]
 	fn test_get_stmt_and_0() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1425,8 +1562,9 @@ mod tests {
 
 	macro_rules! setup_records {
 	    ($context:ident) => {
-    		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+    		let path = gen_test_table_path();
 			remove_file(&path);
+			do_exec(&mut $context, "DROP DATABASE IF EXISTS test_db").unwrap();
 			do_exec(&mut $context, "CREATE DATABASE test_db").unwrap();
 			do_exec(&mut $context, "USE test_db").unwrap();
 			do_exec(&mut $context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1514,17 +1652,19 @@ mod tests {
 	#[test]
 	fn test_drop_db() {
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		assert!(Path::new("test_env").join("test_db").exists());
-		do_exec(&mut context, "DROP DATABASE test_db").unwrap();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		assert!(!Path::new("test_env").join("test_db").exists());
 	}
 
 	#[test]
 	fn test_drop_table() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1535,9 +1675,10 @@ mod tests {
 
 	#[test]
 	fn test_del_stmt_0() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1553,9 +1694,10 @@ mod tests {
 
 	#[test]
 	fn test_del_stmt_1() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1570,9 +1712,10 @@ mod tests {
 
 	#[test]
 	fn test_del_stmt_2() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1588,9 +1731,10 @@ mod tests {
 
 	#[test]
 	fn test_set_stmt_0() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1605,9 +1749,10 @@ mod tests {
 
 	#[test]
 	fn test_set_stmt_0a() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
 		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
@@ -1622,7 +1767,7 @@ mod tests {
 
 	#[test]
 	fn test_set_stmt_1() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		let mut context = Context::new();
 		setup_records!(context);
 		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF test_table WHERE weight == 3.14").unwrap();
@@ -1632,7 +1777,7 @@ mod tests {
 
 	#[test]
 	fn test_set_stmt_2() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		let mut context = Context::new();
 		setup_records!(context);
 		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF test_table WHERE name == \"hoge\"").unwrap();
@@ -1642,7 +1787,7 @@ mod tests {
 
 	#[test]
 	fn test_set_stmt_3() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		let mut context = Context::new();
 		setup_records!(context);
 		do_exec(&mut context, "SET ALL name=\"HOGE\" OF test_table WHERE weight == 3.14").unwrap();
@@ -1652,7 +1797,7 @@ mod tests {
 
 	#[test]
 	fn test_set_stmt_4() {
-		let path = Path::new("test_env").join("test_db").join("test_table.csv");
+		let path = gen_test_table_path();
 		let mut context = Context::new();
 		setup_records!(context);
 		do_exec(&mut context, "SET ALL name=\"HOGE\" OF test_table").unwrap();

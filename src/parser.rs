@@ -45,6 +45,7 @@ impl StmtNode {
 pub struct DropStmtNode {
 	pub table_name: Option<Box<IdentNode>>,
 	pub db_name: Option<Box<IdentNode>>,
+	pub if_exists: bool,
 }
 
 impl DropStmtNode {
@@ -52,6 +53,7 @@ impl DropStmtNode {
 		Self {
 			table_name: None,
 			db_name: None,
+			if_exists: false,
 		}
 	}
 }
@@ -513,6 +515,20 @@ pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<StmtNode>>, E
 	return err_parse!("failed to parse stmt");
 }
 
+fn parse_if_exists(tok_strm: &mut TokenStream) -> Result<bool, Error> {
+	let tok = tok_strm.get()?;
+	if tok.kind == TokenKind::If {
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::Exists {
+			return err_parse!("invalid syntax. missing 'exists'");
+		}
+		return Ok(true);
+	} else {
+		tok_strm.prev();
+		return Ok(false);
+	}
+}
+
 pub fn parse_drop_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<DropStmtNode>>, Error> {
 	let mut n = DropStmtNode::new();
 
@@ -524,8 +540,10 @@ pub fn parse_drop_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<DropStmt
 
 	let tok = tok_strm.get()?;
 	if tok.kind == TokenKind::Table {
+		n.if_exists = parse_if_exists(tok_strm)?;
 		n.table_name = parse_ident(tok_strm)?;
 	} else if tok.kind == TokenKind::Database {
+		n.if_exists = parse_if_exists(tok_strm)?;
 		n.db_name = parse_ident(tok_strm)?;	
 	} else {
 		return err_parse!("invalid state: drop stmt");

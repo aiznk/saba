@@ -1,3 +1,72 @@
+use crate::error::{Error, make_error, err_parse, err_runtime};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeaderType {
+	pub is_i64: bool,
+	pub is_f64: bool,
+	pub is_bool: bool,
+	pub is_char: bool,
+	pub char_size: usize,
+	pub is_primary_key: bool,
+	pub is_auto_increment: bool,
+}
+
+impl HeaderType {
+	pub fn new() -> Self {
+		Self {
+			is_i64: false,
+			is_f64: false,
+			is_bool: false,
+			is_char: false,
+			char_size: 0,
+			is_primary_key: false,
+			is_auto_increment: false,			
+		}
+	}
+
+	pub fn to_default_string(&self) -> Result<String, Error> {
+		if self.is_i64 {
+			return Ok(String::from("0"));
+		} else if self.is_f64 {
+			return Ok(String::from("0.0"));
+		} else if self.is_bool {
+			return Ok(String::from("false"));
+		} else if self.is_char {
+			return Ok(String::from(""));
+		}
+		return err_runtime!("invalid state: header type");
+	}
+
+	pub fn parse_str(&self, s: &str) -> Result<Object, Error> {
+		if self.is_i64 {
+			let n = match s.parse::<i64>() {
+				Ok(v) => v,
+				Err(e) => return err_parse!("failed to parse as i64. {}", e),
+			};
+			return Ok(Object::from_i64(n));
+		} else if self.is_f64 {
+			let n = match s.parse::<f64>() {
+				Ok(v) => v,
+				Err(e) => return err_parse!("failed to parse as f64. {}", e),
+			};
+			return Ok(Object::from_f64(n));
+		} else if self.is_bool {
+			let n = match s.parse::<bool>() {
+				Ok(v) => v,
+				Err(e) => return err_parse!("failed to parse as bool. {}", e),
+			};
+			return Ok(Object::from_bool(n));
+		} else if self.is_char {
+			if s.len() > self.char_size {
+				return err_parse!("{} size is over char size of {}", s.len(), self.char_size);
+			}
+			return Ok(Object::from_string(s.to_string()));
+		}
+
+		return err_parse!("failed to parse str as type");
+	}
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ObjectKind {
 	Nil,

@@ -49,14 +49,14 @@
 
 > CREATE DATABASE mydb;
 
-	DirCreate (create mydb directory)
+	DatabaseCreate (create mydb directory)
 
 > CREATE TABLE mytab (
 > 	id: PRIMARY KEY AUTOINCREMENT,
 >   name: CHAR[128] NOT NULL,
 > );
 
-	CsvCreate (create mytab CSV file)
+	CsvFileCreate (create mytab CSV file)
 
 ## DROP
 
@@ -128,7 +128,8 @@
 
 query ::= { stmt ';' }*
 stmt ::= (drop_stmt | show_stmt | use_stmt | create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
-drop_stmt ::= ( 'DROP' 'TABLE' ident ) | ( 'DROP' 'DATABASE' ident )
+drop_stmt ::= ( 'DROP' 'TABLE' ('IF' 'EXISTS')? ident ) |
+              ( 'DROP' 'DATABASE' ('IF' 'EXISTS')? ident )
 show_stmt ::= ( 'SHOW' 'TABLES' ) | ( 'SHOW' 'DATABASES' )
 use_stmt ::= 'USE' db_name:ident
 create_stmt ::= create_database | create_table

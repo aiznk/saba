@@ -21,6 +21,9 @@ pub enum TokenKind {
 	I64,
 	F64,
 	Char, // CHAR
+	If, // IF
+	Exists, // EXISTS
+	Not, // NOT
 	Get, // GET
 	Set, // SET
 	Add, // ADD
@@ -299,6 +302,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'u' && c2 == 's' && c3 == 'e' {
 			ret.push(Token::from(TokenKind::Use, None));
 			i += 2;
+		} else if c1 == 'n' && c2 == 'o' && c3 == 't' {
+			ret.push(Token::from(TokenKind::Not, None));
+			i += 2;
 		} else if c1 == 'd' && c2 == 'r' && c3 == 'o' && c4 == 'p' {
 			ret.push(Token::from(TokenKind::Drop, None));
 			i += 3;
@@ -320,6 +326,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 't' && c2 == 'a' && c3 == 'b' && c4 == 'l' && c5 == 'e' && c6 == 's' {
 			ret.push(Token::from(TokenKind::Tables, None));
 			i += 5;
+		} else if c1 == 'e' && c2 == 'x' && c3 == 'i' && c4 == 's' && c5 == 't' && c6 == 's' {
+			ret.push(Token::from(TokenKind::Exists, None));
+			i += 5;
 		} else if c1 == 't' && c2 == 'a' && c3 == 'b' && c4 == 'l' && c5 == 'e' {
 			ret.push(Token::from(TokenKind::Table, None));
 			i += 4;
@@ -340,6 +349,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 			// auto_increment
 			ret.push(Token::from(TokenKind::PrimaryKey, None));
 			i += 10;
+		} else if c1 == 'i' && c2 == 'f' {
+			ret.push(Token::from(TokenKind::If, None));
+			i += 1;
 		} else if c1 == '=' && c2 == '=' {
 			ret.push(Token::from(TokenKind::Eq, None));
 			i += 1;

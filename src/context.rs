@@ -78,7 +78,10 @@ impl Context {
 		   	return err_runtime!("invalid state in gen table file path");
 		}
 
-		let path = Path::new(&self.root_dir_path).join(&self.using_db_name).join(table_name.to_lowercase() + ".csv");
+		let path = Path::new(&self.root_dir_path)
+			.join(&self.using_db_name)
+			.join("tables")
+			.join(table_name.to_lowercase() + ".csv");
 
 		Ok(path)
 	}
@@ -89,7 +92,10 @@ impl Context {
 		   	return err_runtime!("invalid state in gen table file path");
 		}
 
-		let path = Path::new(&self.root_dir_path).join(&self.using_db_name).join(table_name.to_lowercase() + ".tmp.csv");
+		let path = Path::new(&self.root_dir_path)
+			.join(&self.using_db_name)
+			.join("tables")
+			.join(table_name.to_lowercase() + ".tmp.csv");
 
 		Ok(path)
 	}

@@ -19,7 +19,7 @@ impl PlansNode {
 pub struct PlanNode {
 	pub use_db: Option<Box<UseDatabaseNode>>,
 	pub project: Option<Box<ProjectNode>>,
-	pub dir_create: Option<Box<DirCreateNode>>,
+	pub database_create: Option<Box<DatabaseCreateNode>>,
 	pub dir_list: Option<Box<DirListNode>>,
 	pub dir_delete_all: Option<Box<DirDeleteAllNode>>,
 	pub csv_file_create: Option<Box<CsvFileCreateNode>>,
@@ -33,7 +33,7 @@ impl PlanNode {
 		Self {
 			use_db: None,
 			project: None,
-			dir_create: None,
+			database_create: None,
 			dir_list: None,
 			dir_delete_all: None,
 			csv_file_create: None,
@@ -90,24 +90,28 @@ impl RowUpdateNode {
 
 pub struct DirDeleteAllNode {
 	pub db_name: Option<String>,
+	pub if_exists: bool,
 }
 
 impl DirDeleteAllNode {
 	pub fn new() -> Self {
 		Self {
 			db_name: None,
+			if_exists: false,
 		}
 	}
 }
 
 pub struct CsvFileDeleteNode {
 	pub table_name: Option<String>,
+	pub if_exists: bool,
 }
 
 impl CsvFileDeleteNode {
 	pub fn new() -> Self {
 		Self {
 			table_name: None,
+			if_exists: false,
 		}
 	}
 }
@@ -207,14 +211,14 @@ impl CsvScanNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct DirCreateNode {
-	pub dir_name: String,
+pub struct DatabaseCreateNode {
+	pub db_name: String,
 }
 
-impl DirCreateNode {
+impl DatabaseCreateNode {
 	pub fn new() -> Self {
 		Self {
-			dir_name: String::new(),
+			db_name: String::new(),
 		}
 	}
 }
@@ -290,10 +294,12 @@ pub fn plan_drop_stmt(node: &Box<parser::DropStmtNode>, plan: &mut PlanNode) -> 
 	if node.table_name.is_some() {
 		let mut csv_file_delete = CsvFileDeleteNode::new();
 		csv_file_delete.table_name = Some(unwrap_ident_object(&node.table_name.clone().unwrap())?.to_string());
+		csv_file_delete.if_exists = node.if_exists;
 		plan.csv_file_delete = Some(Box::new(csv_file_delete));
 	} else if node.db_name.is_some() {
 		let mut dir_delete_all = DirDeleteAllNode::new();
 		dir_delete_all.db_name = Some(unwrap_ident_object(&node.db_name.clone().unwrap())?.to_string());
+		dir_delete_all.if_exists = node.if_exists;
 		plan.dir_delete_all = Some(Box::new(dir_delete_all));
 	} else {
 		return err_planning!("invalid state: drop stmt");
@@ -347,13 +353,13 @@ pub fn plan_create_stmt(node: &Box<parser::CreateStmtNode>, plan: &mut PlanNode)
 }
 
 pub fn plan_create_database(node: &Box<parser::CreateDatabaseNode>, plan: &mut PlanNode) -> Result<(), Error> {
-	let mut dir_create = DirCreateNode::new();
+	let mut db_create = DatabaseCreateNode::new();
 
 	if let Some(ident) = &node.ident {
-		dir_create.dir_name = unwrap_ident_object(&ident)?.to_string();
+		db_create.db_name = unwrap_ident_object(&ident)?.to_string();
 	}
 
-	plan.dir_create = Some(Box::new(dir_create));
+	plan.database_create = Some(Box::new(db_create));
 
 	Ok(())
 }
