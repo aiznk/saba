@@ -1440,7 +1440,7 @@ mod tests {
 			Err(e) => eprintln!("OK: {}", e),
 		}
 	}
-	
+
 	#[test]
 	fn test_get_stmt_0() {
 		let path = gen_test_table_path();
@@ -1576,6 +1576,27 @@ mod tests {
 			do_exec(&mut $context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 			let s = fs::read_to_string(&path).unwrap();
 			assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+	    };
+	}
+
+	macro_rules! setup_records_2 {
+	    ($context:ident) => {
+    		let path = gen_test_table_path();
+			remove_file(&path);
+			do_exec(&mut $context, "DROP DATABASE IF EXISTS test_db").unwrap();
+			do_exec(&mut $context, "CREATE DATABASE test_db").unwrap();
+			do_exec(&mut $context, "USE test_db").unwrap();
+			do_exec(&mut $context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+			assert!(path.exists());
+			let s = fs::read_to_string(&path).unwrap();
+			assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+			do_exec(&mut $context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+			do_exec(&mut $context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+			do_exec(&mut $context, "ADD id = 3, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+			do_exec(&mut $context, "ADD id = 4, weight = 3.14, name = \"huge\" OF test_table").unwrap();
+			do_exec(&mut $context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+			let s = fs::read_to_string(&path).unwrap();
+			assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	    };
 	}
 
@@ -1728,6 +1749,28 @@ mod tests {
 		do_exec(&mut context, "DEL ALL OF test_table WHERE id == 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n3,3.14,moge\n");
+	}
+
+	#[test]
+	fn test_del_stmt_3() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		do_exec(&mut context, "DEL ALL OF test_table WHERE id == 1").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		do_exec(&mut context, "DEL ALL OF test_table WHERE name == \"oge\"").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n");
+
+		do_exec(&mut context, "DEL ALL OF test_table WHERE weight == 3.14").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
 	}
 
 	#[test]
