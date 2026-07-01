@@ -1,5 +1,5 @@
 use crate::error::{make_error, err_runtime, Error};
-use crate::objects::{Object};
+use crate::objects::{Object, HeaderType};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use csv::{Reader, StringRecord};
@@ -68,6 +68,20 @@ impl Context {
 		}
 
 		let path = Path::new(&self.root_dir_path).join(&self.using_db_name).join("tables");
+
+		Ok(path)		
+	}
+
+	pub fn gen_id_file_path(&self, table_name: &str, typ: &HeaderType) -> Result<PathBuf, Error> {
+		if self.root_dir_path.as_os_str().is_empty() ||
+		   self.using_db_name.len() == 0 {
+		   	return err_runtime!("invalid state in gen using db dir path");
+		}
+
+		let path = Path::new(&self.root_dir_path)
+			.join(&self.using_db_name)
+			.join("id")
+			.join(format!("{}__{}.txt", table_name, typ.ident));
 
 		Ok(path)		
 	}

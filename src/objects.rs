@@ -2,6 +2,7 @@ use crate::error::{Error, make_error, err_parse, err_runtime};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeaderType {
+	pub ident: String,
 	pub is_i64: bool,
 	pub is_f64: bool,
 	pub is_bool: bool,
@@ -14,6 +15,7 @@ pub struct HeaderType {
 impl HeaderType {
 	pub fn new() -> Self {
 		Self {
+			ident: String::new(),
 			is_i64: false,
 			is_f64: false,
 			is_bool: false,
@@ -24,7 +26,7 @@ impl HeaderType {
 		}
 	}
 
-	pub fn to_default_string(&self) -> Result<String, Error> {
+	pub fn to_default_value_string(&self) -> Result<String, Error> {
 		if self.is_i64 {
 			return Ok(String::from("0"));
 		} else if self.is_f64 {

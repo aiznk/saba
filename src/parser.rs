@@ -673,6 +673,21 @@ pub fn parse_create_table(tok_strm: &mut TokenStream) -> Result<Option<Box<Creat
 	Ok(Some(Box::new(n)))
 }
 
+fn check_first_column_type(column_type: &Option<ColumnTypeNode>) -> Result<(), Error> {
+	if let Some(column_type) = column_type {
+		match column_type {
+			ColumnTypeNode::I64 |
+			ColumnTypeNode::F64 |
+			ColumnTypeNode::Bool |
+			ColumnTypeNode::Char(_) => {
+				// pass
+			}
+			_ => return err_parse!("invalid first column type"),
+		}
+	}
+	Ok(())
+}
+
 pub fn parse_column_definition(tok_strm: &mut TokenStream) -> Result<Option<Box<ColumnDefinitionNode>>, Error> {
 	let mut n = ColumnDefinitionNode::new();
 
@@ -698,6 +713,7 @@ pub fn parse_column_definition(tok_strm: &mut TokenStream) -> Result<Option<Box<
 	if column_type.is_none() {
 		return err_parse!("missing column type in column definition");
 	}
+	check_first_column_type(&column_type)?;
 	n.column_types.push(column_type.unwrap());
 
 	while !tok_strm.is_end() {
@@ -1340,5 +1356,10 @@ CREATE TABLE mytab (
 	#[test]
 	fn test_del_stmt_1() {
 		assert!(do_parse("DEL ALL OF mytab;") == true);
+	}
+
+	#[test]
+	fn test_first_column_type() {
+		assert!(do_parse("CREATE TABLE mytab (id: PRIMARY_KEY)") == false);
 	}
 }

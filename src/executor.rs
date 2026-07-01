@@ -48,7 +48,7 @@ pub fn gen_default_record(headers: &StringRecord) -> Result<Vec<String>, Error> 
 
 	for i in 0..types.len() {
 		let typ = &types[i];
-		v.push(typ.to_default_string()?);
+		v.push(typ.to_default_value_string()?);
 	}
 
 	Ok(v)
@@ -104,14 +104,14 @@ fn open_append_writer(path: &PathBuf) -> Result<Writer<fs::File>, Error> {
     Ok(writer)
 }
 
-fn update_append_record(context: &mut Context, node: &planner::CsvFileAppendNode, record: &mut Vec<String>, headers: &StringRecord) -> Result<(), Error> {
+fn rewrite_append_record_by_vars(context: &mut Context, node: &planner::CsvFileAppendNode, headers: &StringRecord, row: &mut Vec<String>) -> Result<(), Error> {
 	if let Some(expr_list) = &node.expr_list {
 		let objs = exec_expr_list(context, &expr_list)?;
 		for obj in objs.iter() {
 			let key = obj.to_string();
 			if let Some(o) = context.vars.get(key.as_str()) {
 				if let Some(index) = find_header_position(&headers, key.as_str())? {
-					record[index] = o.to_string();
+					row[index] = o.to_string();
 				} else {
 					return err_exec!("invalid column: {}", key);
 				}
@@ -126,12 +126,56 @@ fn update_append_record(context: &mut Context, node: &planner::CsvFileAppendNode
 	Ok(())
 }
 
+fn next_id(path: impl AsRef<Path>) -> std::io::Result<u64> {
+    let path = path.as_ref();
+
+    let id = match fs::read_to_string(path) {
+        Ok(s) => s.trim().parse::<u64>().unwrap_or(1),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 1,
+        Err(e) => return Err(e),
+    };
+
+    fs::write(path, (id + 1).to_string())?;
+
+    // 元のIDを返す
+    Ok(id)
+}
+
+fn gen_auto_increment_id(context: &mut Context, table_name: &String, typ: &HeaderType) -> Result<u64, Error> {
+	let path = context.gen_id_file_path(table_name, typ)?;
+	let id = match next_id(&path) {
+		Ok(v) => v,
+		Err(e) => return err_exec!("failed to generate auto increment id. {}", e),
+	};
+	Ok(id)
+}
+
+fn set_auto_increment_ids(context: &mut Context, table_name: &String, headers: &StringRecord, row: &mut Vec<String>) -> Result<(), Error> {
+	let types = parse_csv_headers_as_types(headers)?;
+
+	for (i, typ) in types.iter().enumerate() {
+		if !typ.is_auto_increment {
+			continue;
+		}
+		if !typ.is_i64 {
+			return err_exec!("cannot auto increment. id must be int");
+		}
+		let id = gen_auto_increment_id(context, table_name, &typ)?;
+		row[i] = id.to_string();
+	}
+	
+	Ok(())	
+}
+
 fn parse_csv_headers_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>, Error> {
 	let mut v: Vec<HeaderType> = vec![];
 
 	for header in headers.iter() {
-		if let Some((_left, right)) = header.split_once(":") {
+		if let Some((left, right)) = header.split_once(":") {
 			let mut typ = HeaderType::new();
+
+			typ.ident = left.trim().to_string();
+
 			let stype = right.to_lowercase();
 			if stype.contains("i64") {
 				typ.is_i64 = true;
@@ -188,15 +232,16 @@ fn check_invalid_append_record(record: &Vec<String>, headers: &StringRecord) -> 
 pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppendNode) -> Result<(), Error> {
 	let path = context.gen_table_file_path(&node.table_name)?;
     let headers = read_table_headers(context, &node.table_name)?;
-	let mut record: Vec<String> = gen_default_record(&headers)?;
+	let mut row: Vec<String> = gen_default_record(&headers)?;
     let mut writer = open_append_writer(&path)?;
 
-    update_append_record(context, node, &mut record, &headers)?;
-    check_invalid_append_record(&record, &headers)?;
+    rewrite_append_record_by_vars(context, node, &headers, &mut row)?;
+    set_auto_increment_ids(context, &node.table_name, &headers, &mut row)?;
+    check_invalid_append_record(&row, &headers)?;
 
-	match writer.write_record(&record) {
+	match writer.write_record(&row) {
 		Ok(_) => {},
-		Err(e) => return err_exec!("failed to write CSV record {}", e),
+		Err(e) => return err_exec!("failed to write CSV row {}", e),
 	}
 
 	Ok(())
@@ -1290,6 +1335,7 @@ pub fn exec_csv_file_delete(context: &mut Context, node: &planner::CsvFileDelete
 }
 
 pub fn exec_csv_file_create(context: &mut Context, node: &planner::CsvFileCreateNode) -> Result<(), Error> {
+	// create_table
 	let path = context.gen_table_file_path(&node.table_name)?;
 
 	if !path.exists() {
@@ -1453,6 +1499,28 @@ mod tests {
 			Ok(_) => panic!("why ok?"),
 			Err(e) => eprintln!("OK: {}", e),
 		}
+	}
+
+	#[test]
+	fn test_add_stmt_auto_increment_id() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64 AUTO_INCREMENT, name: CHAR[4])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64 AUTO_INCREMENT,name: CHAR[4]\n");
+		do_exec(&mut context, "ADD name = \"hige\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("[{}]", s);
+		assert!(s == "id: I64 AUTO_INCREMENT,name: CHAR[4]\n1,hige\n");
+		do_exec(&mut context, "ADD name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64 AUTO_INCREMENT,name: CHAR[4]\n1,hige\n2,hoge\n");
+		assert!(Path::new("test_env/test_db/id/test_table__id.txt").exists());
 	}
 
 	#[test]
