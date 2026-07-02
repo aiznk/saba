@@ -393,9 +393,9 @@ impl CompareExprNode {
 #[derive(Debug, Clone)]
 pub enum CompareOpNode {
 	Lt,
-	Lte,
+	LtEq,
 	Gt,
-	Gte,
+	GtEq,
 	Eq,
 	NotEq,
 }
@@ -1318,6 +1318,12 @@ pub fn parse_compare_op(tok_strm: &mut TokenStream) -> Result<Option<Box<Compare
 		return Ok(Some(Box::new(CompareOpNode::NotEq)));
 	} else if tok.kind == TokenKind::Lt {
 		return Ok(Some(Box::new(CompareOpNode::Lt)));
+	} else if tok.kind == TokenKind::LtEq {
+		return Ok(Some(Box::new(CompareOpNode::LtEq)));
+	} else if tok.kind == TokenKind::Gt {
+		return Ok(Some(Box::new(CompareOpNode::Gt)));
+	} else if tok.kind == TokenKind::GtEq {
+		return Ok(Some(Box::new(CompareOpNode::GtEq)));
 	} else {
 		tok_strm.prev();
 		return Ok(None);

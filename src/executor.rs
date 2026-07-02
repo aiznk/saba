@@ -301,7 +301,7 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 			return err_exec!("csv scan is none in project");
 		}
 		if let Some(csv_file_scan) = &node.csv_file_scan {
-			while exec_csv_scan(context, csv_file_scan)? {
+			while exec_csv_file_scan(context, csv_file_scan)? {
 				context.matched_csv_record = context.csv_record.clone();
 				if node.method == TokenKind::Get {
 					select_get_columns(context, node)?;
@@ -330,7 +330,7 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 		if let Some(csv_file_scan) = &node.csv_file_scan {
 			if let Some(filter) = &node.filter {
 				context.counter_selected = 0;
-				while exec_csv_scan(context, csv_file_scan)? {
+				while exec_csv_file_scan(context, csv_file_scan)? {
 					if exec_filter(context, filter)? {
 						select_get_columns(context, node)?;
 						if context.is_cli {
@@ -361,6 +361,7 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<bool, Error> {
 	if let Some(where_clause) = &node.where_clause {
 		let o = exec_where_clause(context, where_clause)?;
+		println!("o[{}]", o.to_string());
 		if o.bool_value {
 			context.matched_csv_record = context.csv_record.clone();
 			context.unmatched_csv_record.clear();
@@ -621,6 +622,7 @@ pub fn refer_ident(context: &mut Context, ident: &String) -> Result<Object, Erro
 
 
 pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::CompareOpNode, rhs: &Object) -> Result<Object, Error> {
+	println!("lhs[{}] op[{:?}] rhs[{}]", lhs.to_string(), op, rhs.to_string());
 	match op {
 		parser::CompareOpNode::Lt => {
 			match lhs.kind {
@@ -628,6 +630,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 					match rhs.kind {
 						ObjectKind::I64 => {
 							let b = lhs.i64_value < rhs.i64_value;
+							println!("b[{}]", b);
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::F64 => {
@@ -678,7 +681,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				_ => err_exec!("can't compare"),
 			}
 		},
-		parser::CompareOpNode::Lte => {
+		parser::CompareOpNode::LtEq => {
 			match lhs.kind {
 				ObjectKind::I64 => {
 					match rhs.kind {
@@ -788,7 +791,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				_ => err_exec!("can't compare"),
 			}
 		},
-		parser::CompareOpNode::Gte => {
+		parser::CompareOpNode::GtEq => {
 			match lhs.kind {
 				ObjectKind::I64 => {
 					match rhs.kind {
@@ -1084,7 +1087,7 @@ pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) ->
 	Ok(())
 }
 
-pub fn exec_csv_scan(context: &mut Context, node: &planner::CsvFileScanNode) -> Result<bool, Error> {
+pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode) -> Result<bool, Error> {
 	if context.table_csv_reader.is_none() {
 		let path = context.gen_table_file_path(&node.table_name)?;
 		let reader = match Reader::from_path(&path) {
@@ -2030,5 +2033,61 @@ mod tests {
 		let s = fs::read_to_string(&path).unwrap();
 		println!("[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128],uge: I64 DEFAULT 100\n1,3.14,hige,100\n2,3.14,hoge,100\n3,3.14,moge,100\n4,3.14,huge,100\n5,3.14,oge,100\n");
+	}
+
+	#[test]
+	fn test_where_lt() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id < 3").unwrap();
+		let s = csv_records_to_string(&mut context);
+		println!("[{}]", s);
+		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
+	}
+
+	#[test]
+	fn test_where_lteq() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id <= 3").unwrap();
+		let s = csv_records_to_string(&mut context);
+		println!("[{}]", s);
+		assert!(s == "1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n");
+	}
+
+	#[test]
+	fn test_where_gt() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id > 2").unwrap();
+		let s = csv_records_to_string(&mut context);
+		println!("[{}]", s);
+		assert!(s == "3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+	}
+
+	#[test]
+	fn test_where_gteq() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id >= 3").unwrap();
+		let s = csv_records_to_string(&mut context);
+		println!("[{}]", s);
+		assert!(s == "3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
 }
