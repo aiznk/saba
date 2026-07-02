@@ -103,6 +103,7 @@ pub fn run() {
 	let opts = parse_options(args);
 	if !opts.root_dir_path.exists() {
 		eprintln!("\"{}\" does not exists path", opts.root_dir_path.display());
+		std::process::exit(1);
 	}
 
 	if opts.help {

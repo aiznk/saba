@@ -68,6 +68,12 @@
 
 	CsvFileDelete (delete mytab CSV file)
 
+## DESC
+
+> DESC mytab
+
+	TableDesc
+
 ## ALTER
 
 > ALTER TABLE mytab ADD COLUMN age I64;
@@ -137,7 +143,8 @@
 ## BNF
 
 query ::= { stmt ';' }*
-stmt ::= (alter_stmt | drop_stmt | show_stmt | use_stmt | create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
+stmt ::= (desc_stmt | alter_stmt | drop_stmt | show_stmt | use_stmt | create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
+desc_stmt ::= 'DESC' ident
 alter_stmt ::= alter_table
 alter_table ::= 'ALTER' 'TABLE' ident (alter_add_column)
 alter_add_column ::= 'ADD' 'COLUMN' ident { column_type }+

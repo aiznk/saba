@@ -16,6 +16,7 @@ impl QueryNode {
 
 #[derive(Debug, Clone)]
 pub struct StmtNode {
+	pub desc_stmt: Option<Box<DescStmtNode>>,
 	pub alter_stmt: Option<Box<AlterStmtNode>>,
 	pub drop_stmt: Option<Box<DropStmtNode>>,
 	pub show_stmt: Option<Box<ShowStmtNode>>,
@@ -30,6 +31,7 @@ pub struct StmtNode {
 impl StmtNode {
 	pub fn new() -> Self {
 		Self {
+			desc_stmt: None,
 			alter_stmt: None,
 			drop_stmt: None,
 			show_stmt: None,
@@ -39,6 +41,19 @@ impl StmtNode {
 			set_stmt: None,
 			add_stmt: None,
 			del_stmt: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct DescStmtNode {
+	pub table_name: Option<Box<IdentNode>>,
+}
+
+impl DescStmtNode {
+	pub fn new() -> Self {
+		Self {
+			table_name: None,
 		}
 	}
 }
@@ -424,19 +439,6 @@ impl OperandNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct U64ValueNode {
-	pub value: u64,
-}
-
-impl U64ValueNode {
-	pub fn new() -> Self {
-		Self {
-			value: 0,
-		}
-	}
-}
-
-#[derive(Debug, Clone)]
 pub struct I64ValueNode {
 	pub value: i64,
 }
@@ -527,6 +529,12 @@ pub fn parse(tok_strm: &mut TokenStream) -> Result<QueryNode, Error> {
 pub fn parse_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<StmtNode>>, Error> {
 	let mut stmt = StmtNode::new();
 
+	let desc_stmt = parse_desc_stmt(tok_strm)?;
+	if desc_stmt.is_some() {
+		stmt.desc_stmt = desc_stmt;
+		return Ok(Some(Box::new(stmt)));
+	}
+
 	let alter_stmt = parse_alter_stmt(tok_strm)?;
 	if alter_stmt.is_some() {
 		stmt.alter_stmt = alter_stmt;
@@ -596,6 +604,23 @@ fn parse_if_exists(tok_strm: &mut TokenStream) -> Result<bool, Error> {
 		tok_strm.prev();
 		return Ok(false);
 	}
+}
+
+pub fn parse_desc_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<DescStmtNode>>, Error> {
+	let mut n = DescStmtNode::new();
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Desc {
+		tok_strm.prev();
+		return Ok(None);
+	}	
+
+	n.table_name = parse_ident(tok_strm)?;
+	if n.table_name.is_some() {
+		return Ok(Some(Box::new(n)));
+	}
+
+	Ok(None)
 }
 
 pub fn parse_alter_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterStmtNode>>, Error> {

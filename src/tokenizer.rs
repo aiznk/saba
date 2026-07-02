@@ -13,6 +13,7 @@ pub enum TokenKind {
 	Databases, // DATABASES
 	Default, // DEFAULT
 	Alter, // ALTER
+	Desc, // DESC
 	Use, // USE
 	Show, // SHOW
 	Drop, // DROP
@@ -324,6 +325,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'n' && c2 == 'o' && c3 == 't' {
 			ret.push(Token::from(TokenKind::Not, None));
 			i += 2;
+		} else if c1 == 'd' && c2 == 'e' && c3 == 's' && c4 == 'c' {
+			ret.push(Token::from(TokenKind::Desc, None));
+			i += 3;
 		} else if c1 == 'd' && c2 == 'r' && c3 == 'o' && c4 == 'p' {
 			ret.push(Token::from(TokenKind::Drop, None));
 			i += 3;

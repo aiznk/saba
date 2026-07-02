@@ -17,6 +17,7 @@ impl PlansNode {
 }
 
 pub struct PlanNode {
+	pub desc_table: Option<Box<DescTableNode>>,
 	pub use_db: Option<Box<UseDatabaseNode>>,
 	pub project: Option<Box<ProjectNode>>,
 	pub database_create: Option<Box<DatabaseCreateNode>>,
@@ -31,6 +32,7 @@ pub struct PlanNode {
 impl PlanNode {
 	pub fn new() -> Self {
 		Self {
+			desc_table: None,
 			use_db: None,
 			project: None,
 			database_create: None,
@@ -76,6 +78,18 @@ impl AddColumnNode {
 			column_types_string: None,
 			column_definition_string: None,
 			project: None,
+		}
+	}
+}
+
+pub struct DescTableNode {
+	pub table_name: Option<String>,
+}
+
+impl DescTableNode {
+	pub fn new() -> Self {
+		Self {
+			table_name: None,
 		}
 	}
 }
@@ -277,6 +291,8 @@ pub fn plan_query(node: &QueryNode, plans: &mut PlansNode) -> Result<(), Error> 
 pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
 	if let Some(show_stmt) = &node.show_stmt {
 		plan_show_stmt(&show_stmt, plan)?
+	} else if let Some(desc_stmt) = &node.desc_stmt {
+		plan_desc_stmt(&desc_stmt, plan)?
 	} else if let Some(alter_stmt) = &node.alter_stmt {
 		plan_alter_stmt(&alter_stmt, plan)?
 	} else if let Some(drop_stmt) = &node.drop_stmt {
@@ -295,6 +311,19 @@ pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<()
 		plan_del_stmt(&del_stmt, plan)?;
 	}
 	Ok(())
+}
+
+pub fn plan_desc_stmt(node: &Box<parser::DescStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
+	let mut desc_table = DescTableNode::new();
+
+	if let Some(table_name) = &node.table_name {
+		let table_name = unwrap_ident_object(table_name)?.to_string();
+		desc_table.table_name = Some(table_name);
+		plan.desc_table = Some(Box::new(desc_table));
+		Ok(())
+	} else {
+		err_planning!("invalid state: desc stmt")
+	}
 }
 
 pub fn plan_alter_stmt(node: &Box<parser::AlterStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {

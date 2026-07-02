@@ -21,6 +21,8 @@ pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Erro
 pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), Error> {
 	if let Some(use_db) = &node.use_db {
 		exec_use_db(context, &use_db)?;
+	} else if let Some(desc_table) = &node.desc_table {
+		exec_desc_table(context, &desc_table)?;
 	} else if let Some(project) = &node.project {
 		exec_project(context, &project)?;
 	} else if let Some(database_create) = &node.database_create {
@@ -39,6 +41,16 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		exec_csv_file_rewrite(context, &csv_file_rewrite)?;
 	}
 
+	Ok(())
+}
+
+fn exec_desc_table(context: &mut Context, node: &planner::DescTableNode) -> Result<(), Error> {
+	if let Some(table_name) = &node.table_name {
+		let headers = read_table_headers(context, &table_name)?;
+		for header in headers.iter() {
+			println!("{}", header);
+		}
+	}
 	Ok(())
 }
 
@@ -1262,7 +1274,7 @@ pub fn exec_alter_add_column(context: &mut Context, node: &planner::AddColumnNod
 		while exec_project(context, &project)? {
 			let mut row = context.csv_record.clone();
 			row.push_field(def_row.to_vec().last().unwrap().as_str());
-			writer.write_record(&row);
+			writer.write_record(&row).unwrap();
 		}
 	}
 
