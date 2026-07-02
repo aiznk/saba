@@ -48,6 +48,7 @@ pub struct CsvFileRewriteNode {
 	pub table_name: Option<String>,
 	pub row_delete: Option<Box<RowDeleteNode>>,
 	pub row_update: Option<Box<RowUpdateNode>>,
+	pub add_column: Option<Box<AddColumnNode>>,
 }
 
 impl CsvFileRewriteNode {
@@ -56,6 +57,25 @@ impl CsvFileRewriteNode {
 			table_name: None,
 			row_delete: None,
 			row_update: None,
+			add_column: None,
+		}
+	}
+}
+
+pub struct AddColumnNode {
+	pub ident: Option<String>,
+	pub column_types_string: Option<String>,
+	pub column_definition_string: Option<String>,
+	pub project: Option<Box<ProjectNode>>,
+}
+
+impl AddColumnNode {
+	pub fn new() -> Self {
+		Self {
+			ident: None,
+			column_types_string: None,
+			column_definition_string: None,
+			project: None,
 		}
 	}
 }
@@ -170,7 +190,7 @@ impl CsvFileAppendNode {
 pub struct ProjectNode {
 	pub method: TokenKind,
 	pub get_stmt_objs: Vec<Object>,
-	pub csv_scan: Option<Box<CsvScanNode>>,
+	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
 	pub filter: Option<Box<FilterNode>>,
 }
 
@@ -179,7 +199,7 @@ impl ProjectNode {
 		Self {
 			method: TokenKind::Nil,
 			get_stmt_objs: vec![],
-			csv_scan: None,
+			csv_file_scan: None,
 			filter: None,
 		}
 	}
@@ -197,12 +217,12 @@ impl FilterNode {
 	}
 }
 
-pub struct CsvScanNode {
+pub struct CsvFileScanNode {
 	pub table_name: String,
 	pub all: bool,
 }
 
-impl CsvScanNode {
+impl CsvFileScanNode {
 	pub fn new() -> Self {
 		Self {
 			table_name: String::new(),
@@ -255,39 +275,95 @@ pub fn plan_query(node: &QueryNode, plans: &mut PlansNode) -> Result<(), Error> 
 }
 
 pub fn plan_stmt(node: &Box<parser::StmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
-	if node.show_stmt.is_some() {
-		if let Some(show_stmt) = &node.show_stmt {
-			plan_show_stmt(&show_stmt, plan)?
-		}		
-	} else if node.drop_stmt.is_some() {
-		if let Some(drop_stmt) = &node.drop_stmt {
-			plan_drop_stmt(&drop_stmt, plan)?
-		}	
-	} else if node.use_stmt.is_some() {
-		if let Some(use_stmt) = &node.use_stmt {
-			plan_use_stmt(&use_stmt, plan)?
-		}
-	} else if node.create_stmt.is_some() {
-		if let Some(create_stmt) = &node.create_stmt {
-			plan_create_stmt(&create_stmt, plan)?
-		}
-	} else if node.get_stmt.is_some() {
-		if let Some(get_stmt) = &node.get_stmt {
-			plan_get_stmt(&get_stmt, plan)?;
-		}
-	} else if node.set_stmt.is_some() {
-		if let Some(set_stmt) = &node.set_stmt {
-			plan_set_stmt(&set_stmt, plan)?;
-		}
-	} else if node.add_stmt.is_some() {
-		if let Some(add_stmt) = &node.add_stmt {
-			plan_add_stmt(&add_stmt, plan)?;
-		}
-	} else if node.del_stmt.is_some() {
-		if let Some(del_stmt) = &node.del_stmt {
-			plan_del_stmt(&del_stmt, plan)?;
-		}
+	if let Some(show_stmt) = &node.show_stmt {
+		plan_show_stmt(&show_stmt, plan)?
+	} else if let Some(alter_stmt) = &node.alter_stmt {
+		plan_alter_stmt(&alter_stmt, plan)?
+	} else if let Some(drop_stmt) = &node.drop_stmt {
+		plan_drop_stmt(&drop_stmt, plan)?
+	} else if let Some(use_stmt) = &node.use_stmt {
+		plan_use_stmt(&use_stmt, plan)?
+	} else if let Some(create_stmt) = &node.create_stmt {
+		plan_create_stmt(&create_stmt, plan)?
+	} else if let Some(get_stmt) = &node.get_stmt {
+		plan_get_stmt(&get_stmt, plan)?;
+	} else if let Some(set_stmt) = &node.set_stmt {
+		plan_set_stmt(&set_stmt, plan)?;
+	} else if let Some(add_stmt) = &node.add_stmt {
+		plan_add_stmt(&add_stmt, plan)?;
+	} else if let Some(del_stmt) = &node.del_stmt {
+		plan_del_stmt(&del_stmt, plan)?;
 	}
+	Ok(())
+}
+
+pub fn plan_alter_stmt(node: &Box<parser::AlterStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
+	if let Some(alter_table) = &node.alter_table {
+		plan_alter_table(alter_table, plan)?;
+		Ok(())
+	} else {
+		err_planning!("invalid state: alter stmt")
+	}
+}
+
+fn gen_column_types_string(column_types: &Vec<parser::ColumnTypeNode>) -> Result<String, Error> {
+	let mut scolumn_type = String::new();
+
+	for column_type in column_types.iter() {
+		let stype = gen_csv_head_col_type_by_column_type(&column_type)?;
+		scolumn_type.push_str(stype.as_str());
+		scolumn_type.push(' ');
+	}
+
+	scolumn_type.pop();
+	Ok(scolumn_type)
+}
+
+pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode) -> Result<(), Error> {
+	let mut n = CsvFileRewriteNode::new();
+	let mut add_column = AddColumnNode::new();
+	let mut project = ProjectNode::new();
+
+	project.method = TokenKind::Alter;
+
+	if let Some(table_name) = &node.table_name {
+		let table_name = unwrap_ident_object(table_name)?.to_string();
+		n.table_name = Some(table_name.clone());
+		let mut csv_file_scan = CsvFileScanNode::new();
+		csv_file_scan.table_name = table_name.clone();
+		csv_file_scan.all = true; // always true
+		project.csv_file_scan = Some(Box::new(csv_file_scan));
+	} else {
+		return err_planning!("missing table name in plan alter table");
+	}
+
+	if let Some(alter_add_column) = &node.alter_add_column {
+		if let Some(ident) = &alter_add_column.ident {
+			let ident = unwrap_ident_object(ident)?.to_string();
+			add_column.ident = Some(ident);
+		} else {
+			return err_planning!("missing column ident in plan alter table");
+		}
+		let column_types = alter_add_column.column_types.clone();
+		add_column.column_types_string = Some(gen_column_types_string(&column_types)?);
+
+		let mut new_type = String::new();
+		if let Some(ident) = &add_column.ident {
+			new_type.push_str(ident.as_str());
+		}
+		new_type.push_str(": ");
+		if let Some(column_type_string) = &add_column.column_types_string {
+			new_type.push_str(column_type_string.as_str());
+		}
+		add_column.column_definition_string = Some(new_type);
+	} else {
+		return err_planning!("invalid state: plan alter table");
+	}
+
+	add_column.project = Some(Box::new(project));
+	n.add_column = Some(Box::new(add_column));
+	plan.csv_file_rewrite = Some(Box::new(n));
+
 	Ok(())
 }
 
@@ -492,10 +568,10 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 
 	if let Some(table) = &node.table {
 		let ident = unwrap_ident_object(&table)?.to_string();
-		let mut csv_scan = CsvScanNode::new();
-		csv_scan.table_name = ident.clone();
-		csv_scan.all = node.all;
-		project.csv_scan = Some(Box::new(csv_scan));
+		let mut csv_file_scan = CsvFileScanNode::new();
+		csv_file_scan.table_name = ident.clone();
+		csv_file_scan.all = node.all;
+		project.csv_file_scan = Some(Box::new(csv_file_scan));
 		rewrite.table_name = Some(ident.clone());
 	}
 
@@ -526,11 +602,11 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 	}
 
 	if let Some(table) = &node.table {
-		let mut csv_scan = CsvScanNode::new();
+		let mut csv_file_scan = CsvFileScanNode::new();
 		let table_name = unwrap_ident_object(&table)?.to_string();
-		csv_scan.table_name = table_name.clone();
-		csv_scan.all = true; // the set stmt always needs all on csv_scan
-		project.csv_scan = Some(Box::new(csv_scan));
+		csv_file_scan.table_name = table_name.clone();
+		csv_file_scan.all = true; // the set stmt always needs all on csv_file_scan
+		project.csv_file_scan = Some(Box::new(csv_file_scan));
 		rewrite.table_name = Some(table_name);
 	} else {
 		return err_planning!("missing table name in set stmt");
@@ -563,10 +639,10 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 	}
 
 	if let Some(table) = &node.table {
-		let mut csv_scan = CsvScanNode::new();
-		csv_scan.table_name = unwrap_ident_object(&table)?.to_string();
-		csv_scan.all = node.all;
-		project.csv_scan = Some(Box::new(csv_scan));
+		let mut csv_file_scan = CsvFileScanNode::new();
+		csv_file_scan.table_name = unwrap_ident_object(&table)?.to_string();
+		csv_file_scan.all = node.all;
+		project.csv_file_scan = Some(Box::new(csv_file_scan));
 	}
 
 	if let Some(where_clause) = &node.where_clause {

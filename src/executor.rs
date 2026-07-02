@@ -49,7 +49,6 @@ pub fn gen_default_record(headers: &StringRecord) -> Result<Vec<String>, Error> 
 	for i in 0..types.len() {
 		let typ = &types[i];
 		v.push(typ.to_default_value_string()?);
-		println!("[{}] [{}]", typ.is_default, typ.to_default_value_string()?);
 	}
 
 	Ok(v)
@@ -176,7 +175,6 @@ fn parse_csv_headers_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>,
 			let mut typ = HeaderType::new();
 			typ.ident = left.trim().to_string();
 			let stype = right.to_lowercase();
-			println!("stype[{}]", stype);
 
 			if stype.contains("i64") {
 				typ.is_i64 = true;
@@ -221,7 +219,6 @@ fn parse_csv_headers_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>,
 				    	return err_exec!("invalid default value");
 				    }
 				} else {
-					println!("{}", stype.as_str());
 					return err_exec!("failed to capture stype for default");
 				}
 			}
@@ -274,6 +271,10 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
 
 pub fn exec_use_db(context: &mut Context, node: &planner::UseDatabaseNode) -> Result<(), Error> {
 	context.using_db_name = node.db_name.clone();
+	let path = context.gen_db_dir_path(&context.using_db_name)?;
+	if !path.exists() {
+		return err_exec!("{} does not exists database", context.using_db_name);
+	}
 	Ok(())
 }
 
@@ -296,11 +297,11 @@ pub fn print_selected_columns(context: &mut Context) -> Result<(), Error> {
 
 pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Result<bool, Error> {
 	if node.filter.is_none() {
-		if node.csv_scan.is_none() {
+		if node.csv_file_scan.is_none() {
 			return err_exec!("csv scan is none in project");
 		}
-		if let Some(csv_scan) = &node.csv_scan {
-			while exec_csv_scan(context, csv_scan)? {
+		if let Some(csv_file_scan) = &node.csv_file_scan {
+			while exec_csv_scan(context, csv_file_scan)? {
 				context.matched_csv_record = context.csv_record.clone();
 				if node.method == TokenKind::Get {
 					select_get_columns(context, node)?;
@@ -311,7 +312,7 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 				if let Some(records) = context.test_get_records.as_mut() {
 					records.push(context.csv_record.clone());
 				}
-				if !csv_scan.all {
+				if !csv_file_scan.all {
 					context.table_csv_reader = None;
 					return Ok(false);
 				}
@@ -323,13 +324,13 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 			return Ok(false);
 		}
 	} else {
-		if node.csv_scan.is_none() {
+		if node.csv_file_scan.is_none() {
 			return err_exec!("csv scan is none in project (2)");
 		}
-		if let Some(csv_scan) = &node.csv_scan {
+		if let Some(csv_file_scan) = &node.csv_file_scan {
 			if let Some(filter) = &node.filter {
 				context.counter_selected = 0;
-				while exec_csv_scan(context, csv_scan)? {
+				while exec_csv_scan(context, csv_file_scan)? {
 					if exec_filter(context, filter)? {
 						select_get_columns(context, node)?;
 						if context.is_cli {
@@ -340,7 +341,7 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 							records.push(context.csv_record.clone());
 						}
 					}
-					if !csv_scan.all && context.counter_selected >= 1 {
+					if !csv_file_scan.all && context.counter_selected >= 1 {
 						context.table_csv_reader = None;
 						break;
 					}
@@ -1083,7 +1084,7 @@ pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) ->
 	Ok(())
 }
 
-pub fn exec_csv_scan(context: &mut Context, node: &planner::CsvScanNode) -> Result<bool, Error> {
+pub fn exec_csv_scan(context: &mut Context, node: &planner::CsvFileScanNode) -> Result<bool, Error> {
 	if context.table_csv_reader.is_none() {
 		let path = context.gen_table_file_path(&node.table_name)?;
 		let reader = match Reader::from_path(&path) {
@@ -1250,6 +1251,21 @@ pub fn replace_columns_by_objs(context: &mut Context, cols: &StringRecord, updat
 	Ok(row)
 }
 
+pub fn exec_alter_add_column(context: &mut Context, node: &planner::AddColumnNode, writer: &mut Writer<fs::File>, headers: &StringRecord) -> Result<(), Error> {
+	if let Some(project) = &node.project {
+		let def_row = gen_default_record(headers)?;
+		assert!(def_row.len() > 0);
+		context.is_sequential = true;
+		while exec_project(context, &project)? {
+			let mut row = context.csv_record.clone();
+			row.push_field(def_row.to_vec().last().unwrap().as_str());
+			writer.write_record(&row);
+		}
+	}
+
+	Ok(())
+}
+
 pub fn exec_row_update(context: &mut Context, node: &planner::RowUpdateNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 	if let Some(project) = &node.project {
 		if let Some(expr_list) = &node.expr_list {
@@ -1307,17 +1323,26 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 	if let Some(table_name) = &node.table_name {
 		let org_path = context.gen_table_file_path(&table_name)?;
 		let tmp_path = context.gen_tmp_table_file_path(&table_name)?;
-		let headers = read_table_headers(context, &table_name)?;
+		let mut headers = read_table_headers(context, &table_name)?;
 		let mut writer = match Writer::from_path(&tmp_path) {
 			Ok(v) => v,
 			Err(e) => return err_exec!("failed to open CSV writer: {}", e),
 		};
+
+		if let Some(add_column) = &node.add_column {
+			if let Some(column_def_string) = &add_column.column_definition_string {
+				headers.push_field(column_def_string.as_str());
+			}
+		}
+		
 		writer.write_record(&headers).unwrap();
 
 		if let Some(row_delete) = &node.row_delete {
 			exec_row_delete(context, row_delete, &mut writer)?;
 		} else if let Some(row_update) = &node.row_update {
 			exec_row_update(context, row_update, &mut writer)?;
+		} else if let Some(add_column) = &node.add_column {
+			exec_alter_add_column(context, add_column, &mut writer, &headers)?;
 		} else {
 			return err_exec!("invalid state: csv file rewrite");
 		}
@@ -1418,8 +1443,20 @@ mod tests {
 	#[test]
 	fn test_use_db() {
 		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS hige").unwrap();
+		do_exec(&mut context, "CREATE DATABASE hige").unwrap();
 		do_exec(&mut context, "USE hige").unwrap();
 		assert!(context.using_db_name == "hige");
+	}
+
+	#[test]
+	fn test_use_db_1() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS hige").unwrap();
+		match do_exec(&mut context, "USE hige") {
+			Ok(_) => panic!("failed"),
+			Err(_) => {}
+		}
 	}
 
 	#[test]
@@ -1501,7 +1538,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 1 OF test_table").unwrap();
 		do_exec(&mut context, "ADD weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,0.0,\n0,3.14,hoge\n");
 	}
 
@@ -1520,7 +1556,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 1 OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2 OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("[{}]", s);
 		assert!(s == "id: I64,weight: F64 DEFAULT 1.23,name: CHAR[128] DEFAULT \"def\"\n1,1.23,def\n2,1.23,def\n");
 	}
 
@@ -1559,7 +1594,6 @@ mod tests {
 		assert!(s == "id: I64 AUTO_INCREMENT,name: CHAR[4]\n");
 		do_exec(&mut context, "ADD name = \"hige\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("[{}]", s);
 		assert!(s == "id: I64 AUTO_INCREMENT,name: CHAR[4]\n1,hige\n");
 		do_exec(&mut context, "ADD name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
@@ -1783,7 +1817,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE (id == 1 OR weight == 60) AND name == \"hige\"").unwrap();
 		let s = csv_records_to_string(&mut context);
-		println!("[{}]", s);
 		assert!(s == "1,3.14,hige\n");
 	}
 
@@ -1836,7 +1869,6 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "DEL ALL OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
 	}
 
@@ -1973,5 +2005,30 @@ mod tests {
 		do_exec(&mut context, "SET ALL name=\"HOGE\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,HOGE\n2,3.14,HOGE\n");
+	}
+
+	#[test]
+	fn test_alter_add_column_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		do_exec(&mut context, "ALTER TABLE test_table ADD COLUMN uge I64").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128],uge: I64\n1,3.14,hige,0\n2,3.14,hoge,0\n3,3.14,moge,0\n4,3.14,huge,0\n5,3.14,oge,0\n");
+	}
+
+	#[test]
+	fn test_alter_add_column_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		do_exec(&mut context, "ALTER TABLE test_table ADD COLUMN uge I64 DEFAULT 100").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128],uge: I64 DEFAULT 100\n1,3.14,hige,100\n2,3.14,hoge,100\n3,3.14,moge,100\n4,3.14,huge,100\n5,3.14,oge,100\n");
 	}
 }

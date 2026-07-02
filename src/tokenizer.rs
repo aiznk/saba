@@ -12,6 +12,7 @@ pub enum TokenKind {
 	Database, // DATABASE
 	Databases, // DATABASES
 	Default, // DEFAULT
+	Alter, // ALTER
 	Use, // USE
 	Show, // SHOW
 	Drop, // DROP
@@ -24,6 +25,7 @@ pub enum TokenKind {
 	Bool, // BOOL
 	True, // true, TRUE
 	False, // false, FALSE
+	Column, // COLUMN
 	Char, // CHAR
 	If, // IF
 	Exists, // EXISTS
@@ -349,6 +351,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'w' && c2 == 'h' && c3 == 'e' && c4 == 'r' && c5 == 'e' {
 			ret.push(Token::from(TokenKind::Where, None));
 			i += 4;
+		} else if c1 == 'a' && c2 == 'l' && c3 == 't' && c4 == 'e' && c5 == 'r' {
+			ret.push(Token::from(TokenKind::Alter, None));
+			i += 4;
 		} else if c1 == 't' && c2 == 'a' && c3 == 'b' && c4 == 'l' && c5 == 'e' && c6 == 's' {
 			ret.push(Token::from(TokenKind::Tables, None));
 			i += 5;
@@ -358,6 +363,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 't' && c2 == 'a' && c3 == 'b' && c4 == 'l' && c5 == 'e' {
 			ret.push(Token::from(TokenKind::Table, None));
 			i += 4;
+		} else if c1 == 'c' && c2 == 'o' && c3 == 'l' && c4 == 'u' && c5 == 'm' && c6 == 'n' {
+			ret.push(Token::from(TokenKind::Column, None));
+			i += 5;
 		} else if c1 == 'c' && c2 == 'r' && c3 == 'e' && c4 == 'a' && c5 == 't' && c6 == 'e' {
 			ret.push(Token::from(TokenKind::Create, None));
 			i += 5;
