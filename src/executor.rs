@@ -373,7 +373,6 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<bool, Error> {
 	if let Some(where_clause) = &node.where_clause {
 		let o = exec_where_clause(context, where_clause)?;
-		println!("o[{}]", o.to_string());
 		if o.bool_value {
 			context.matched_csv_record = context.csv_record.clone();
 			context.unmatched_csv_record.clear();
@@ -634,7 +633,6 @@ pub fn refer_ident(context: &mut Context, ident: &String) -> Result<Object, Erro
 
 
 pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::CompareOpNode, rhs: &Object) -> Result<Object, Error> {
-	println!("lhs[{}] op[{:?}] rhs[{}]", lhs.to_string(), op, rhs.to_string());
 	match op {
 		parser::CompareOpNode::Lt => {
 			match lhs.kind {
@@ -642,7 +640,6 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 					match rhs.kind {
 						ObjectKind::I64 => {
 							let b = lhs.i64_value < rhs.i64_value;
-							println!("b[{}]", b);
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::F64 => {
@@ -742,7 +739,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f64 and other: a < b"),						
+						_ => err_exec!("can't compare f64 and other: a <= b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -797,7 +794,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f64 and other: a < b"),						
+						_ => err_exec!("can't compare f64 and other: a > b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -852,7 +849,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f64 and other: a < b"),						
+						_ => err_exec!("can't compare f64 and other: a >= b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -924,6 +921,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 					match rhs.kind {
 						ObjectKind::I64 |
 						ObjectKind::F64 |
+						ObjectKind::Bool |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)									
@@ -933,7 +931,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f64 and other: a < b"),						
+						_ => err_exec!("can't compare ident and other: a == b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -1005,6 +1003,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 					match rhs.kind {
 						ObjectKind::I64 |
 						ObjectKind::F64 |
+						ObjectKind::Bool |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
@@ -1014,7 +1013,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs.ident)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
-						_ => err_exec!("can't compare f64 and other: a < b"),						
+						_ => err_exec!("can't compare ident and other: a != b"),						
 					}
 				}
 				_ => err_exec!("can't compare"),
@@ -1028,6 +1027,8 @@ pub fn exec_operand(context: &mut Context, node: &parser::OperandNode) -> Result
 		return Ok(exec_i64_value(context, i64_value)?);
 	} else if let Some(f64_value) = &node.f64_value {
 		return Ok(exec_f64_value(context, f64_value)?);
+	} else if let Some(bool_value) = &node.bool_value {
+		return Ok(exec_bool_value(context, bool_value)?);
 	} else if let Some(string) = &node.string {
 		return Ok(exec_string(context, string)?);
 	} else if let Some(ident) = &node.ident {
@@ -1038,6 +1039,13 @@ pub fn exec_operand(context: &mut Context, node: &parser::OperandNode) -> Result
 		return Ok(Object::from_star());
 	}
 	err_exec!("invalid state of operand in exec")
+}
+
+pub fn exec_bool_value(_: &mut Context, node: &parser::BoolValueNode) -> Result<Object, Error> {
+	let mut o = Object::new();
+	o.kind = ObjectKind::Bool;
+	o.bool_value = node.value;
+	Ok(o)
 }
 
 pub fn exec_i64_value(_: &mut Context, node: &parser::I64ValueNode) -> Result<Object, Error> {
@@ -1775,6 +1783,24 @@ mod tests {
 	    };
 	}
 
+	macro_rules! setup_records_3 {
+	    ($context:ident) => {
+    		let path = gen_test_table_path();
+			remove_file(&path);
+			do_exec(&mut $context, "DROP DATABASE IF EXISTS test_db").unwrap();
+			do_exec(&mut $context, "CREATE DATABASE test_db").unwrap();
+			do_exec(&mut $context, "USE test_db").unwrap();
+			do_exec(&mut $context, "CREATE TABLE test_table (id: I64 AUTO_INCREMENT, weight: F64, is_login: BOOL, name: CHAR[128])").unwrap();
+			assert!(path.exists());
+			let s = fs::read_to_string(&path).unwrap();
+			assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n");
+			do_exec(&mut $context, "ADD weight = 60.2, is_login = true, name = \"hige\" OF test_table").unwrap();
+			do_exec(&mut $context, "ADD weight = 60.2, is_login = false, name = \"hoge\" OF test_table").unwrap();
+			let s = fs::read_to_string(&path).unwrap();
+			assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
+	    };
+	}
+
 	#[test]
 	fn test_get_stmt_or_and_0() {
 		let mut context = Context::new();
@@ -2043,7 +2069,6 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		do_exec(&mut context, "ALTER TABLE test_table ADD COLUMN uge I64 DEFAULT 100").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128],uge: I64 DEFAULT 100\n1,3.14,hige,100\n2,3.14,hoge,100\n3,3.14,moge,100\n4,3.14,huge,100\n5,3.14,oge,100\n");
 	}
 
@@ -2057,7 +2082,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id < 3").unwrap();
 		let s = test_get_records_to_string(&mut context);
-		println!("[{}]", s);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
 	}
 
@@ -2071,7 +2095,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id <= 3").unwrap();
 		let s = test_get_records_to_string(&mut context);
-		println!("[{}]", s);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n");
 	}
 
@@ -2085,7 +2108,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id > 2").unwrap();
 		let s = test_get_records_to_string(&mut context);
-		println!("[{}]", s);
 		assert!(s == "3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
 
@@ -2099,7 +2121,66 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id >= 3").unwrap();
 		let s = test_get_records_to_string(&mut context);
-		println!("[{}]", s);
 		assert!(s == "3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+	}
+
+	#[test]
+	fn test_bool_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_3!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL * OF test_table").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "1,60.2,true,hige\n2,60.2,false,hoge\n");
+	}
+
+	#[test]
+	fn test_bool_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_3!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL * OF test_table WHERE is_login == true").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "1,60.2,true,hige\n");
+	}
+
+	#[test]
+	fn test_bool_2() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_3!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL * OF test_table WHERE is_login == false").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "2,60.2,false,hoge\n");
+	}
+
+	#[test]
+	fn test_bool_3() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_3!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL * OF test_table WHERE is_login != true").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "2,60.2,false,hoge\n");
 	}
 }

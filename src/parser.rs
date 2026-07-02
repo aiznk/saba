@@ -419,6 +419,7 @@ pub enum CompareOpNode {
 pub struct OperandNode {
 	pub i64_value: Option<Box<I64ValueNode>>,
 	pub f64_value: Option<Box<F64ValueNode>>,
+	pub bool_value: Option<Box<BoolValueNode>>,
 	pub string: Option<Box<StringNode>>,
 	pub ident: Option<Box<IdentNode>>,
 	pub expr: Option<Box<ExprNode>>,
@@ -430,6 +431,7 @@ impl OperandNode {
 		Self {
 			i64_value: None,
 			f64_value: None,
+			bool_value: None,
 			string: None,
 			ident: None,
 			expr: None,
@@ -1385,6 +1387,11 @@ pub fn parse_operand(tok_strm: &mut TokenStream) -> Result<Option<Box<OperandNod
 
 		n.f64_value = parse_f64_value(tok_strm)?;
 		if n.f64_value.is_some() {
+			return Ok(Some(Box::new(n)));
+		}
+
+		n.bool_value = parse_bool_value(tok_strm)?;
+		if n.bool_value.is_some() {
 			return Ok(Some(Box::new(n)));
 		}
 
