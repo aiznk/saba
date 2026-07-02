@@ -1666,11 +1666,11 @@ mod tests {
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
 	}
 
-	fn csv_records_to_string(context: &mut Context) -> String {
+	fn test_get_records_to_string(context: &mut Context) -> String {
 		let mut writer = Writer::from_writer(vec![]);
 		for rec in context.test_get_records.clone().unwrap().iter() {
 			writer.write_record(rec).unwrap();
@@ -1698,7 +1698,7 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR name == \"hoge\"").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
 	}
 
@@ -1720,7 +1720,7 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 AND name == \"hige\"").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n");
 	}
 
@@ -1769,7 +1769,7 @@ mod tests {
 		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR weight == 3.14 AND name == \"hige\"").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n");
 	}
 
@@ -1779,7 +1779,7 @@ mod tests {
 		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR weight == 100.0 AND name == \"hige\"").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n");
 	}
 
@@ -1789,7 +1789,7 @@ mod tests {
 		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 0 OR weight == 100.0 AND name == \"hige\"").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		assert!(s == "");
 	}
 
@@ -1799,7 +1799,7 @@ mod tests {
 		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 0 OR weight == 3.14 AND name == \"hige\"").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n");
 	}
 
@@ -1809,7 +1809,7 @@ mod tests {
 		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE (id == 0 OR weight == 3.14) AND name == \"hige\"").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n");
 	}
 
@@ -1819,7 +1819,7 @@ mod tests {
 		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE (id == 1 OR weight == 60) AND name == \"hige\"").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		assert!(s == "1,3.14,hige\n");
 	}
 
@@ -1829,7 +1829,7 @@ mod tests {
 		setup_records!(context);
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE (id == 0 OR weight == 3.14) AND name == \"moge\"").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		assert!(s == "");
 	}
 
@@ -2044,7 +2044,7 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id < 3").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		println!("[{}]", s);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
 	}
@@ -2058,7 +2058,7 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id <= 3").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		println!("[{}]", s);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n");
 	}
@@ -2072,7 +2072,7 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id > 2").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		println!("[{}]", s);
 		assert!(s == "3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
@@ -2086,7 +2086,7 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id >= 3").unwrap();
-		let s = csv_records_to_string(&mut context);
+		let s = test_get_records_to_string(&mut context);
 		println!("[{}]", s);
 		assert!(s == "3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
