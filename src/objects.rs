@@ -65,7 +65,6 @@ impl HeaderType {
 			};
 			return Ok(Object::from_f64(n));
 		} else if self.is_bool {
-			println!("s[{}]", s);
 			let n = match s.parse::<bool>() {
 				Ok(v) => v,
 				Err(e) => return err_parse!("failed to parse as bool. {}", e),

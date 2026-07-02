@@ -1278,12 +1278,17 @@ pub fn exec_alter_add_column(context: &mut Context, node: &planner::AddColumnNod
 	if let Some(project) = &node.project {
 		let def_row = gen_default_record(headers)?;
 		assert!(def_row.len() > 0);
+		
+		let seq = context.is_sequential;
 		context.is_sequential = true;
+
 		while exec_project(context, &project)? {
 			let mut row = context.csv_record.clone();
 			row.push_field(def_row.to_vec().last().unwrap().as_str());
 			writer.write_record(&row).unwrap();
 		}
+		
+		context.is_sequential = seq;
 	}
 
 	Ok(())
