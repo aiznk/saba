@@ -2,7 +2,7 @@ use crate::parser::{QueryNode};
 use crate::parser;
 use crate::error::{Error, make_error, err_planning};
 use crate::tokenizer::{TokenKind};
-use crate::objects::{Object};
+use crate::objects::{Object, ObjectKind};
 
 pub struct PlansNode {
 	pub plans: Vec<PlanNode>,
@@ -129,6 +129,7 @@ impl DirListNode {
 }
 
 pub struct CsvFileGrepNode {
+	#[allow(dead_code)]
 	dummy: i32,
 }
 
@@ -423,7 +424,47 @@ pub fn gen_csv_head_col_type_by_column_type(column_type: &parser::ColumnTypeNode
 		parser::ColumnTypeNode::F64 => Ok(String::from("F64")),
 		parser::ColumnTypeNode::Char(nelems) => Ok(format!("CHAR[{}]", nelems)),
 		parser::ColumnTypeNode::Bool => Ok(String::from("BOOL")),
+		parser::ColumnTypeNode::Default(value) => {
+			let obj = unwrap_value(&*value)?;
+			let sobj;
+			if obj.kind == ObjectKind::String {
+				sobj = format!("\"{}\"", obj.to_string());
+			} else {
+				sobj = obj.to_string();
+			}
+			return Ok(format!("DEFAULT {}", sobj));
+		}
 	}
+}
+
+fn unwrap_value(node: &parser::ValueNode) -> Result<Object, Error> {
+	if let Some(i64_value) = &node.i64_value {
+		return Ok(unwrap_i64_value(&i64_value)?);
+	} else if let Some(f64_value) = &node.f64_value {
+		return Ok(unwrap_f64_value(&f64_value)?);
+	} else if let Some(bool_value) = &node.bool_value {
+		return Ok(unwrap_bool_value(&bool_value)?);		
+	} else if let Some(string) = &node.string {
+		return Ok(unwrap_string(&string)?);
+	} else {
+		return err_planning!("invalid state: unwrap value");
+	}
+}
+
+fn unwrap_i64_value(node: &parser::I64ValueNode) -> Result<Object, Error> {
+	Ok(Object::from_i64(node.value))
+}
+
+fn unwrap_f64_value(node: &parser::F64ValueNode) -> Result<Object, Error> {
+	Ok(Object::from_f64(node.value))
+}
+
+fn unwrap_bool_value(node: &parser::BoolValueNode) -> Result<Object, Error> {
+	Ok(Object::from_bool(node.value))
+}
+
+fn unwrap_string(node: &parser::StringNode) -> Result<Object, Error> {
+	Ok(Object::from_string(node.value.clone()))
 }
 
 pub fn plan_add_stmt(node: &Box<parser::AddStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {

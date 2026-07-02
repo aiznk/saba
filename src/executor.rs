@@ -49,6 +49,7 @@ pub fn gen_default_record(headers: &StringRecord) -> Result<Vec<String>, Error> 
 	for i in 0..types.len() {
 		let typ = &types[i];
 		v.push(typ.to_default_value_string()?);
+		println!("[{}] [{}]", typ.is_default, typ.to_default_value_string()?);
 	}
 
 	Ok(v)
@@ -173,10 +174,10 @@ fn parse_csv_headers_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>,
 	for header in headers.iter() {
 		if let Some((left, right)) = header.split_once(":") {
 			let mut typ = HeaderType::new();
-
 			typ.ident = left.trim().to_string();
-
 			let stype = right.to_lowercase();
+			println!("stype[{}]", stype);
+
 			if stype.contains("i64") {
 				typ.is_i64 = true;
 			} else if stype.contains("f64") {
@@ -192,6 +193,8 @@ fn parse_csv_headers_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>,
 						Err(e) => return err_exec!("failed to parse CHAR[n]. {}", e),
 					};
 					typ.char_size = size;
+				} else {
+					return err_exec!("failed to capture stype for char");
 				}
 			}
 			if stype.contains("auto_increment") {
@@ -199,6 +202,28 @@ fn parse_csv_headers_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>,
 			}
 			if stype.contains("primary_key") {
 				typ.is_primary_key = true;
+			}
+			if stype.contains("default") {
+				typ.is_default = true;
+				let re = Regex::new(
+						    r#"default\s+(?:(?P<float>-?\d+\.\d+)|(?P<int>-?\d+)|"(?P<string>[^"]*)"|(?P<bool>true|false))"#
+							).unwrap();
+				if let Some(cap) = re.captures(stype.as_str()) {
+				    if let Some(v) = cap.name("int") {
+				    	typ.default_value = Some(Object::from_i64(v.as_str().parse::<i64>().unwrap()));
+				    } else if let Some(v) = cap.name("float") {
+				    	typ.default_value = Some(Object::from_f64(v.as_str().parse::<f64>().unwrap()));
+				    } else if let Some(v) = cap.name("string") {
+				    	typ.default_value = Some(Object::from_string(v.as_str().to_string()));
+				    } else if let Some(v) = cap.name("bool") {
+				    	typ.default_value = Some(Object::from_bool(v.as_str().parse::<bool>().unwrap()));
+				    } else {
+				    	return err_exec!("invalid default value");
+				    }
+				} else {
+					println!("{}", stype.as_str());
+					return err_exec!("failed to capture stype for default");
+				}
 			}
 
 			v.push(typ);
@@ -999,14 +1024,14 @@ pub fn exec_operand(context: &mut Context, node: &parser::OperandNode) -> Result
 	err_exec!("invalid state of operand in exec")
 }
 
-pub fn exec_i64_value(_: &mut Context, node: &parser::IntValueNode) -> Result<Object, Error> {
+pub fn exec_i64_value(_: &mut Context, node: &parser::I64ValueNode) -> Result<Object, Error> {
 	let mut o = Object::new();
 	o.kind = ObjectKind::I64;
 	o.i64_value = node.value;
 	Ok(o)
 }
 
-pub fn exec_f64_value(_: &mut Context, node: &parser::FloatValueNode) -> Result<Object, Error> {
+pub fn exec_f64_value(_: &mut Context, node: &parser::F64ValueNode) -> Result<Object, Error> {
 	let mut o = Object::new();
 	o.kind = ObjectKind::F64;
 	o.f64_value = node.value;
@@ -1147,7 +1172,7 @@ pub fn exec_dir_list(context: &mut Context, node: &planner::DirListNode) -> Resu
 			let entry = entry.unwrap();
 			let path = entry.path();
 			if path.extension().and_then(|s| s.to_str()) == Some("csv") {
-				println!("{}", path.display());
+				println!("{}", path.file_stem().unwrap().to_str().unwrap());
 			}
 		}
 	} else {
@@ -1159,7 +1184,7 @@ pub fn exec_dir_list(context: &mut Context, node: &planner::DirListNode) -> Resu
 		for entry in dir {
 			let entry = entry.unwrap();
 			let path = entry.path();
-			println!("{}", path.display());
+			println!("{}", path.file_stem().unwrap().to_str().unwrap());
 		}
 	}
 
@@ -1478,6 +1503,25 @@ mod tests {
 		let s = fs::read_to_string(&path).unwrap();
 		println!("[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,0.0,\n0,3.14,hoge\n");
+	}
+
+	#[test]
+	fn test_add_stmt_default_value() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64 DEFAULT 1.23, name: CHAR[128] DEFAULT \"def\")").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64 DEFAULT 1.23,name: CHAR[128] DEFAULT \"def\"\n");
+		do_exec(&mut context, "ADD id = 1 OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2 OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("[{}]", s);
+		assert!(s == "id: I64,weight: F64 DEFAULT 1.23,name: CHAR[128] DEFAULT \"def\"\n1,1.23,def\n2,1.23,def\n");
 	}
 
 	#[test]

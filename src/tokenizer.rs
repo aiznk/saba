@@ -6,21 +6,24 @@ pub enum TokenKind {
 	Star, // *
 	Ident, // id
 	String, // "str"
-	Int, // 1
-	Float, // 1.23
 	Create, // CREATE
 	PrimaryKey, // PRIMARY_KEY
 	AutoIncrement, // AUTO_INCREMENT
 	Database, // DATABASE
 	Databases, // DATABASES
+	Default, // DEFAULT
 	Use, // USE
 	Show, // SHOW
 	Drop, // DROP
 	Table, // TABLE
 	Tables, // TABLES
-	I64,
-	F64,
-	Bool,
+	Int, // value of int
+	Float, // value of float
+	TypeI64, // type of int
+	TypeF64, // type of float
+	Bool, // BOOL
+	True, // true, TRUE
+	False, // false, FALSE
 	Char, // CHAR
 	If, // IF
 	Exists, // EXISTS
@@ -31,6 +34,10 @@ pub enum TokenKind {
 	Del, // DEL
 	Of, // OF
 	Where, // WHERE
+	Lt, // <
+	LtEq, // <=
+	Gt, // >
+	GtEq, // >=
 	Eq, // ==
 	NotEq, // !=
 	And, // AND
@@ -50,6 +57,7 @@ pub enum TokenKind {
 pub struct Token {
 	pub kind: TokenKind,
 	pub text: Option<String>,
+	pub u64_value: Option<u64>,
 	pub i64_value: Option<i64>,
 	pub f64_value: Option<f64>,
 }
@@ -60,6 +68,7 @@ impl Token {
 		Self {
 			kind: TokenKind::Nil,
 			text: None,
+			u64_value: None,
 			i64_value: None,
 			f64_value: None,
 		}
@@ -69,6 +78,7 @@ impl Token {
 		Self {
 			kind,
 			text,
+			u64_value: None,
 			i64_value: None,
 			f64_value: None,
 		}
@@ -78,6 +88,7 @@ impl Token {
 		Self {
 			kind: TokenKind::Int,
 			text: None,
+			u64_value: None,
 			i64_value: Some(n),
 			f64_value: None,
 		}
@@ -87,6 +98,7 @@ impl Token {
 		Self {
 			kind: TokenKind::Float,
 			text: None,
+			u64_value: None,
 			i64_value: None,
 			f64_value: Some(n),
 		}
@@ -299,10 +311,10 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 			ret.push(Token::from(TokenKind::And, None));
 			i += 2;
 		} else if c1 == 'i' && c2 == '6' && c3 == '4' {
-			ret.push(Token::from(TokenKind::I64, None));
+			ret.push(Token::from(TokenKind::TypeI64, None));
 			i += 2;
 		} else if c1 == 'f' && c2 == '6' && c3 == '4' {
-			ret.push(Token::from(TokenKind::F64, None));
+			ret.push(Token::from(TokenKind::TypeF64, None));
 			i += 2;
 		} else if c1 == 'u' && c2 == 's' && c3 == 'e' {
 			ret.push(Token::from(TokenKind::Use, None));
@@ -322,6 +334,12 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'b' && c2 == 'o' && c3 == 'o' && c4 == 'l' {
 			ret.push(Token::from(TokenKind::Bool, None));
 			i += 3;
+		} else if c1 == 't' && c2 == 'r' && c3 == 'u' && c4 == 'e' {
+			ret.push(Token::from(TokenKind::True, None));
+			i += 3;
+		} else if c1 == 'f' && c2 == 'a' && c3 == 'l' && c4 == 's' && c5 == 'e' {
+			ret.push(Token::from(TokenKind::False, None));
+			i += 4;
 		} else if c1 == 'o' && c2 == 'r' {
 			ret.push(Token::from(TokenKind::Or, None));
 			i += 1;
@@ -346,6 +364,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'd' && c2 == 'a' && c3 == 't' && c4 == 'a' && c5 == 'b' && c6 == 'a' && c7 == 's' && c8 == 'e' && c9 == 's' {
 			ret.push(Token::from(TokenKind::Databases, None));
 			i += 8;
+		} else if c1 == 'd' && c2 == 'e' && c3 == 'f' && c4 == 'a' && c5 == 'u' && c6 == 'l' && c7 == 't' {
+			ret.push(Token::from(TokenKind::Default, None));
+			i += 6;
 		} else if c1 == 'd' && c2 == 'a' && c3 == 't' && c4 == 'a' && c5 == 'b' && c6 == 'a' && c7 == 's' && c8 == 'e' {
 			ret.push(Token::from(TokenKind::Database, None));
 			i += 7;
@@ -366,6 +387,16 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == '!' && c2 == '=' {
 			ret.push(Token::from(TokenKind::NotEq, None));
 			i += 1;
+		} else if c1 == '<' && c2 == '=' {
+			ret.push(Token::from(TokenKind::LtEq, None));
+			i += 1;
+		} else if c1 == '>' && c2 == '=' {
+			ret.push(Token::from(TokenKind::GtEq, None));
+			i += 1;
+		} else if c1 == '<' {
+			ret.push(Token::from(TokenKind::Lt, None));
+		} else if c1 == '>' {
+			ret.push(Token::from(TokenKind::Gt, None));
 		} else if c1 == '=' {
 			ret.push(Token::from(TokenKind::Assign, None));
 		} else if c1 == ';' {

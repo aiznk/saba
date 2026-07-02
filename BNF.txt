@@ -52,7 +52,7 @@
 	DatabaseCreate (create mydb directory)
 
 > CREATE TABLE mytab (
-> 	id: PRIMARY KEY AUTOINCREMENT,
+> 	id: PRIMARY_KEY AUTO_INCREMENT,
 >   name: CHAR[128] NOT NULL,
 > );
 
@@ -99,6 +99,8 @@
 	CsvFileAppend (insert row to CSV file)
 	- Values (id = 1, name = "taro")
 
+> ADD OF mytab (id, name) VALUES (1, "Taro"), (2, "Hanako")
+
 ## SET
 
 > SET name = "taro" OF mytab;
@@ -140,7 +142,8 @@ column_type ::= 'PRIMARY_KEY' |
 			 'AUTO_INCREMENT' |
              'I64' |
              'F64' |
-             'CHAR' '[' i64_value ']'
+             'CHAR' '[' i64_value ']' |
+             'DEFAULT' value
 get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' table:ident where?
 set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' table:ident where?
 add_stmt ::= 'ADD' (expr_list) 'OF' table:ident
@@ -155,7 +158,8 @@ and_expr ::= compare_expr { 'AND' compare_expr }*
 compare_expr ::= operand { compare_op operand }*
 compare_op ::= ('==' | '!=')
 operand ::= (i64_value | f64_value | string | ident | '*') | '(' expr ')'
-i64_value ::= [0-9]+
-f64_value ::= [0-9]* '.' [0-9]+
+value ::= i64_value | f64_value | string
+i64_value ::= ('+' | '-')? [0-9]+
+f64_value ::= ('+' | '-')? [0-9]* '.' [0-9]+
 string ::= '"' .* '"'
 ident ::= [a-zA-Z_] [a-zA-Z0-9_]*

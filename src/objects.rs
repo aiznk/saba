@@ -10,6 +10,8 @@ pub struct HeaderType {
 	pub char_size: usize,
 	pub is_primary_key: bool,
 	pub is_auto_increment: bool,
+	pub is_default: bool,
+	pub default_value: Option<Object>,
 }
 
 impl HeaderType {
@@ -23,20 +25,30 @@ impl HeaderType {
 			char_size: 0,
 			is_primary_key: false,
 			is_auto_increment: false,			
+			is_default: false,
+			default_value: None,
 		}
 	}
 
 	pub fn to_default_value_string(&self) -> Result<String, Error> {
-		if self.is_i64 {
-			return Ok(String::from("0"));
-		} else if self.is_f64 {
-			return Ok(String::from("0.0"));
-		} else if self.is_bool {
-			return Ok(String::from("false"));
-		} else if self.is_char {
-			return Ok(String::from(""));
+		if self.is_default {
+			if let Some(default_value) = &self.default_value {
+				return Ok(default_value.to_string());
+			} else {
+				return err_runtime!("missing default value");
+			}
+		} else {
+			if self.is_i64 {
+				return Ok(String::from("0"));
+			} else if self.is_f64 {
+				return Ok(String::from("0.0"));
+			} else if self.is_bool {
+				return Ok(String::from("false"));
+			} else if self.is_char {
+				return Ok(String::from(""));
+			}
+			return err_runtime!("invalid state: header type");
 		}
-		return err_runtime!("invalid state: header type");
 	}
 
 	pub fn parse_str(&self, s: &str) -> Result<Object, Error> {
@@ -80,7 +92,7 @@ pub enum ObjectKind {
 	Star,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Object {
 	pub kind: ObjectKind,
 	pub bool_value: bool,
@@ -112,6 +124,13 @@ impl Object {
 			ObjectKind::Ident => { self.ident.clone() }
 			ObjectKind::Star => { String::from("*") }
 		}
+	}
+
+	#[allow(dead_code)]
+	pub fn from_nil() -> Self {
+		let mut o = Object::new();
+		o.kind = ObjectKind::Nil;
+		o
 	}
 
 	pub fn from_ident(ident: &str) -> Self {
