@@ -1274,7 +1274,51 @@ pub fn replace_columns_by_objs(context: &mut Context, cols: &StringRecord, updat
 	Ok(row)
 }
 
-pub fn exec_alter_add_column(context: &mut Context, node: &planner::AddColumnNode, writer: &mut Writer<fs::File>, headers: &StringRecord) -> Result<(), Error> {
+fn drop_record_column(row: &StringRecord, index: usize) -> Result<StringRecord, Error> {
+	let mut dst = StringRecord::new();
+
+	for (i, field) in row.iter().enumerate() {
+		if i != index {
+			dst.push_field(field);
+		}
+	}
+
+	Ok(dst)
+}
+
+pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, writer: &mut Writer<fs::File>, types: &Vec<HeaderType>, headers: &StringRecord) -> Result<(), Error> {
+	if let Some(project) = &node.project {
+		let mut drop_index: Option<usize> = None;
+
+		if let Some(ident) = &node.ident {
+			for (i, typ) in types.iter().enumerate() {
+				if typ.ident == *ident {
+					drop_index = Some(i);
+					break;
+				}
+			}			
+		}
+
+		if drop_index.is_none() {
+			return err_exec!("drop index is none");
+		}
+		let drop_index = drop_index.unwrap();
+
+		let seq = context.is_sequential;
+		context.is_sequential = true;
+
+		while exec_project(context, &project)? {
+			let row = &context.csv_record;
+			let row = drop_record_column(&row, drop_index)?;
+			writer.write_record(&row).unwrap();
+		}
+		
+		context.is_sequential = seq;
+	}
+	Ok(())
+}
+
+pub fn exec_column_add(context: &mut Context, node: &planner::ColumnAddNode, writer: &mut Writer<fs::File>, headers: &StringRecord) -> Result<(), Error> {
 	if let Some(project) = &node.project {
 		let def_row = gen_default_record(headers)?;
 		assert!(def_row.len() > 0);
@@ -1347,19 +1391,39 @@ pub fn exec_row_update(context: &mut Context, node: &planner::RowUpdateNode, wri
 	return err_exec!("failed to row update");
 }
 
+fn drop_headers_column(types: &Vec<HeaderType>, headers: &mut StringRecord, ident: &String) -> Result<StringRecord, Error> {
+	let mut row = StringRecord::new();
+
+	for i in 0..types.len() {
+		let typ = &types[i];
+		if typ.ident != *ident {
+			row.push_field(&headers[i]);
+		}
+	}
+
+	Ok(row)
+}
+
 pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewriteNode) -> Result<(), Error> {
 	if let Some(table_name) = &node.table_name {
 		let org_path = context.gen_table_file_path(&table_name)?;
 		let tmp_path = context.gen_tmp_table_file_path(&table_name)?;
 		let mut headers = read_table_headers(context, &table_name)?;
+		let mut org_headers = StringRecord::new();
+		let types = parse_csv_headers_as_types(&headers)?;
 		let mut writer = match Writer::from_path(&tmp_path) {
 			Ok(v) => v,
 			Err(e) => return err_exec!("failed to open CSV writer: {}", e),
 		};
 
-		if let Some(add_column) = &node.add_column {
-			if let Some(column_def_string) = &add_column.column_definition_string {
+		if let Some(column_add) = &node.column_add {
+			if let Some(column_def_string) = &column_add.column_definition_string {
 				headers.push_field(column_def_string.as_str());
+			}
+		} else if let Some(column_drop) = &node.column_drop {
+			if let Some(ident) = &column_drop.ident {
+				org_headers = headers.clone();
+				headers = drop_headers_column(&types, &mut headers, &ident)?;
 			}
 		}
 		
@@ -1369,8 +1433,10 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 			exec_row_delete(context, row_delete, &mut writer)?;
 		} else if let Some(row_update) = &node.row_update {
 			exec_row_update(context, row_update, &mut writer)?;
-		} else if let Some(add_column) = &node.add_column {
-			exec_alter_add_column(context, add_column, &mut writer, &headers)?;
+		} else if let Some(column_add) = &node.column_add {
+			exec_column_add(context, column_add, &mut writer, &headers)?;
+		} else if let Some(column_drop) = &node.column_drop {
+			exec_column_drop(context, column_drop, &mut writer, &types, &org_headers)?;
 		} else {
 			return err_exec!("invalid state: csv file rewrite");
 		}
@@ -2187,5 +2253,50 @@ mod tests {
 		do_exec(&mut context, "GET ALL * OF test_table WHERE is_login != true").unwrap();
 		let s = test_get_records_to_string(&mut context);
 		assert!(s == "2,60.2,false,hoge\n");
+	}
+
+	#[test]
+	fn test_alter_drop_column_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		do_exec(&mut context, "ALTER TABLE test_table DROP COLUMN id").unwrap();
+
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "weight: F64,name: CHAR[128]\n3.14,hige\n3.14,hoge\n3.14,moge\n3.14,huge\n3.14,oge\n");
+	}
+
+	#[test]
+	fn test_alter_drop_column_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		do_exec(&mut context, "ALTER TABLE test_table DROP COLUMN weight").unwrap();
+
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,name: CHAR[128]\n1,hige\n2,hoge\n3,moge\n4,huge\n5,oge\n");
+	}
+
+	#[test]
+	fn test_alter_drop_column_2() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		do_exec(&mut context, "ALTER TABLE test_table DROP COLUMN name").unwrap();
+
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64\n1,3.14\n2,3.14\n3,3.14\n4,3.14\n5,3.14\n");
 	}
 }

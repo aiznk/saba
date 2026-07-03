@@ -74,9 +74,23 @@ impl AlterAddColumnNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct AlterDropColumnNode {
+	pub ident: Option<Box<IdentNode>>,
+}
+
+impl AlterDropColumnNode {
+	pub fn new() -> Self {
+		Self {
+			ident: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 pub struct AlterTableNode {
 	pub table_name: Option<Box<IdentNode>>,
 	pub alter_add_column: Option<Box<AlterAddColumnNode>>,
+	pub alter_drop_column: Option<Box<AlterDropColumnNode>>,
 }
 
 impl AlterTableNode {
@@ -84,6 +98,7 @@ impl AlterTableNode {
 		Self {
 			table_name: None,
 			alter_add_column: None,
+			alter_drop_column: None,
 		}
 	}
 }
@@ -661,7 +676,35 @@ pub fn parse_alter_table(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterT
 		return Ok(Some(Box::new(n)));
 	}
 
+	n.alter_drop_column = parse_alter_drop_column(tok_strm)?;
+	if n.alter_drop_column.is_some() {
+		return Ok(Some(Box::new(n)));
+	}
+
 	err_parse!("invalid state: alter table stmt")
+}
+
+pub fn parse_alter_drop_column(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterDropColumnNode>>, Error> {
+	let mut n = AlterDropColumnNode::new();
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Drop {
+		tok_strm.prev();
+		return Ok(None);
+	}		
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Column {
+		tok_strm.prev();
+		return Ok(None);
+	}
+
+	n.ident = parse_ident(tok_strm)?;
+	if n.ident.is_none() {
+		return err_parse!("missing column name in drop column stmt");
+	}
+
+	Ok(Some(Box::new(n)))
 }
 
 pub fn parse_alter_add_column(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterAddColumnNode>>, Error> {

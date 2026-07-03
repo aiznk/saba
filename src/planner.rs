@@ -50,7 +50,8 @@ pub struct CsvFileRewriteNode {
 	pub table_name: Option<String>,
 	pub row_delete: Option<Box<RowDeleteNode>>,
 	pub row_update: Option<Box<RowUpdateNode>>,
-	pub add_column: Option<Box<AddColumnNode>>,
+	pub column_add: Option<Box<ColumnAddNode>>,
+	pub column_drop: Option<Box<ColumnDropNode>>,
 }
 
 impl CsvFileRewriteNode {
@@ -59,19 +60,34 @@ impl CsvFileRewriteNode {
 			table_name: None,
 			row_delete: None,
 			row_update: None,
-			add_column: None,
+			column_add: None,
+			column_drop: None,
 		}
 	}
 }
 
-pub struct AddColumnNode {
+pub struct ColumnDropNode {
+	pub ident: Option<String>,
+	pub project: Option<Box<ProjectNode>>,
+}
+
+impl ColumnDropNode {
+	pub fn new() -> Self {
+		Self {
+			ident: None,
+			project: None,
+		}
+	}
+}
+
+pub struct ColumnAddNode {
 	pub ident: Option<String>,
 	pub column_types_string: Option<String>,
 	pub column_definition_string: Option<String>,
 	pub project: Option<Box<ProjectNode>>,
 }
 
-impl AddColumnNode {
+impl ColumnAddNode {
 	pub fn new() -> Self {
 		Self {
 			ident: None,
@@ -350,47 +366,62 @@ fn gen_column_types_string(column_types: &Vec<parser::ColumnTypeNode>) -> Result
 
 pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode) -> Result<(), Error> {
 	let mut n = CsvFileRewriteNode::new();
-	let mut add_column = AddColumnNode::new();
-	let mut project = ProjectNode::new();
-
-	project.method = TokenKind::Alter;
+	let mut csv_file_scan = CsvFileScanNode::new();
 
 	if let Some(table_name) = &node.table_name {
 		let table_name = unwrap_ident_object(table_name)?.to_string();
 		n.table_name = Some(table_name.clone());
-		let mut csv_file_scan = CsvFileScanNode::new();
 		csv_file_scan.table_name = table_name.clone();
 		csv_file_scan.all = true; // always true
-		project.csv_file_scan = Some(Box::new(csv_file_scan));
 	} else {
 		return err_planning!("missing table name in plan alter table");
 	}
 
 	if let Some(alter_add_column) = &node.alter_add_column {
+		let mut column_add = ColumnAddNode::new();
+		let mut project = ProjectNode::new();
+
+		project.method = TokenKind::Alter;
+
 		if let Some(ident) = &alter_add_column.ident {
 			let ident = unwrap_ident_object(ident)?.to_string();
-			add_column.ident = Some(ident);
+			column_add.ident = Some(ident);
 		} else {
 			return err_planning!("missing column ident in plan alter table");
 		}
 		let column_types = alter_add_column.column_types.clone();
-		add_column.column_types_string = Some(gen_column_types_string(&column_types)?);
+		column_add.column_types_string = Some(gen_column_types_string(&column_types)?);
 
 		let mut new_type = String::new();
-		if let Some(ident) = &add_column.ident {
+		if let Some(ident) = &column_add.ident {
 			new_type.push_str(ident.as_str());
 		}
 		new_type.push_str(": ");
-		if let Some(column_type_string) = &add_column.column_types_string {
+		if let Some(column_type_string) = &column_add.column_types_string {
 			new_type.push_str(column_type_string.as_str());
 		}
-		add_column.column_definition_string = Some(new_type);
+		column_add.column_definition_string = Some(new_type);
+
+		project.csv_file_scan = Some(Box::new(csv_file_scan));
+		column_add.project = Some(Box::new(project));
+		n.column_add = Some(Box::new(column_add));
+		
+	} else if let Some(alter_drop_column) = &node.alter_drop_column {
+		let mut column_drop = ColumnDropNode::new();
+		let mut project = ProjectNode::new();
+
+		if let Some(ident) = &alter_drop_column.ident {
+			let ident = unwrap_ident_object(ident)?.to_string();
+			column_drop.ident = Some(ident);
+		}
+
+		project.csv_file_scan = Some(Box::new(csv_file_scan));
+		column_drop.project = Some(Box::new(project));
+		n.column_drop = Some(Box::new(column_drop));
 	} else {
 		return err_planning!("invalid state: plan alter table");
 	}
 
-	add_column.project = Some(Box::new(project));
-	n.add_column = Some(Box::new(add_column));
 	plan.csv_file_rewrite = Some(Box::new(n));
 
 	Ok(())

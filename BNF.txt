@@ -1,33 +1,5 @@
 # Query
 
-## Logical Nodes
-
-* Scan
-* Filter
-* Project
-* Sort
-* Limit
-* Aggregate
-* Join
-* Insert
-* Update
-* Delete
-* CreateTable
-* DropTable
-* CreateDatabase
-* DropDatabase
-* Values
-
-## Physical Nodes
-
-* CsvScan
-* CsvRewrite
-* CsvInsert
-* CsvCreate
-* CsvDrop
-* DirCreate
-* DirDrop
-
 ## SHOW
 
 > SHOW TABLES;
@@ -80,6 +52,12 @@
 
 	CsvFileRewrite
 	- AddColumn
+	 - Project
+
+> ALTER TABLE mytab DROP COLUMN age;
+
+	CsvFileRewrite
+	- DropColumn
 	 - Project
 
 ## GET
@@ -146,8 +124,9 @@ query ::= { stmt ';' }*
 stmt ::= (desc_stmt | alter_stmt | drop_stmt | show_stmt | use_stmt | create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
 desc_stmt ::= 'DESC' ident
 alter_stmt ::= alter_table
-alter_table ::= 'ALTER' 'TABLE' ident (alter_add_column)
+alter_table ::= 'ALTER' 'TABLE' ident (alter_add_column | alter_drop_column)
 alter_add_column ::= 'ADD' 'COLUMN' ident { column_type }+
+alter_drop_column ::= 'DROP' 'COLUMN' ident
 drop_stmt ::= ( 'DROP' 'TABLE' ('IF' 'EXISTS')? ident ) |
               ( 'DROP' 'DATABASE' ('IF' 'EXISTS')? ident )
 show_stmt ::= ( 'SHOW' 'TABLES' ) | ( 'SHOW' 'DATABASES' )
