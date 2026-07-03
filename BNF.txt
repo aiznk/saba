@@ -30,6 +30,12 @@
 
 	CsvFileCreate (create mytab CSV file)
 
+> CREATE TABLE mytab (
+> 	id: PRIMARY_KEY AUTO_INCREMENT,
+>   name: CHAR[128] NOT NULL,
+>   tuple: TUPLE(I64, I64, I64),
+> );
+
 ## DROP
 
 > DROP DATABASE mydb;

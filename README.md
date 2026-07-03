@@ -48,7 +48,7 @@ DROP TABLE my_table;
 
 ## USE
 
-Select using current database.
+Select current using database.
 
 ```
 USE my_db
