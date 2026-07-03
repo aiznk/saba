@@ -87,15 +87,6 @@ pub fn find_header_position(headers: &StringRecord, col_name: &str) -> Result<Op
 	Ok(None)
 }
 
-#[allow(dead_code)]
-fn print_vec_string(v: &Vec<String>) {
-	for el in v.iter() {
-		print!("[{}] ", el);
-	}
-	println!("");
-	std::io::stdout().flush().unwrap();
-}
-
 fn open_reader(path: &PathBuf) -> Result<Reader<fs::File>, Error> {
 	let file = match fs::File::open(&path) {
     	Ok(v) => v,
@@ -1022,6 +1013,18 @@ pub fn exec_ident(_: &mut Context, node: &parser::IdentNode) -> Result<Object, E
 	Ok(o)
 }
 
+fn print_vec_string(head: &str, row: &Vec<String>) {
+	if row.len() == 0 {
+		println!("{}: []", head);
+		return;
+	}
+	print!("{}: ", head);
+	for col in row.iter() {
+		print!("[{}] ", col);
+	}
+	println!("");
+}
+
 fn print_record(head: &str, row: &StringRecord) {
 	if row.len() == 0 {
 		println!("{}: []", head);
@@ -1091,7 +1094,8 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 			if context.matched {
 				context.counter_selected += 1;
 				if let Some(limit_value) = limit_value {
-					if context.limit_counter >= limit_value {
+					if context.limit_counter >= limit_value &&
+					   project.method == TokenKind::Get {
 						return Ok(false);						
 					}
 				}
@@ -1103,7 +1107,8 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 		} else {
 			context.counter_selected += 1;
 			if let Some(limit_value) = limit_value {
-				if context.limit_counter >= limit_value {
+				if context.limit_counter >= limit_value &&
+				   project.method == TokenKind::Get {
 					return Ok(false);						
 				}
 			}
@@ -1289,40 +1294,84 @@ pub fn exec_database_create(context: &mut Context, node: &planner::DatabaseCreat
 pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 	if let Some(project) = &row_delete.project {
 		let all = row_delete.all;
+		let limit_value = gen_limit_value(context, project)?;
+		let mut limited = false;
+
+		if let Some(limit_value) = limit_value {
+			if context.limit_counter >= limit_value {
+				limited = true;
+			}
+		}
 
 		if all {
 			while exec_project(context, project)? {
-				if context.filtered {
-					if context.matched {
-						// delete
-					} else {
-						writer.write_record(&context.unmatched_csv_record).unwrap();
-					}
-				} else {
-					// delete
-				}
-			}
-		} else {
-			let mut count = 0;
-			while exec_project(context, project)? {
-				if context.filtered {
-					if count == 0 {
+				if !limited {
+					if context.filtered {
 						if context.matched {
-							count += 1;
 							// delete
+							if let Some(limit_value) = limit_value {
+								if context.limit_counter >= limit_value {
+									limited = true;
+								}
+							}
 						} else {
 							writer.write_record(&context.unmatched_csv_record).unwrap();
 						}
 					} else {
-						writer.write_record(&context.scan_record).unwrap();
+						// delete
+						if let Some(limit_value) = limit_value {
+							if context.limit_counter >= limit_value {
+								limited = true;
+							}
+						}
 					}
 				} else {
-					if count == 0 {
-						count += 1;
-						// delete
+					writer.write_record(&context.scan_record).unwrap();
+				}
+			}
+		} else {
+			let mut count = 0;
+			let mut limited = false;
+
+			if let Some(limit_value) = limit_value {
+				if context.limit_counter >= limit_value {
+					limited = true;
+				}
+			}
+
+			while exec_project(context, project)? {
+				if !limited {
+					if context.filtered {
+						if count == 0 {
+							if context.matched {
+								count += 1;
+								// delete
+								if let Some(limit_value) = limit_value {
+									if context.limit_counter >= limit_value {
+										limited = true;
+									}
+								}
+							} else {
+								writer.write_record(&context.unmatched_csv_record).unwrap();
+							}
+						} else {
+							writer.write_record(&context.scan_record).unwrap();
+						}
 					} else {
-						writer.write_record(&context.scan_record).unwrap();
+						if count == 0 {
+							count += 1;
+							// delete
+							if let Some(limit_value) = limit_value {
+								if context.limit_counter >= limit_value {
+									limited = true;
+								}
+							}
+						} else {
+							writer.write_record(&context.scan_record).unwrap();
+						}
 					}
+				} else {
+					writer.write_record(&context.scan_record).unwrap();
 				}
 			}			
 		}
@@ -1419,21 +1468,46 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 	if let Some(project) = &row_update.project {
 		if let Some(expr_list) = &row_update.expr_list {
 			let update_expr_list_objs = exec_expr_list(context, expr_list)?;
+			let limit_value = gen_limit_value(context, project)?;
+			let mut limited = false;
+
+			if let Some(limit_value) = limit_value {
+				if context.limit_counter >= limit_value {
+					limited = true;
+				}
+			}
 
 			if row_update.all {
 				while exec_project(context, project)? {
-					if context.filtered {
-						if context.matched {
-							let cols = context.matched_csv_record.clone();
-							let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
-							writer.write_record(&cols).unwrap();
+					println!("limited[{}]", limited);
+					if !limited {
+						if context.filtered {
+							if context.matched {
+								let cols = context.matched_csv_record.clone();
+								let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
+								writer.write_record(&cols).unwrap();
+								if let Some(limit_value) = limit_value {
+									if context.limit_counter >= limit_value {
+										limited = true;
+									}
+								}
+							} else {
+								let cols = context.unmatched_csv_record.clone();
+								writer.write_record(&cols).unwrap();
+							}
 						} else {
-							let cols = context.unmatched_csv_record.clone();
+							let cols = context.scan_record.clone();
+							let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
+							print_vec_string("cols", &cols);
 							writer.write_record(&cols).unwrap();
+							if let Some(limit_value) = limit_value {
+								if context.limit_counter >= limit_value {
+									limited = true;
+								}
+							}
 						}
 					} else {
 						let cols = context.scan_record.clone();
-						let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
 						writer.write_record(&cols).unwrap();
 					}
 				}
@@ -1441,26 +1515,39 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 				let mut writted = false;
 
 				while exec_project(context, project)? {
-					if context.filtered {
-						if context.matched && !writted {
-							let cols = context.matched_csv_record.clone();
-							let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
-							writer.write_record(&cols).unwrap();
-							writted = true;
+					if !limited {
+						if context.filtered {
+							if context.matched && !writted {
+								let cols = context.matched_csv_record.clone();
+								let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
+								writer.write_record(&cols).unwrap();
+								writted = true;
+								if let Some(limit_value) = limit_value {
+									if context.limit_counter >= limit_value {
+										limited = true;
+									}
+								}
+							} else {
+								let cols = context.scan_record.clone();
+								writer.write_record(&cols).unwrap();
+							}
 						} else {
-							let cols = context.scan_record.clone();
-							writer.write_record(&cols).unwrap();
+							if !writted {
+								let cols = context.scan_record.clone();
+								let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
+								writer.write_record(&cols).unwrap();
+								writted = true;
+								if let Some(limit_value) = limit_value {
+									if context.limit_counter >= limit_value {
+										limited = true;
+									}
+								}
+							} else {
+								writer.write_record(&context.scan_record).unwrap();
+							}
 						}
 					} else {
-						if !writted {
-							let cols = context.scan_record.clone();
-							let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
-							writer.write_record(&cols).unwrap();
-							writted = true;
-						} else {
-							let cols = context.scan_record.clone();
-							writer.write_record(&cols).unwrap();
-						}
+						writer.write_record(&context.scan_record).unwrap();
 					}
 				}
 			}
@@ -2322,8 +2409,13 @@ mod tests {
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "DEL ALL OF test_table LIMIT 2").unwrap();
-		let s = test_get_records_to_string(&mut context);
-		assert!(s == "4,3.14,huge\n5,3.14,oge\n");
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+3,3.14,moge
+4,3.14,huge
+5,3.14,oge
+");
 	}
 	
 	#[test]
@@ -2344,12 +2436,23 @@ mod tests {
 		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,hoge\n");
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,3.14,hige
+2,3.14,hoge
+3,3.14,moge
+4,3.14,hoge
+5,3.14,oge
+");
 
-		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "DEL ALL OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
-		let s = test_get_records_to_string(&mut context);
-		assert!(s == "1,3.14,hige\n3,3.14,moge\n4,3.14,huge\n");
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,3.14,hige
+3,3.14,moge
+5,3.14,oge
+");
 	}
 	
 	#[test]
@@ -2440,8 +2543,15 @@ mod tests {
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table LIMIT 2").unwrap();
-		let s = test_get_records_to_string(&mut context);
-		assert!(s == "1,1.23,hige\n2,1.23,hoge\n");
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,1.23,hige
+2,1.23,hoge
+3,3.14,moge
+4,3.14,huge
+5,3.14,oge
+");
 	}
 	
 	#[test]
@@ -2455,8 +2565,15 @@ mod tests {
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table LIMIT 0").unwrap();
-		let s = test_get_records_to_string(&mut context);
-		assert!(s == "");
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,3.14,hige
+2,3.14,hoge
+3,3.14,moge
+4,3.14,huge
+5,3.14,oge
+");
 	}
 	
 	#[test]
@@ -2477,12 +2594,18 @@ mod tests {
 		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,hoge\n");
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,hoge\n5,3.14,oge\n");
 
-		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
-		let s = test_get_records_to_string(&mut context);
-		assert!(s == "2,1.23,hoge\n5,1.23,hoge\n");
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,3.14,hige
+2,1.23,hoge
+3,3.14,moge
+4,1.23,hoge
+5,3.14,oge
+");
 	}
 	
 	#[test]
