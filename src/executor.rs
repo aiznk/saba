@@ -2093,8 +2093,21 @@ mod tests {
 
 		do_exec(&mut context, "DEL OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+	}
+
+	#[test]
+	fn test_del_stmt_5() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		do_exec(&mut context, "DEL OF test_table WHERE id == 2").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
 
 	#[test]
