@@ -1022,97 +1022,6 @@ pub fn exec_ident(_: &mut Context, node: &parser::IdentNode) -> Result<Object, E
 	Ok(o)
 }
 
-
-/*
-pub fn exec_project_old(context: &mut Context, node: &planner::ProjectNode) -> Result<bool, Error> {
-	let limit_value: Option<i64> = gen_limit_value(context, node)?;
-
-	if node.filter.is_none() {
-		if node.csv_file_scan.is_none() {
-			return err_exec!("csv file scan is none in project");
-		}
-		if let Some(csv_file_scan) = &node.csv_file_scan {
-			while exec_csv_file_scan(context, csv_file_scan)? {
-				if let Some(limit_value) = limit_value {
-					if context.limit_counter >= limit_value {
-						context.table_csv_reader = None;
-						return Ok(false);
-					}					
-					context.limit_counter += 1;
-				}
-				if node.method == TokenKind::Get {
-					select_get_columns(context, node)?;
-					if context.is_cli {
-						print_selected_columns(context)?;
-					}
-				}
-				if let Some(records) = context.test_get_records.as_mut() {
-					records.push(context.scan_record.clone());
-				}
-				if !csv_file_scan.all {
-					context.table_csv_reader = None;
-					return Ok(false);
-				}
-				if context.is_sequential {
-					return Ok(true);
-				}
-			}
-
-			return Ok(false);
-		}
-	} else {
-		if node.csv_file_scan.is_none() {
-			return err_exec!("csv scan is none in project (2)");
-		}
-		if let Some(csv_file_scan) = &node.csv_file_scan {
-			if let Some(filter) = &node.filter {
-				context.counter_selected = 0;
-				while exec_csv_file_scan(context, csv_file_scan)? {
-					if exec_filter(context, filter)? {
-						if node.method == TokenKind::Del {
-							if let Some(limit_value) = limit_value {
-								if context.limit_counter >= limit_value {
-									context.matched_csv_record.clear();
-									context.unmatched_csv_record = context.scan_record.clone();
-								}					
-								context.limit_counter += 1;
-							}							
-						} else {
-							if let Some(limit_value) = limit_value {
-								if context.limit_counter >= limit_value {
-									context.table_csv_reader = None;
-									return Ok(false);
-								}					
-								context.limit_counter += 1;
-							}
-						}
-						select_get_columns(context, node)?;
-						if context.is_cli {
-							print_selected_columns(context)?;
-						}
-						context.counter_selected += 1;
-						if let Some(records) = context.test_get_records.as_mut() {
-							records.push(context.scan_record.clone());
-						}
-					}
-					if !csv_file_scan.all && context.counter_selected >= 1 {
-						context.table_csv_reader = None;
-						break;
-					}
-					if context.is_sequential {
-						return Ok(true);
-					}
-				}
-
-				return Ok(false);
-			}
-		}		
-	}
-
-	Ok(false)
-}
-*/
-
 fn print_record(head: &str, row: &StringRecord) {
 	if row.len() == 0 {
 		println!("{}: []", head);
@@ -1167,6 +1076,8 @@ pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) ->
 }
 
 pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Result<bool, Error> {
+	let limit_value = gen_limit_value(context, project)?;
+
 	if let Some(filter) = &project.filter {
 		let result = exec_filter(context, filter)?;
 		if !result {
@@ -1179,19 +1090,30 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 		if context.filtered {
 			if context.matched {
 				context.counter_selected += 1;
+				if let Some(limit_value) = limit_value {
+					if context.limit_counter >= limit_value {
+						return Ok(false);						
+					}
+				}
+				context.limit_counter += 1;
 				if let Some(test_get_records) = context.test_get_records.as_mut() {
 					test_get_records.push(context.matched_csv_record.clone());
 				}
 			}
 		} else {
 			context.counter_selected += 1;
+			if let Some(limit_value) = limit_value {
+				if context.limit_counter >= limit_value {
+					return Ok(false);						
+				}
+			}
+			context.limit_counter += 1;
 			if let Some(test_get_records) = context.test_get_records.as_mut() {
 				test_get_records.push(context.scan_record.clone());
 			}
 		}
 		if !project.all && context.counter_selected >= 1 {
 			context.table_csv_reader = None;
-			println!("project: all is false");
 			return Ok(false);
 		}
 		return Ok(result);
@@ -2158,6 +2080,7 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id OF test_table LIMIT 0").unwrap();
 		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
 		assert!(s == "");
 	}
 	
@@ -2179,12 +2102,13 @@ mod tests {
 		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,hoge\n");
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,hoge\n5,3.14,oge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
 		let s = test_get_records_to_string(&mut context);
-		assert!(s == "2,3.14,hoge\n5,3.14,hoge\n");
+		println!("s[{}]", s);
+		assert!(s == "2,3.14,hoge\n4,3.14,hoge\n");
 	}
 	
 	#[test]
