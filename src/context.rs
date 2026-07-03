@@ -12,7 +12,7 @@ pub struct Context {
 	pub table_csv_reader: Option<Reader<File>>,
 	pub csv_header: StringRecord,
 	pub csv_header_idents: Vec<String>,
-	pub csv_record: StringRecord,
+	pub scan_record: StringRecord,
 	pub selected_csv_columns: Vec<String>,
 	pub vars: HashMap<String, Box<Object>>,
 	pub counter_selected: usize,
@@ -29,6 +29,8 @@ pub struct Context {
 
 	pub test_get_records: Option<Vec<StringRecord>>,
 	pub limit_counter: i64,
+	pub filtered: bool,
+	pub matched: bool,
 }
 
 impl Context {
@@ -39,7 +41,7 @@ impl Context {
 			table_csv_reader: None,
 			csv_header: StringRecord::new(),
 			csv_header_idents: vec![],
-			csv_record: StringRecord::new(),
+			scan_record: StringRecord::new(),
 			selected_csv_columns: vec![],
 			vars: HashMap::new(),
 			counter_selected: 0,
@@ -49,6 +51,8 @@ impl Context {
 			unmatched_csv_record: StringRecord::new(),
 			test_get_records: None,
 			limit_counter: 0,
+			filtered: false,
+			matched: false,
 		}
 	}
 

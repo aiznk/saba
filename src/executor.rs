@@ -24,7 +24,8 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 	} else if let Some(desc_table) = &node.desc_table {
 		exec_desc_table(context, &desc_table)?;
 	} else if let Some(project) = &node.project {
-		exec_project(context, &project)?;
+		while exec_project(context, &project)? {
+		}
 	} else if let Some(database_create) = &node.database_create {
 		exec_database_create(context, &database_create)?;
 	} else if let Some(dir_list) = &node.dir_list {
@@ -331,110 +332,6 @@ fn gen_limit_value(context: &mut Context, node: &planner::ProjectNode) -> Result
 	Ok(limit_value)
 }
 
-pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Result<bool, Error> {
-	let limit_value: Option<i64> = gen_limit_value(context, node)?;
-
-	if node.filter.is_none() {
-		if node.csv_file_scan.is_none() {
-			return err_exec!("csv file scan is none in project");
-		}
-		if let Some(csv_file_scan) = &node.csv_file_scan {
-			while exec_csv_file_scan(context, csv_file_scan)? {
-				if let Some(limit_value) = limit_value {
-					if context.limit_counter >= limit_value {
-						context.table_csv_reader = None;
-						return Ok(false);
-					}					
-					context.limit_counter += 1;
-				}
-				if node.method == TokenKind::Get {
-					select_get_columns(context, node)?;
-					if context.is_cli {
-						print_selected_columns(context)?;
-					}
-				}
-				if let Some(records) = context.test_get_records.as_mut() {
-					records.push(context.csv_record.clone());
-				}
-				if !csv_file_scan.all {
-					context.table_csv_reader = None;
-					return Ok(false);
-				}
-				if context.is_sequential {
-					return Ok(true);
-				}
-			}
-
-			return Ok(false);
-		}
-	} else {
-		if node.csv_file_scan.is_none() {
-			return err_exec!("csv scan is none in project (2)");
-		}
-		if let Some(csv_file_scan) = &node.csv_file_scan {
-			if let Some(filter) = &node.filter {
-				context.counter_selected = 0;
-				while exec_csv_file_scan(context, csv_file_scan)? {
-					if exec_filter(context, filter)? {
-						if node.method == TokenKind::Del {
-							if let Some(limit_value) = limit_value {
-								if context.limit_counter >= limit_value {
-									context.matched_csv_record.clear();
-									context.unmatched_csv_record = context.csv_record.clone();
-								}					
-								context.limit_counter += 1;
-							}							
-						} else {
-							if let Some(limit_value) = limit_value {
-								if context.limit_counter >= limit_value {
-									context.table_csv_reader = None;
-									return Ok(false);
-								}					
-								context.limit_counter += 1;
-							}
-						}
-						select_get_columns(context, node)?;
-						if context.is_cli {
-							print_selected_columns(context)?;
-						}
-						context.counter_selected += 1;
-						if let Some(records) = context.test_get_records.as_mut() {
-							records.push(context.csv_record.clone());
-						}
-					}
-					if !csv_file_scan.all && context.counter_selected >= 1 {
-						context.table_csv_reader = None;
-						break;
-					}
-					if context.is_sequential {
-						return Ok(true);
-					}
-				}
-
-				return Ok(false);
-			}
-		}		
-	}
-
-	Ok(false)
-}
-
-pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<bool, Error> {
-	if let Some(where_clause) = &node.where_clause {
-		let o = exec_where_clause(context, where_clause)?;
-		if o.bool_value {
-			context.matched_csv_record = context.csv_record.clone();
-			context.unmatched_csv_record.clear();
-		} else {
-			context.matched_csv_record.clear();
-			context.unmatched_csv_record = context.csv_record.clone();
-		}
-		Ok(o.bool_value)
-	} else {
-		Ok(false)
-	}
-}
-
 pub fn exec_where_clause(context: &mut Context, node: &parser::WhereClauseNode) -> Result<Object, Error> {
 	if let Some(expr) = &node.expr {
 		Ok(exec_expr(context, expr)?)
@@ -672,7 +569,7 @@ pub fn parse_column_by_head(head: &str, col: &str) -> Result<Object, Error> {
 pub fn refer_ident(context: &mut Context, ident: &String) -> Result<Object, Error> {
 	if let Some(index) = context.csv_header_idents.iter().position(|s| *s == *ident) {
 		let head = &context.csv_header[index];
-		let col = &context.csv_record[index];
+		let col = &context.scan_record[index];
 		let o = parse_column_by_head(head, col)?;
 		Ok(o)
 	} else {
@@ -1125,14 +1022,127 @@ pub fn exec_ident(_: &mut Context, node: &parser::IdentNode) -> Result<Object, E
 	Ok(o)
 }
 
+
+/*
+pub fn exec_project_old(context: &mut Context, node: &planner::ProjectNode) -> Result<bool, Error> {
+	let limit_value: Option<i64> = gen_limit_value(context, node)?;
+
+	if node.filter.is_none() {
+		if node.csv_file_scan.is_none() {
+			return err_exec!("csv file scan is none in project");
+		}
+		if let Some(csv_file_scan) = &node.csv_file_scan {
+			while exec_csv_file_scan(context, csv_file_scan)? {
+				if let Some(limit_value) = limit_value {
+					if context.limit_counter >= limit_value {
+						context.table_csv_reader = None;
+						return Ok(false);
+					}					
+					context.limit_counter += 1;
+				}
+				if node.method == TokenKind::Get {
+					select_get_columns(context, node)?;
+					if context.is_cli {
+						print_selected_columns(context)?;
+					}
+				}
+				if let Some(records) = context.test_get_records.as_mut() {
+					records.push(context.scan_record.clone());
+				}
+				if !csv_file_scan.all {
+					context.table_csv_reader = None;
+					return Ok(false);
+				}
+				if context.is_sequential {
+					return Ok(true);
+				}
+			}
+
+			return Ok(false);
+		}
+	} else {
+		if node.csv_file_scan.is_none() {
+			return err_exec!("csv scan is none in project (2)");
+		}
+		if let Some(csv_file_scan) = &node.csv_file_scan {
+			if let Some(filter) = &node.filter {
+				context.counter_selected = 0;
+				while exec_csv_file_scan(context, csv_file_scan)? {
+					if exec_filter(context, filter)? {
+						if node.method == TokenKind::Del {
+							if let Some(limit_value) = limit_value {
+								if context.limit_counter >= limit_value {
+									context.matched_csv_record.clear();
+									context.unmatched_csv_record = context.scan_record.clone();
+								}					
+								context.limit_counter += 1;
+							}							
+						} else {
+							if let Some(limit_value) = limit_value {
+								if context.limit_counter >= limit_value {
+									context.table_csv_reader = None;
+									return Ok(false);
+								}					
+								context.limit_counter += 1;
+							}
+						}
+						select_get_columns(context, node)?;
+						if context.is_cli {
+							print_selected_columns(context)?;
+						}
+						context.counter_selected += 1;
+						if let Some(records) = context.test_get_records.as_mut() {
+							records.push(context.scan_record.clone());
+						}
+					}
+					if !csv_file_scan.all && context.counter_selected >= 1 {
+						context.table_csv_reader = None;
+						break;
+					}
+					if context.is_sequential {
+						return Ok(true);
+					}
+				}
+
+				return Ok(false);
+			}
+		}		
+	}
+
+	Ok(false)
+}
+*/
+
+fn print_record(head: &str, row: &StringRecord) {
+	if row.len() == 0 {
+		println!("{}: []", head);
+		return;
+	}
+	print!("{}: ", head);
+	for col in row.iter() {
+		print!("[{}] ", col);
+	}
+	println!("");
+}
+
 pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
 	let mut indices: Vec<usize> = vec![];
+	let row;
 
 	context.selected_csv_columns.clear();
 
+	if context.filtered {
+		row = context.matched_csv_record.clone();
+	} else {
+		row = context.scan_record.clone();
+	}
+	if row.len() == 0 {
+		return Ok(());
+	}
+
 	if node.get_stmt_objs.len() == 1 &&
 	   node.get_stmt_objs[0].kind == ObjectKind::Star {
-	   	for col in context.csv_record.iter() {
+	   	for col in row.iter() {
 	   		context.selected_csv_columns.push(col.to_string());
 	   	}
 	   	return Ok(());
@@ -1149,11 +1159,79 @@ pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) ->
 	}
 
 	for index in indices {
-		let col = &context.csv_record[index];
+		let col = &row[index];
 		context.selected_csv_columns.push(col.to_string());
 	}
 
 	Ok(())
+}
+
+pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Result<bool, Error> {
+	if let Some(filter) = &project.filter {
+		let result = exec_filter(context, filter)?;
+		if !result {
+			return Ok(result);
+		}
+		select_get_columns(context, project)?;
+		if context.is_cli {
+			print_selected_columns(context)?;
+		}
+		if context.filtered {
+			if context.matched {
+				context.counter_selected += 1;
+				if let Some(test_get_records) = context.test_get_records.as_mut() {
+					test_get_records.push(context.matched_csv_record.clone());
+				}
+			}
+		} else {
+			context.counter_selected += 1;
+			if let Some(test_get_records) = context.test_get_records.as_mut() {
+				test_get_records.push(context.scan_record.clone());
+			}
+		}
+		if !project.all && context.counter_selected >= 1 {
+			context.table_csv_reader = None;
+			println!("project: all is false");
+			return Ok(false);
+		}
+		return Ok(result);
+	}
+	return err_exec!("invalid state: project");
+}
+
+pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<bool, Error> {
+	if let Some(where_clause) = &node.where_clause {
+		context.filtered = true;
+		if let Some(csv_file_scan) = &node.csv_file_scan {
+			let result = exec_csv_file_scan(context, csv_file_scan)?;
+			if !result {
+				return Ok(result);
+			}
+
+			let o = exec_where_clause(context, where_clause)?;
+			println!("o[{}]", o.to_string());
+			if o.bool_value {
+				context.matched_csv_record = context.scan_record.clone();
+				context.unmatched_csv_record.clear();
+				print_record("matched", &context.matched_csv_record);
+				context.matched = true;
+			} else {
+				context.matched_csv_record.clear();
+				context.unmatched_csv_record = context.scan_record.clone();
+				context.matched = false;
+				print_record("unmatched", &context.unmatched_csv_record);
+			}
+			return Ok(result);
+		}
+	} else {
+		context.filtered = false;
+		context.matched = false;
+		if let Some(csv_file_scan) = &node.csv_file_scan {
+			let result = exec_csv_file_scan(context, csv_file_scan)?;
+			return Ok(result);
+		}
+	}
+	return err_exec!("invalid state: filter");
 }
 
 pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode) -> Result<bool, Error> {
@@ -1177,9 +1255,10 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode
 		parse_csv_header_idents(context)?;
 	}	
 	if let Some(reader) = context.table_csv_reader.as_mut() {
-		match reader.read_record(&mut context.csv_record) {
+		match reader.read_record(&mut context.scan_record) {
 			Ok(_) => {
-				if context.csv_record.len() == 0 {
+				print_record("csv_file_scan", &context.scan_record);
+				if context.scan_record.len() == 0 {
 					context.table_csv_reader = None;
 					return Ok(false);
 				}
@@ -1285,47 +1364,46 @@ pub fn exec_database_create(context: &mut Context, node: &planner::DatabaseCreat
 	Ok(())
 }
 
-pub fn exec_row_delete(context: &mut Context, node: &planner::RowDeleteNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
-	if let Some(project) = &node.project {
-		let seq = context.is_sequential;
-		context.is_sequential = true;
+pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+	if let Some(project) = &row_delete.project {
+		let all = row_delete.all;
 
-		let all = node.all;
-		let mut filter = false;
-
-		if let Some(project) = &node.project {
-			filter = project.has_filter();			
-		}
-
-		if all && !filter {
-			// pass
-		} else if all && filter {
+		if all {
 			while exec_project(context, project)? {
-				let row = &context.unmatched_csv_record;
-				if row.len() > 0 {
-					writer.write_record(row).unwrap();
+				if context.filtered {
+					if context.matched {
+						// delete
+					} else {
+						writer.write_record(&context.unmatched_csv_record).unwrap();
+					}
+				} else {
+					// delete
+				}
+			}
+		} else {
+			let mut count = 0;
+			while exec_project(context, project)? {
+				if context.filtered {
+					if count == 0 {
+						if context.matched {
+							count += 1;
+							// delete
+						} else {
+							writer.write_record(&context.unmatched_csv_record).unwrap();
+						}
+					} else {
+						writer.write_record(&context.scan_record).unwrap();
+					}
+				} else {
+					if count == 0 {
+						count += 1;
+						// delete
+					} else {
+						writer.write_record(&context.scan_record).unwrap();
+					}
 				}
 			}			
-		} else if !all && filter {
-			while exec_project(context, project)? {
-				let row = &context.unmatched_csv_record;
-				if row.len() > 0 {
-					writer.write_record(row).unwrap();
-				}
-			}						
-		} else if !all && !filter {
-			exec_project(context, project)?;
-
-			while exec_project(context, project)? {
-				let row = &context.csv_record;
-				assert!(row.len() > 0);
-				writer.write_record(row).unwrap();
-			}						
-		} else {
-			return err_exec!("invalid state: row update");
 		}
-
-		context.is_sequential = seq;
 	}
 
 	Ok(())
@@ -1385,7 +1463,7 @@ pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, w
 		context.is_sequential = true;
 
 		while exec_project(context, &project)? {
-			let row = &context.csv_record;
+			let row = &context.scan_record;
 			let row = drop_record_column(&row, drop_index)?;
 			writer.write_record(&row).unwrap();
 		}
@@ -1404,7 +1482,7 @@ pub fn exec_column_add(context: &mut Context, node: &planner::ColumnAddNode, wri
 		context.is_sequential = true;
 
 		while exec_project(context, &project)? {
-			let mut row = context.csv_record.clone();
+			let mut row = context.scan_record.clone();
 			row.push_field(def_row.to_vec().last().unwrap().as_str());
 			writer.write_record(&row).unwrap();
 		}
@@ -1415,55 +1493,55 @@ pub fn exec_column_add(context: &mut Context, node: &planner::ColumnAddNode, wri
 	Ok(())
 }
 
-pub fn exec_row_update(context: &mut Context, node: &planner::RowUpdateNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
-	if let Some(project) = &node.project {
-		if let Some(expr_list) = &node.expr_list {
+pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+	if let Some(project) = &row_update.project {
+		if let Some(expr_list) = &row_update.expr_list {
 			let update_expr_list_objs = exec_expr_list(context, expr_list)?;
 
-			let seq = context.is_sequential;
-			context.is_sequential = true;
-
-			if node.all {
+			if row_update.all {
 				while exec_project(context, project)? {
-					if context.matched_csv_record.len() > 0 {
-						let cols = context.matched_csv_record.clone();
-						let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
-						writer.write_record(&cols).unwrap();
-					} else if context.unmatched_csv_record.len() > 0 {
-						let cols = context.unmatched_csv_record.clone();
-						writer.write_record(&cols).unwrap();
-					} else if context.csv_record.len() > 0 {
-						let cols = context.csv_record.clone();
-						let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
-						writer.write_record(&cols).unwrap();
+					if context.filtered {
+						if context.matched {
+							let cols = context.matched_csv_record.clone();
+							let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
+							writer.write_record(&cols).unwrap();
+						} else {
+							let cols = context.unmatched_csv_record.clone();
+							writer.write_record(&cols).unwrap();
+						}
 					} else {
-						return err_exec!("invalid state: row update");
+						let cols = context.scan_record.clone();
+						let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
+						writer.write_record(&cols).unwrap();
 					}
 				}
 			} else {
 				let mut writted = false;
 
 				while exec_project(context, project)? {
-					if writted {
-						let cols = context.csv_record.clone();
-						writer.write_record(&cols).unwrap();
-					} else {
-						if context.matched_csv_record.len() > 0 {
+					if context.filtered {
+						if context.matched && !writted {
 							let cols = context.matched_csv_record.clone();
 							let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
 							writer.write_record(&cols).unwrap();
 							writted = true;
-						} else if context.unmatched_csv_record.len() > 0 {
-							let cols = context.unmatched_csv_record.clone();
-							writer.write_record(&cols).unwrap();
 						} else {
-							return err_exec!("invalid state: row update");
+							let cols = context.scan_record.clone();
+							writer.write_record(&cols).unwrap();
+						}
+					} else {
+						if !writted {
+							let cols = context.scan_record.clone();
+							let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
+							writer.write_record(&cols).unwrap();
+							writted = true;
+						} else {
+							let cols = context.scan_record.clone();
+							writer.write_record(&cols).unwrap();
 						}
 					}
 				}
 			}
-
-			context.is_sequential = seq;
 
 			return Ok(());
 		}
@@ -1783,7 +1861,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_get_stmt_0() {
+	fn test_get_stmt_0a() {
 		let path = gen_test_table_path();
 		remove_file(&path);
 		let mut context = Context::new();
@@ -1802,18 +1880,92 @@ mod tests {
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "1");
 		assert!(context.selected_csv_columns[1] == "hige");
+	}
+
+	#[test]
+	fn test_get_stmt_0b() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET ALL id, name OF test_table").unwrap();
+		print_selected_columns(&mut context).unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
 		assert!(context.selected_csv_columns[1] == "hoge");
+	}
+
+	#[test]
+	fn test_get_stmt_0c() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET id, name OF test_table WHERE id == 2").unwrap();
+		print_selected_columns(&mut context).unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
 		assert!(context.selected_csv_columns[1] == "hoge");
+	}
+
+	#[test]
+	fn test_get_stmt_0d() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET id, name OF test_table WHERE name == \"hoge\"").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
 		assert!(context.selected_csv_columns[1] == "hoge");
+	}
+
+	#[test]
+	fn test_get_stmt_0e() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET id, name OF test_table WHERE id == 1 AND name == \"hige\"").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "1");
@@ -1841,10 +1993,29 @@ mod tests {
 		assert!(context.selected_csv_columns[0] == "1");
 		assert!(context.selected_csv_columns[1] == "3.14");
 		assert!(context.selected_csv_columns[2] == "hige");
+	}
+
+	#[test]
+	fn test_get_stmt_1a() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table").unwrap();
 		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
 	}
 
@@ -2198,6 +2369,7 @@ mod tests {
 
 		do_exec(&mut context, "DEL OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
 
@@ -2299,6 +2471,7 @@ mod tests {
 		setup_records!(context);
 		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF test_table WHERE weight == 3.14").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n10,3.14,HOGE\n2,3.14,hoge\n");
 	}
 
@@ -2397,6 +2570,7 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		do_exec(&mut context, "ALTER TABLE test_table ADD COLUMN uge I64").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128],uge: I64\n1,3.14,hige,0\n2,3.14,hoge,0\n3,3.14,moge,0\n4,3.14,huge,0\n5,3.14,oge,0\n");
 	}
 

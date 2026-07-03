@@ -222,9 +222,9 @@ impl CsvFileAppendNode {
 pub struct ProjectNode {
 	pub method: TokenKind,
 	pub get_stmt_objs: Vec<Object>,
-	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
 	pub filter: Option<Box<FilterNode>>,
 	pub limit: Option<Box<parser::LimitNode>>,
+	pub all: bool,
 }
 
 impl ProjectNode {
@@ -232,9 +232,9 @@ impl ProjectNode {
 		Self {
 			method: TokenKind::Nil,
 			get_stmt_objs: vec![],
-			csv_file_scan: None,
 			filter: None,
 			limit: None,
+			all: false,
 		}
 	}
 
@@ -245,12 +245,14 @@ impl ProjectNode {
 
 pub struct FilterNode {
 	pub where_clause: Option<Box<parser::WhereClauseNode>>,
+	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
 }
 
 impl FilterNode {
 	pub fn new() -> Self {
 		Self {
 			where_clause: None,
+			csv_file_scan: None,
 		}
 	}
 }
@@ -388,8 +390,10 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 	if let Some(alter_add_column) = &node.alter_add_column {
 		let mut column_add = ColumnAddNode::new();
 		let mut project = ProjectNode::new();
+		let mut filter = FilterNode::new();
 
 		project.method = TokenKind::Alter;
+		project.all = true; // always true
 
 		if let Some(ident) = &alter_add_column.ident {
 			let ident = unwrap_ident_object(ident)?.to_string();
@@ -410,20 +414,25 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		}
 		column_add.column_definition_string = Some(new_type);
 
-		project.csv_file_scan = Some(Box::new(csv_file_scan));
+		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		project.filter = Some(Box::new(filter));
 		column_add.project = Some(Box::new(project));
 		n.column_add = Some(Box::new(column_add));
 
 	} else if let Some(alter_drop_column) = &node.alter_drop_column {
 		let mut column_drop = ColumnDropNode::new();
 		let mut project = ProjectNode::new();
+		let mut filter = FilterNode::new();
+
+		project.all = true; // always true
 
 		if let Some(ident) = &alter_drop_column.ident {
 			let ident = unwrap_ident_object(ident)?.to_string();
 			column_drop.ident = Some(ident);
 		}
 
-		project.csv_file_scan = Some(Box::new(csv_file_scan));
+		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		project.filter = Some(Box::new(filter));
 		column_drop.project = Some(Box::new(project));
 		n.column_drop = Some(Box::new(column_drop));
 	} else {
@@ -631,29 +640,30 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 	let mut rewrite = CsvFileRewriteNode::new();
 	let mut row_delete = RowDeleteNode::new();
 	let mut project = ProjectNode::new();
+	let mut filter = FilterNode::new();
+	let mut csv_file_scan = CsvFileScanNode::new();
 
 	project.method = TokenKind::Del;
+	project.all = true;
 	row_delete.all = node.all;
 
 	if let Some(table) = &node.table {
 		let ident = unwrap_ident_object(&table)?.to_string();
-		let mut csv_file_scan = CsvFileScanNode::new();
 		csv_file_scan.table_name = ident.clone();
 		csv_file_scan.all = true; // always true
-		project.csv_file_scan = Some(Box::new(csv_file_scan));
+		filter.csv_file_scan = Some(Box::new(csv_file_scan));
 		rewrite.table_name = Some(ident.clone());
 	}
 
 	if let Some(where_clause) = &node.where_clause {
-		let mut filter = FilterNode::new();
 		filter.where_clause = Some((*where_clause).clone());
-		project.filter = Some(Box::new(filter));
 	}
 
 	if let Some(limit) = &node.limit {
 		project.limit = Some(limit.clone());
 	}
 
+	project.filter = Some(Box::new(filter));
 	row_delete.project = Some(Box::new(project));
 	rewrite.row_delete = Some(Box::new(row_delete));
 	plan.csv_file_rewrite = Some(Box::new(rewrite));
@@ -665,8 +675,11 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 	let mut rewrite = CsvFileRewriteNode::new();
 	let mut row_update = RowUpdateNode::new();
 	let mut project = ProjectNode::new();
+	let mut filter = FilterNode::new();
+	let mut csv_file_scan = CsvFileScanNode::new();
 
 	project.method = TokenKind::Set;
+	project.all = true; // always true
 	
 	if let Some(expr_list) = &node.expr_list {
 		row_update.expr_list = Some(expr_list.clone());
@@ -675,26 +688,24 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 	}
 
 	if let Some(table) = &node.table {
-		let mut csv_file_scan = CsvFileScanNode::new();
 		let table_name = unwrap_ident_object(&table)?.to_string();
 		csv_file_scan.table_name = table_name.clone();
 		csv_file_scan.all = true; // the set stmt always needs all on csv_file_scan
-		project.csv_file_scan = Some(Box::new(csv_file_scan));
 		rewrite.table_name = Some(table_name);
 	} else {
 		return err_planning!("missing table name in set stmt");
 	}
 
 	if let Some(where_clause) = &node.where_clause {
-		let mut filter = FilterNode::new();
 		filter.where_clause = Some((*where_clause).clone());
-		project.filter = Some(Box::new(filter));
 	}
 
 	if let Some(limit) = &node.limit {
 		project.limit = Some(limit.clone());
 	}
 
+	filter.csv_file_scan = Some(Box::new(csv_file_scan));
+	project.filter = Some(Box::new(filter));
 	row_update.all = node.all;
 	row_update.project = Some(Box::new(project));	
 	rewrite.row_update = Some(Box::new(row_update));
@@ -705,8 +716,11 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 
 pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
 	let mut project = ProjectNode::new();
+	let mut filter = FilterNode::new();
+	let mut csv_file_scan = CsvFileScanNode::new();
 
 	project.method = TokenKind::Get;
+	project.all = node.all;
 
 	if let Some(expr_list) = &node.expr_list {
 		for expr in expr_list.exprs.iter() {
@@ -716,22 +730,20 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 	}
 
 	if let Some(table) = &node.table {
-		let mut csv_file_scan = CsvFileScanNode::new();
 		csv_file_scan.table_name = unwrap_ident_object(&table)?.to_string();
 		csv_file_scan.all = node.all;
-		project.csv_file_scan = Some(Box::new(csv_file_scan));
 	}
 
 	if let Some(where_clause) = &node.where_clause {
-		let mut filter = FilterNode::new();
 		filter.where_clause = Some((*where_clause).clone());
-		project.filter = Some(Box::new(filter));
 	}
 
 	if let Some(limit) = &node.limit {
 		project.limit = Some(limit.clone());
 	}
 
+	filter.csv_file_scan = Some(Box::new(csv_file_scan));
+	project.filter = Some(Box::new(filter));
 	plan.project = Some(Box::new(project));
 
 	Ok(())
