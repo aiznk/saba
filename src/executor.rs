@@ -1,4 +1,4 @@
-use crate::error::{Error, make_error, err_exec};
+use crate::error::{Error, make_error, err_exec, err_parse, err_planning};
 use crate::parser;
 use crate::planner;
 use crate::tokenizer::{TokenKind};
@@ -1529,8 +1529,14 @@ mod tests {
 		context.root_dir_path = PathBuf::from("test_env");
 		let tokens: Vec<Token> = tokenize(query.to_string()).unwrap();
 		let mut tok_strm = TokenStream::new(tokens);
-		let node: QueryNode = parse(&mut tok_strm).unwrap();
-		let node: PlansNode = planning(&node).unwrap();
+		let node: QueryNode = match parse(&mut tok_strm) {
+			Ok(v) => v,
+			Err(e) => return err_parse!("{}", e),
+		};
+		let node: PlansNode = match planning(&node) {
+			Ok(v) => v,
+			Err(e) => return err_planning!("{}", e),
+		};
 		return exec(context, &node);
 	}
 
@@ -2298,5 +2304,20 @@ mod tests {
 
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64\n1,3.14\n2,3.14\n3,3.14\n4,3.14\n5,3.14\n");
+	}
+
+	#[test]
+	fn test_alter_drop_column_3() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		match do_exec(&mut context, "ALTER TABLE test_table DROP COLUMN nothing") {
+			Ok(_) => panic!("failed"),
+			Err(_) => {}
+		}
 	}
 }
