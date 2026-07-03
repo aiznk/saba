@@ -16,6 +16,7 @@ pub enum TokenKind {
 	Desc, // DESC
 	Use, // USE
 	Show, // SHOW
+	Limit, // LIMIT
 	Drop, // DROP
 	Table, // TABLE
 	Tables, // TABLES
@@ -357,6 +358,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 			i += 4;
 		} else if c1 == 'a' && c2 == 'l' && c3 == 't' && c4 == 'e' && c5 == 'r' {
 			ret.push(Token::from(TokenKind::Alter, None));
+			i += 4;
+		} else if c1 == 'l' && c2 == 'i' && c3 == 'm' && c4 == 'i' && c5 == 't' {
+			ret.push(Token::from(TokenKind::Limit, None));
 			i += 4;
 		} else if c1 == 't' && c2 == 'a' && c3 == 'b' && c4 == 'l' && c5 == 'e' && c6 == 's' {
 			ret.push(Token::from(TokenKind::Tables, None));

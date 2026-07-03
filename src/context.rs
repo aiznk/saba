@@ -28,6 +28,7 @@ pub struct Context {
 	pub unmatched_csv_record: StringRecord,
 
 	pub test_get_records: Option<Vec<StringRecord>>,
+	pub limit_counter: i64,
 }
 
 impl Context {
@@ -47,6 +48,7 @@ impl Context {
 			matched_csv_record: StringRecord::new(),
 			unmatched_csv_record: StringRecord::new(),
 			test_get_records: None,
+			limit_counter: 0,
 		}
 	}
 

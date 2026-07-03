@@ -307,13 +307,46 @@ pub fn print_selected_columns(context: &mut Context) -> Result<(), Error> {
 	Ok(())
 }
 
+pub fn exec_limit(context: &mut Context, node: &Box<parser::LimitNode>) -> Result<Object, Error> {
+	if let Some(expr) = &node.expr {
+		return Ok(exec_expr(context, expr)?);
+	} else {
+		return err_exec!("invalid state: limit");
+	}
+}
+
+fn gen_limit_value(context: &mut Context, node: &planner::ProjectNode) -> Result<Option<i64>, Error> {
+	let mut limit_value: Option<i64> = None;
+
+	if let Some(limit) = &node.limit {
+		let o = exec_limit(context, limit)?;
+		match o.kind {
+			ObjectKind::I64 => {
+				limit_value = Some(o.i64_value);
+			}
+			_ => return err_exec!("invalid limit expression"),
+		}
+	}
+
+	Ok(limit_value)
+}
+
 pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Result<bool, Error> {
+	let limit_value: Option<i64> = gen_limit_value(context, node)?;
+
 	if node.filter.is_none() {
 		if node.csv_file_scan.is_none() {
 			return err_exec!("csv file scan is none in project");
 		}
 		if let Some(csv_file_scan) = &node.csv_file_scan {
 			while exec_csv_file_scan(context, csv_file_scan)? {
+				if let Some(limit_value) = limit_value {
+					if context.limit_counter >= limit_value {
+						context.table_csv_reader = None;
+						return Ok(false);
+					}					
+					context.limit_counter += 1;
+				}
 				if node.method == TokenKind::Get {
 					select_get_columns(context, node)?;
 					if context.is_cli {
@@ -343,6 +376,23 @@ pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Resul
 				context.counter_selected = 0;
 				while exec_csv_file_scan(context, csv_file_scan)? {
 					if exec_filter(context, filter)? {
+						if node.method == TokenKind::Del {
+							if let Some(limit_value) = limit_value {
+								if context.limit_counter >= limit_value {
+									context.matched_csv_record.clear();
+									context.unmatched_csv_record = context.csv_record.clone();
+								}					
+								context.limit_counter += 1;
+							}							
+						} else {
+							if let Some(limit_value) = limit_value {
+								if context.limit_counter >= limit_value {
+									context.table_csv_reader = None;
+									return Ok(false);
+								}					
+								context.limit_counter += 1;
+							}
+						}
 						select_get_columns(context, node)?;
 						if context.is_cli {
 							print_selected_columns(context)?;
@@ -1247,8 +1297,6 @@ pub fn exec_row_delete(context: &mut Context, node: &planner::RowDeleteNode, wri
 			filter = project.has_filter();			
 		}
 
-		println!("all[{}] filter[{}]", all, filter);
-
 		if all && !filter {
 			// pass
 		} else if all && filter {
@@ -1912,6 +1960,63 @@ mod tests {
 	}
 
 	#[test]
+	fn test_get_stmt_limit_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL * OF test_table LIMIT 2").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
+	}
+	
+	#[test]
+	fn test_get_stmt_limit_0a() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id OF test_table LIMIT 0").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "");
+	}
+	
+	#[test]
+	fn test_get_stmt_limit_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,hoge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL * OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "2,3.14,hoge\n5,3.14,hoge\n");
+	}
+	
+	#[test]
 	fn test_get_stmt_or_and_0() {
 		let mut context = Context::new();
 		setup_records!(context);
@@ -2111,6 +2216,47 @@ mod tests {
 	}
 
 	#[test]
+	fn test_del_stmt_limit_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "DEL ALL OF test_table LIMIT 2").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "4,3.14,huge\n5,3.14,oge\n");
+	}
+	
+	#[test]
+	fn test_del_stmt_limit_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,hoge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "DEL ALL OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "1,3.14,hige\n3,3.14,moge\n4,3.14,huge\n");
+	}
+	
+	#[test]
 	fn test_set_stmt_0() {
 		let path = gen_test_table_path();
 		remove_file(&path);
@@ -2186,6 +2332,62 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,HOGE\n2,3.14,HOGE\n");
 	}
 
+	#[test]
+	fn test_set_stmt_limit_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table LIMIT 2").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "1,1.23,hige\n2,1.23,hoge\n");
+	}
+	
+	#[test]
+	fn test_set_stmt_limit_0a() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table LIMIT 0").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "");
+	}
+	
+	#[test]
+	fn test_set_stmt_limit_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,hoge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "2,1.23,hoge\n5,1.23,hoge\n");
+	}
+	
 	#[test]
 	fn test_alter_add_column_0() {
 		let path = gen_test_table_path();
@@ -2381,4 +2583,5 @@ mod tests {
 			Err(_) => {}
 		}
 	}
+
 }

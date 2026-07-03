@@ -46,6 +46,19 @@ impl StmtNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct LimitNode {
+	pub expr: Option<Box<ExprNode>>,
+}
+
+impl LimitNode {
+	pub fn new() -> Self {
+		Self {
+			expr: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 pub struct DescStmtNode {
 	pub table_name: Option<Box<IdentNode>>,
 }
@@ -255,6 +268,7 @@ pub struct GetStmtNode {
 	pub expr_list: Option<Box<ExprListNode>>,
 	pub table: Option<Box<IdentNode>>,
 	pub where_clause: Option<Box<WhereClauseNode>>,
+	pub limit: Option<Box<LimitNode>>,
 }
 
 impl GetStmtNode {
@@ -264,6 +278,7 @@ impl GetStmtNode {
 			expr_list: None,
 			table: None,
 			where_clause: None,
+			limit: None,
 		}
 	}
 }
@@ -274,6 +289,7 @@ pub struct SetStmtNode {
 	pub expr_list: Option<Box<ExprListNode>>,
 	pub table: Option<Box<IdentNode>>,
 	pub where_clause: Option<Box<WhereClauseNode>>,
+	pub limit: Option<Box<LimitNode>>,
 }
 
 impl SetStmtNode {
@@ -283,6 +299,7 @@ impl SetStmtNode {
 			expr_list: None,
 			table: None,
 			where_clause: None,
+			limit: None,
 		}
 	}
 }
@@ -307,6 +324,7 @@ pub struct DelStmtNode {
 	pub all: bool,
 	pub table: Option<Box<IdentNode>>,
 	pub where_clause: Option<Box<WhereClauseNode>>,
+	pub limit: Option<Box<LimitNode>>,
 }
 
 impl DelStmtNode {
@@ -315,6 +333,7 @@ impl DelStmtNode {
 			all: false,
 			table: None,
 			where_clause: None,
+			limit: None,
 		}
 	}
 }
@@ -1074,6 +1093,7 @@ pub fn parse_get_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<GetStmtNo
 	}
 
 	n.where_clause = parse_where_clause(tok_strm)?;
+	n.limit = parse_limit(tok_strm)?;
 
 	Ok(Some(Box::new(n)))
 }
@@ -1116,6 +1136,7 @@ pub fn parse_set_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<SetStmtNo
 	}
 
 	n.where_clause = parse_where_clause(tok_strm)?;
+	n.limit = parse_limit(tok_strm)?;
 
 	Ok(Some(Box::new(n)))
 }
@@ -1182,6 +1203,28 @@ pub fn parse_del_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<DelStmtNo
 	}
 
 	n.where_clause = parse_where_clause(tok_strm)?;
+	n.limit = parse_limit(tok_strm)?;
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_limit(tok_strm: &mut TokenStream) -> Result<Option<Box<LimitNode>>, Error> {
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Limit {
+		tok_strm.prev();
+		return Ok(None);
+	}
+
+	let mut n = LimitNode::new();
+
+	n.expr = parse_expr(tok_strm)?;
+	if n.expr.is_none() {
+		return err_parse!("missing expr in limit");
+	}
 
 	Ok(Some(Box::new(n)))
 }

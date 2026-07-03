@@ -147,11 +147,12 @@ column_type ::= 'PRIMARY_KEY' |
              'F64' |
              'CHAR' '[' i64_value ']' |
              'DEFAULT' value
-get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' table:ident where?
-set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' table:ident where?
+get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' table:ident where? limit?
+set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' table:ident where? limit?
 add_stmt ::= 'ADD' (expr_list) 'OF' table:ident
-del_stmt ::= 'DEL' 'ALL'? 'OF' table:ident where?
+del_stmt ::= 'DEL' 'ALL'? 'OF' table:ident where? limit?
 where ::= 'WHERE' expr
+limit ::= 'LIMIT' expr
 expr_list ::= expr { ',' expr }*
 ident ::= [a-zA-Z_]+
 expr ::= ass_expr

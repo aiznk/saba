@@ -224,6 +224,7 @@ pub struct ProjectNode {
 	pub get_stmt_objs: Vec<Object>,
 	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
 	pub filter: Option<Box<FilterNode>>,
+	pub limit: Option<Box<parser::LimitNode>>,
 }
 
 impl ProjectNode {
@@ -233,6 +234,7 @@ impl ProjectNode {
 			get_stmt_objs: vec![],
 			csv_file_scan: None,
 			filter: None,
+			limit: None,
 		}
 	}
 
@@ -648,6 +650,10 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 		project.filter = Some(Box::new(filter));
 	}
 
+	if let Some(limit) = &node.limit {
+		project.limit = Some(limit.clone());
+	}
+
 	row_delete.project = Some(Box::new(project));
 	rewrite.row_delete = Some(Box::new(row_delete));
 	plan.csv_file_rewrite = Some(Box::new(rewrite));
@@ -685,6 +691,10 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 		project.filter = Some(Box::new(filter));
 	}
 
+	if let Some(limit) = &node.limit {
+		project.limit = Some(limit.clone());
+	}
+
 	row_update.all = node.all;
 	row_update.project = Some(Box::new(project));	
 	rewrite.row_update = Some(Box::new(row_update));
@@ -716,6 +726,10 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 		let mut filter = FilterNode::new();
 		filter.where_clause = Some((*where_clause).clone());
 		project.filter = Some(Box::new(filter));
+	}
+
+	if let Some(limit) = &node.limit {
+		project.limit = Some(limit.clone());
 	}
 
 	plan.project = Some(Box::new(project));
