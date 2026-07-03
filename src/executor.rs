@@ -87,15 +87,6 @@ pub fn find_header_position(headers: &StringRecord, col_name: &str) -> Result<Op
 	Ok(None)
 }
 
-fn open_reader(path: &PathBuf) -> Result<Reader<fs::File>, Error> {
-	let file = match fs::File::open(&path) {
-    	Ok(v) => v,
-    	Err(e) => return err_exec!("failed to open file on append: {}", e),
-    };
-    let reader = Reader::from_reader(file);
-    Ok(reader)
-}
-
 fn open_append_writer(path: &PathBuf) -> Result<Writer<fs::File>, Error> {
 	let file = match OpenOptions::new()
         .append(true)
@@ -1013,6 +1004,7 @@ pub fn exec_ident(_: &mut Context, node: &parser::IdentNode) -> Result<Object, E
 	Ok(o)
 }
 
+#[allow(dead_code)]
 fn print_vec_string(head: &str, row: &Vec<String>) {
 	if row.len() == 0 {
 		println!("{}: []", head);
