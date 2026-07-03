@@ -1017,6 +1017,7 @@ fn print_vec_string(head: &str, row: &Vec<String>) {
 	println!("");
 }
 
+#[allow(dead_code)]
 fn print_record(head: &str, row: &StringRecord) {
 	if row.len() == 0 {
 		println!("{}: []", head);
@@ -1131,13 +1132,11 @@ pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<
 			if o.bool_value {
 				context.matched_csv_record = context.scan_record.clone();
 				context.unmatched_csv_record.clear();
-				print_record("matched", &context.matched_csv_record);
 				context.matched = true;
 			} else {
 				context.matched_csv_record.clear();
 				context.unmatched_csv_record = context.scan_record.clone();
 				context.matched = false;
-				print_record("unmatched", &context.unmatched_csv_record);
 			}
 			return Ok(result);
 		}
@@ -1175,7 +1174,6 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode
 	if let Some(reader) = context.table_csv_reader.as_mut() {
 		match reader.read_record(&mut context.scan_record) {
 			Ok(_) => {
-				print_record("csv_file_scan", &context.scan_record);
 				if context.scan_record.len() == 0 {
 					context.table_csv_reader = None;
 					return Ok(false);
