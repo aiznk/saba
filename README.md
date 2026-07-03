@@ -54,6 +54,28 @@ Select using current database.
 USE my_db
 ```
 
+## DESC
+
+Show table info.
+
+```
+DESC my_table;
+```
+
+## ALTER (change table)
+
+Add column into table.
+
+```
+ALTER TABLE my_table ADD COLUMN name CHAR[100];
+```
+
+Drop column from table.
+
+```
+ALTER TABLE my_table DROP COLUMN name;
+```
+
 ## GET (get CSV records)
 
 ```
