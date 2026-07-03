@@ -1136,7 +1136,6 @@ pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<
 			}
 
 			let o = exec_where_clause(context, where_clause)?;
-			println!("o[{}]", o.to_string());
 			if o.bool_value {
 				context.matched_csv_record = context.scan_record.clone();
 				context.unmatched_csv_record.clear();
@@ -1479,7 +1478,6 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 
 			if row_update.all {
 				while exec_project(context, project)? {
-					println!("limited[{}]", limited);
 					if !limited {
 						if context.filtered {
 							if context.matched {
@@ -2024,7 +2022,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table").unwrap();
 		let s = test_get_records_to_string(&mut context);
-		println!("s[{}]", s);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
 	}
 
@@ -2151,7 +2148,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table LIMIT 2").unwrap();
 		let s = test_get_records_to_string(&mut context);
-		println!("s[{}]", s);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
 	}
 	
@@ -2167,7 +2163,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id OF test_table LIMIT 0").unwrap();
 		let s = test_get_records_to_string(&mut context);
-		println!("s[{}]", s);
 		assert!(s == "");
 	}
 	
@@ -2194,7 +2189,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
 		let s = test_get_records_to_string(&mut context);
-		println!("s[{}]", s);
 		assert!(s == "2,3.14,hoge\n4,3.14,hoge\n");
 	}
 	
@@ -2380,7 +2374,6 @@ mod tests {
 
 		do_exec(&mut context, "DEL OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
 
@@ -2410,7 +2403,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "DEL ALL OF test_table LIMIT 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 3,3.14,moge
 4,3.14,huge
@@ -2436,7 +2428,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
@@ -2447,7 +2438,6 @@ mod tests {
 
 		do_exec(&mut context, "DEL ALL OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,3.14,hige
 3,3.14,moge
@@ -2498,7 +2488,6 @@ mod tests {
 		setup_records!(context);
 		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF test_table WHERE weight == 3.14").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n10,3.14,HOGE\n2,3.14,hoge\n");
 	}
 
@@ -2544,7 +2533,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table LIMIT 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,1.23,hige
 2,1.23,hoge
@@ -2566,7 +2554,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table LIMIT 0").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
@@ -2598,7 +2585,6 @@ mod tests {
 
 		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,3.14,hige
 2,1.23,hoge
@@ -2617,7 +2603,6 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		do_exec(&mut context, "ALTER TABLE test_table ADD COLUMN uge I64").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128],uge: I64\n1,3.14,hige,0\n2,3.14,hoge,0\n3,3.14,moge,0\n4,3.14,huge,0\n5,3.14,oge,0\n");
 	}
 
