@@ -1496,7 +1496,6 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 						} else {
 							let cols = context.scan_record.clone();
 							let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
-							print_vec_string("cols", &cols);
 							writer.write_record(&cols).unwrap();
 							if let Some(limit_value) = limit_value {
 								if context.limit_counter >= limit_value {
