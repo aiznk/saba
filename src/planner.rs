@@ -111,12 +111,14 @@ impl DescTableNode {
 }
 
 pub struct RowDeleteNode {
+	pub all: bool,
 	pub project: Option<Box<ProjectNode>>,
 }
 
 impl RowDeleteNode {
 	pub fn new() -> Self {
 		Self {
+			all: false,
 			project: None,
 		}
 	}
@@ -232,6 +234,10 @@ impl ProjectNode {
 			csv_file_scan: None,
 			filter: None,
 		}
+	}
+
+	pub fn has_filter(&self) -> bool {
+		self.filter.is_some()
 	}
 }
 
@@ -405,7 +411,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		project.csv_file_scan = Some(Box::new(csv_file_scan));
 		column_add.project = Some(Box::new(project));
 		n.column_add = Some(Box::new(column_add));
-		
+
 	} else if let Some(alter_drop_column) = &node.alter_drop_column {
 		let mut column_drop = ColumnDropNode::new();
 		let mut project = ProjectNode::new();
@@ -625,12 +631,13 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 	let mut project = ProjectNode::new();
 
 	project.method = TokenKind::Del;
+	row_delete.all = node.all;
 
 	if let Some(table) = &node.table {
 		let ident = unwrap_ident_object(&table)?.to_string();
 		let mut csv_file_scan = CsvFileScanNode::new();
 		csv_file_scan.table_name = ident.clone();
-		csv_file_scan.all = node.all;
+		csv_file_scan.all = true; // always true
 		project.csv_file_scan = Some(Box::new(csv_file_scan));
 		rewrite.table_name = Some(ident.clone());
 	}

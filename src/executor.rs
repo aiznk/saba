@@ -310,11 +310,10 @@ pub fn print_selected_columns(context: &mut Context) -> Result<(), Error> {
 pub fn exec_project(context: &mut Context, node: &planner::ProjectNode) -> Result<bool, Error> {
 	if node.filter.is_none() {
 		if node.csv_file_scan.is_none() {
-			return err_exec!("csv scan is none in project");
+			return err_exec!("csv file scan is none in project");
 		}
 		if let Some(csv_file_scan) = &node.csv_file_scan {
 			while exec_csv_file_scan(context, csv_file_scan)? {
-				context.matched_csv_record = context.csv_record.clone();
 				if node.method == TokenKind::Get {
 					select_get_columns(context, node)?;
 					if context.is_cli {
@@ -1241,11 +1240,41 @@ pub fn exec_row_delete(context: &mut Context, node: &planner::RowDeleteNode, wri
 		let seq = context.is_sequential;
 		context.is_sequential = true;
 
-		while exec_project(context, project)? {
-			let cols = &context.unmatched_csv_record;
-			if cols.len() > 0 {
-				writer.write_record(cols).unwrap();
-			}
+		let all = node.all;
+		let mut filter = false;
+
+		if let Some(project) = &node.project {
+			filter = project.has_filter();			
+		}
+
+		println!("all[{}] filter[{}]", all, filter);
+
+		if all && !filter {
+			// pass
+		} else if all && filter {
+			while exec_project(context, project)? {
+				let row = &context.unmatched_csv_record;
+				if row.len() > 0 {
+					writer.write_record(row).unwrap();
+				}
+			}			
+		} else if !all && filter {
+			while exec_project(context, project)? {
+				let row = &context.unmatched_csv_record;
+				if row.len() > 0 {
+					writer.write_record(row).unwrap();
+				}
+			}						
+		} else if !all && !filter {
+			exec_project(context, project)?;
+
+			while exec_project(context, project)? {
+				let row = &context.csv_record;
+				assert!(row.len() > 0);
+				writer.write_record(row).unwrap();
+			}						
+		} else {
+			return err_exec!("invalid state: row update");
 		}
 
 		context.is_sequential = seq;
@@ -1354,6 +1383,10 @@ pub fn exec_row_update(context: &mut Context, node: &planner::RowUpdateNode, wri
 						writer.write_record(&cols).unwrap();
 					} else if context.unmatched_csv_record.len() > 0 {
 						let cols = context.unmatched_csv_record.clone();
+						writer.write_record(&cols).unwrap();
+					} else if context.csv_record.len() > 0 {
+						let cols = context.csv_record.clone();
+						let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
 						writer.write_record(&cols).unwrap();
 					} else {
 						return err_exec!("invalid state: row update");
@@ -2047,6 +2080,21 @@ mod tests {
 		do_exec(&mut context, "DEL ALL OF test_table WHERE weight == 3.14").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+	}
+
+	#[test]
+	fn test_del_stmt_4() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		do_exec(&mut context, "DEL OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
 
 	#[test]
