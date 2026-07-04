@@ -11,8 +11,11 @@ use std::io::{Write};
 use csv::{Reader, Writer, StringRecord};
 use regex::Regex;
 
+const DEBUG: bool = false;
+
 pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Error> {
 	for plan in node.plans.iter() {
+		context.clear();
 		exec_plan(context, &plan)?
 	}
 	Ok(())
@@ -1386,7 +1389,6 @@ fn print_record(head: &str, row: &StringRecord) {
 }
 
 pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
-	let mut indices: Vec<usize> = vec![];
 	let row;
 
 	context.selected_csv_columns.clear();
@@ -1442,6 +1444,11 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 		if !result {
 			return Ok(result);
 		}
+		if DEBUG {
+			print_record("scan_record", &context.scan_record);
+			println!("filtered {}", context.filtered);
+			println!("matched {}", context.matched);
+		}
 		select_get_columns(context, project)?;
 		if context.is_cli {
 			print_selected_columns(context)?;
@@ -1474,6 +1481,9 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 			}
 		}
 		if !project.all && context.counter_selected >= 1 {
+			if DEBUG {
+				println!("all[{}] counter_selected[{}]", project.all, context.counter_selected);
+			}
 			context.table_csv_reader = None;
 			return Ok(false);
 		}
@@ -1782,16 +1792,11 @@ pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, w
 		}
 		let drop_index = drop_index.unwrap();
 
-		let seq = context.is_sequential;
-		context.is_sequential = true;
-
 		while exec_project(context, &project)? {
 			let row = &context.scan_record;
 			let row = drop_record_column(&row, drop_index)?;
 			writer.write_record(&row).unwrap();
 		}
-		
-		context.is_sequential = seq;
 	}
 	Ok(())
 }
@@ -1800,17 +1805,12 @@ pub fn exec_column_add(context: &mut Context, node: &planner::ColumnAddNode, wri
 	if let Some(project) = &node.project {
 		let def_row = gen_default_record(headers)?;
 		assert!(def_row.len() > 0);
-		
-		let seq = context.is_sequential;
-		context.is_sequential = true;
 
 		while exec_project(context, &project)? {
 			let mut row = context.scan_record.clone();
 			row.push_field(def_row.to_vec().last().unwrap().as_str());
 			writer.write_record(&row).unwrap();
 		}
-		
-		context.is_sequential = seq;
 	}
 
 	Ok(())
@@ -2380,6 +2380,35 @@ mod tests {
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "1");
 		assert!(context.selected_csv_columns[1] == "hige");
+	}
+
+	#[test]
+	fn test_get_stmt_0f() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,3.14,hige
+2,3.14,hoge
+3,3.14,hoge
+");
+		do_exec(&mut context, "GET id,weight,name OF test_table WHERE id == 2").unwrap();
+		assert!(context.selected_csv_columns.len() == 3);
+		assert!(context.selected_csv_columns[0] == "2");
+		assert!(context.selected_csv_columns[1] == "3.14");
+		assert!(context.selected_csv_columns[2] == "hoge");
 	}
 
 	#[test]

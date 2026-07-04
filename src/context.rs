@@ -20,9 +20,6 @@ pub struct Context {
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
 
-	// if enable sequentil mode on exec_project, set true
-	pub is_sequential: bool,
-
 	// if filter matched/unmatched store record
 	pub matched_csv_record: StringRecord,
 	pub unmatched_csv_record: StringRecord,
@@ -46,7 +43,6 @@ impl Context {
 			vars: HashMap::new(),
 			counter_selected: 0,
 			is_cli: false,
-			is_sequential: false,
 			matched_csv_record: StringRecord::new(),
 			unmatched_csv_record: StringRecord::new(),
 			test_get_records: None,
@@ -54,6 +50,24 @@ impl Context {
 			filtered: false,
 			matched: false,
 		}
+	}
+
+	pub fn clear(&mut self) {
+		self.table_csv_reader = None;
+		self.csv_header.clear();
+		self.csv_header_idents.clear();
+		self.scan_record.clear();
+		self.selected_csv_columns.clear();
+		self.vars.clear();
+		self.counter_selected = 0;
+		self.matched_csv_record.clear();
+		self.unmatched_csv_record.clear();
+		if let Some(test_get_records) = self.test_get_records.as_mut() {
+			test_get_records.clear();
+		}
+		self.limit_counter = 0;
+		self.filtered = false;
+		self.matched = false;
 	}
 
 	pub fn gen_db_dir_path(&self, db_name: &str) -> Result<PathBuf, Error> {
