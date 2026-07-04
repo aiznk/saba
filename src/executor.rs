@@ -1774,6 +1774,16 @@ fn drop_record_column(row: &StringRecord, index: usize) -> Result<StringRecord, 
 	Ok(dst)
 }
 
+pub fn exec_column_rename(context: &mut Context, node: &planner::ColumnRenameNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+	if let Some(project) = &node.project {
+		while exec_project(context, &project)? {
+			let row = &context.scan_record;
+			writer.write_record(row).unwrap();
+		}
+	}
+	Ok(())
+}
+
 pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, writer: &mut Writer<fs::File>, types: &Vec<HeaderType>) -> Result<(), Error> {
 	if let Some(project) = &node.project {
 		let mut drop_index: Option<usize> = None;
@@ -1922,6 +1932,21 @@ fn drop_headers_column(types: &Vec<HeaderType>, headers: &mut StringRecord, iden
 	Ok(row)
 }
 
+fn rename_headers_column(types: &Vec<HeaderType>, from_ident: &String, to_ident: &String) -> Result<StringRecord, Error> {
+	let types = types.clone();
+	let mut dst = StringRecord::new();
+
+	for typ in types.iter() {
+		let mut typ = typ.clone();
+		if typ.ident == *from_ident {
+			typ.ident = to_ident.clone();
+		}
+		dst.push_field(typ.to_string().as_str());
+	}
+
+	Ok(dst)
+}
+
 pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewriteNode) -> Result<(), Error> {
 	if let Some(table_name) = &node.table_name {
 		let org_path = context.gen_table_file_path(&table_name)?;
@@ -1941,6 +1966,12 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 			if let Some(ident) = &column_drop.ident {
 				headers = drop_headers_column(&types, &mut headers, &ident)?;
 			}
+		} else if let Some(column_rename) = &node.column_rename {
+			if let Some(from_ident) = &column_rename.from_ident {
+				if let Some(to_ident) = &column_rename.to_ident {
+					headers = rename_headers_column(&types, from_ident, to_ident)?;
+				}
+			}
 		}
 		
 		writer.write_record(&headers).unwrap();
@@ -1953,6 +1984,8 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 			exec_column_add(context, column_add, &mut writer, &headers)?;
 		} else if let Some(column_drop) = &node.column_drop {
 			exec_column_drop(context, column_drop, &mut writer, &types)?;
+		} else if let Some(column_rename) = &node.column_rename {
+			exec_column_rename(context, column_rename, &mut writer)?;
 		} else {
 			return err_exec!("invalid state: csv file rewrite");
 		}
@@ -3220,6 +3253,27 @@ mod tests {
 			Ok(_) => panic!("failed"),
 			Err(_) => {}
 		}
+	}
+
+	#[test]
+	fn test_alter_rename_column_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		do_exec(&mut context, "ALTER TABLE test_table RENAME COLUMN id TO user_id").unwrap();
+
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "user_id: I64,weight: F64,name: CHAR[128]
+1,3.14,hige
+2,3.14,hoge
+3,3.14,moge
+4,3.14,huge
+5,3.14,oge
+");
 	}
 
 	#[test]

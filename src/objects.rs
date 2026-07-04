@@ -30,6 +30,40 @@ impl HeaderType {
 		}
 	}
 
+	pub fn to_string(&self) -> String {
+		let mut s = String::new();
+		
+		s.push_str(self.ident.as_str());
+		s.push_str(": ");
+
+		if self.is_i64 {
+			s.push_str("I64");
+		} else if self.is_f64 {
+			s.push_str("F64");
+		} else if self.is_bool {
+			s.push_str("BOOL");
+		} else if self.is_char {
+			s.push_str("CHAR[");
+			s.push_str(self.char_size.to_string().as_str());
+			s.push_str("]");
+		}
+		if self.is_primary_key {
+			s.push_str(" PRIMARY_KEY");
+		}
+		if self.is_auto_increment {
+			s.push_str(" AUTO_INCREMENT");
+		}
+		if self.is_default {
+			s.push_str(" DEFAULT");
+			if let Some(default_value) = &self.default_value {
+				s.push(' ');
+				s.push_str(default_value.to_column_string().as_str());
+			}
+		}
+
+		s
+	}
+
 	pub fn to_default_value_string(&self) -> Result<String, Error> {
 		if self.is_default {
 			if let Some(default_value) = &self.default_value {
@@ -111,6 +145,13 @@ impl Object {
 			f64_value: 0.0,
 			string: String::new(),
 			ident: String::new(),
+		}
+	}
+
+	pub fn to_column_string(&self) -> String {
+		match self.kind {
+			ObjectKind::String => { format!("\"{}\"", self.string) }
+			_ => { self.to_string() }
 		}
 	}
 

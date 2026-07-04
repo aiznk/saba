@@ -6,6 +6,8 @@ pub enum TokenKind {
 	Ident, // id
 	String, // "str"
 	Create, // CREATE
+	Rename, // RENAME
+	To, // TO
 	PrimaryKey, // PRIMARY_KEY
 	AutoIncrement, // AUTO_INCREMENT
 	Database, // DATABASE
@@ -324,9 +326,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'f' && c2 == '6' && c3 == '4' {
 			ret.push(Token::from(TokenKind::TypeF64, None));
 			i += 2;
-		} else if c1 == 'u' && c2 == 's' && c3 == 'e' {
+		} else if c1 == 'u' && c2 == 's' && c3 == 'e' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Use, None));
-			i += 2;
+			i += 3;
 		} else if c1 == 'n' && c2 == 'o' && c3 == 't' {
 			ret.push(Token::from(TokenKind::Not, None));
 			i += 2;
@@ -381,6 +383,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 'c' && c2 == 'r' && c3 == 'e' && c4 == 'a' && c5 == 't' && c6 == 'e' {
 			ret.push(Token::from(TokenKind::Create, None));
 			i += 5;
+		} else if c1 == 'r' && c2 == 'e' && c3 == 'n' && c4 == 'a' && c5 == 'm' && c6 == 'e' {
+			ret.push(Token::from(TokenKind::Rename, None));
+			i += 5;
 		} else if c1 == 'd' && c2 == 'a' && c3 == 't' && c4 == 'a' && c5 == 'b' && c6 == 'a' && c7 == 's' && c8 == 'e' && c9 == 's' {
 			ret.push(Token::from(TokenKind::Databases, None));
 			i += 8;
@@ -398,6 +403,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 			// auto_increment
 			ret.push(Token::from(TokenKind::AutoIncrement, None));
 			i += 13;
+		} else if c1 == 't' && c2 == 'o' {
+			ret.push(Token::from(TokenKind::To, None));
+			i += 1;
 		} else if c1 == 'i' && c2 == 'f' {
 			ret.push(Token::from(TokenKind::If, None));
 			i += 1;

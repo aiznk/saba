@@ -104,6 +104,7 @@ pub struct AlterTableNode {
 	pub table_name: Option<Box<IdentNode>>,
 	pub alter_add_column: Option<Box<AlterAddColumnNode>>,
 	pub alter_drop_column: Option<Box<AlterDropColumnNode>>,
+	pub alter_rename_column: Option<Box<AlterRenameColumnNode>>,
 }
 
 impl AlterTableNode {
@@ -112,6 +113,7 @@ impl AlterTableNode {
 			table_name: None,
 			alter_add_column: None,
 			alter_drop_column: None,
+			alter_rename_column: None,
 		}
 	}
 }
@@ -125,6 +127,21 @@ impl AlterStmtNode {
 	pub fn new() -> Self {
 		Self {
 			alter_table: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterRenameColumnNode {
+	pub from_ident: Option<Box<IdentNode>>,
+	pub to_ident: Option<Box<IdentNode>>,
+}
+
+impl AlterRenameColumnNode {
+	pub fn new() -> Self {
+		Self {
+			from_ident: None,
+			to_ident: None,
 		}
 	}
 }
@@ -752,7 +769,44 @@ pub fn parse_alter_table(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterT
 		return Ok(Some(Box::new(n)));
 	}
 
+	n.alter_rename_column = parse_alter_rename_column(tok_strm)?;
+	if n.alter_rename_column.is_some() {
+		return Ok(Some(Box::new(n)));
+	}
+
 	err_parse!("invalid state: alter table stmt")
+}
+
+pub fn parse_alter_rename_column(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterRenameColumnNode>>, Error> {
+	let mut n = AlterRenameColumnNode::new();
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Rename {
+		tok_strm.prev();
+		return Ok(None);
+	}	
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Column {
+		return err_parse!("missing 'COLUMN' in alter rename column stmt");
+	}	
+
+	n.from_ident = parse_ident(tok_strm)?;
+	if n.from_ident.is_none() {
+		return err_parse!("missing ident 1 in alter rename column stmt");
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::To {
+		return err_parse!("missing 'TO' in alter rename column stmt");
+	}	
+
+	n.to_ident = parse_ident(tok_strm)?;
+	if n.to_ident.is_none() {
+		return err_parse!("missing ident 2 in alter rename column stmt");
+	}
+
+	Ok(Some(Box::new(n)))
 }
 
 pub fn parse_alter_drop_column(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterDropColumnNode>>, Error> {

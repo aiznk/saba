@@ -52,6 +52,7 @@ pub struct CsvFileRewriteNode {
 	pub row_update: Option<Box<RowUpdateNode>>,
 	pub column_add: Option<Box<ColumnAddNode>>,
 	pub column_drop: Option<Box<ColumnDropNode>>,
+	pub column_rename: Option<Box<ColumnRenameNode>>,
 }
 
 impl CsvFileRewriteNode {
@@ -62,6 +63,23 @@ impl CsvFileRewriteNode {
 			row_update: None,
 			column_add: None,
 			column_drop: None,
+			column_rename: None,
+		}
+	}
+}
+
+pub struct ColumnRenameNode {
+	pub project: Option<Box<ProjectNode>>,
+	pub from_ident: Option<String>,
+	pub to_ident: Option<String>,
+}
+
+impl ColumnRenameNode {
+	pub fn new() -> Self {
+		Self {
+			project: None,
+			from_ident: None,
+			to_ident: None,
 		}
 	}
 }
@@ -431,6 +449,27 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		project.filter = Some(Box::new(filter));
 		column_drop.project = Some(Box::new(project));
 		n.column_drop = Some(Box::new(column_drop));
+
+	} else if let Some(alter_rename_column) = &node.alter_rename_column {
+		let mut column_rename = ColumnRenameNode::new();
+		let mut project = ProjectNode::new();
+		let mut filter = FilterNode::new();
+
+		project.all = true; // always true
+
+		if let Some(ident) = &alter_rename_column.from_ident {
+			let ident = unwrap_ident_object(ident)?.to_string();
+			column_rename.from_ident = Some(ident);
+		}
+		if let Some(ident) = &alter_rename_column.to_ident {
+			let ident = unwrap_ident_object(ident)?.to_string();
+			column_rename.to_ident = Some(ident);
+		}
+
+		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		project.filter = Some(Box::new(filter));
+		column_rename.project = Some(Box::new(project));
+		n.column_rename = Some(Box::new(column_rename));
 	} else {
 		return err_planning!("invalid state: plan alter table");
 	}

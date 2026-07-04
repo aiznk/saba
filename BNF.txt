@@ -66,6 +66,12 @@
 	- DropColumn
 	 - Project
 
+> ALTER TABLE mytab RENAME COLUMN mycolumn TO newcolumn;
+
+	CsvFileRewrite
+	- RenameColumn
+	 - Project
+	 
 ## GET
 
 > GET name OF mytab WHERE id == 123;
