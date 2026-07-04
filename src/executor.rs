@@ -3180,6 +3180,8 @@ mod tests {
 		do_exec(&mut context, "ADD id = 2 * (2 * 3), weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 4 / (4 / 2), weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = (4 * 2) / 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4 % 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2 * 3 % 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
@@ -3189,6 +3191,8 @@ mod tests {
 12,3.14,hoge
 2,3.14,oge
 4,3.14,oge
+0,3.14,oge
+0,3.14,oge
 ");
 	}
 
