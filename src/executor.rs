@@ -492,7 +492,7 @@ pub fn exec_compare_expr(context: &mut Context, node: &parser::CompareExprNode) 
 	let mut c;
 
 	if let parser::CompareExprItemNode::Left(operand) = &node.nodes[0] {
-		a = exec_operand(context, &*operand)?;	
+		a = exec_add_sub_expr(context, &*operand)?;	
 	} else {
 		return err_exec!("impossible");
 	}
@@ -504,13 +504,81 @@ pub fn exec_compare_expr(context: &mut Context, node: &parser::CompareExprNode) 
 		let rhs = &node.nodes[i+1];
 
 		if let parser::CompareExprItemNode::Right(operand) = rhs {
-			b = exec_operand(context, &*operand)?;
+			b = exec_add_sub_expr(context, &*operand)?;
 		} else {
 			return err_exec!("impossible");
 		}
 
 		if let parser::CompareExprItemNode::Op(compare_op) = op {
 			c = compare_objects(context, &a, &compare_op, &b)?;
+			a = c.clone();
+		} else {
+			return err_exec!("impossible");
+		}		
+	}
+
+	Ok(c)
+}
+
+pub fn exec_add_sub_expr(context: &mut Context, node: &parser::AddSubExprNode) -> Result<Object, Error> {
+	let mut a;
+	let mut b;
+	let mut c;
+
+	if let parser::AddSubExprItemNode::Left(left) = &node.nodes[0] {
+		a = exec_mul_div_expr(context, &*left)?;	
+	} else {
+		return err_exec!("impossible");
+	}
+
+	c = a.clone();
+
+	for i in (1..node.nodes.len()).step_by(2) {
+		let op = &node.nodes[i];
+		let rhs = &node.nodes[i+1];
+
+		if let parser::AddSubExprItemNode::Right(right) = rhs {
+			b = exec_mul_div_expr(context, &*right)?;
+		} else {
+			return err_exec!("impossible");
+		}
+
+		if let parser::AddSubExprItemNode::Op(op) = op {
+			c = add_sub_objects(context, &a, &op, &b)?;
+			a = c.clone();
+		} else {
+			return err_exec!("impossible");
+		}		
+	}
+
+	Ok(c)
+}
+
+pub fn exec_mul_div_expr(context: &mut Context, node: &parser::MulDivExprNode) -> Result<Object, Error> {
+	let mut a;
+	let mut b;
+	let mut c;
+
+	if let parser::MulDivExprItemNode::Left(operand) = &node.nodes[0] {
+		a = exec_operand(context, &*operand)?;	
+	} else {
+		return err_exec!("impossible");
+	}
+
+	c = a.clone();
+
+	for i in (1..node.nodes.len()).step_by(2) {
+		let op = &node.nodes[i];
+		let rhs = &node.nodes[i+1];
+
+		if let parser::MulDivExprItemNode::Right(operand) = rhs {
+			b = exec_operand(context, &*operand)?;
+		} else {
+			return err_exec!("impossible");
+		}
+
+		if let parser::MulDivExprItemNode::Op(op) = op {
+			c = mul_div_objects(context, &a, &op, &b)?;
 			a = c.clone();
 		} else {
 			return err_exec!("impossible");
@@ -559,6 +627,293 @@ pub fn refer_ident(context: &mut Context, ident: &String) -> Result<Object, Erro
 	}
 }
 
+pub fn add_sub_objects(context: &mut Context, lhs: &Object, op: &parser::AddSubOpNode, rhs: &Object) -> Result<Object, Error> {
+	match op {
+		parser::AddSubOpNode::Add => {
+			match lhs.kind {
+				ObjectKind::I64 => {
+					match rhs.kind {
+						ObjectKind::I64 => {
+							let n = lhs.i64_value + rhs.i64_value;
+							Ok(Object::from_i64(n))
+						}
+						ObjectKind::F64 => {
+							let n = (lhs.i64_value as f64) + rhs.f64_value;
+							Ok(Object::from_f64(n))
+						}
+						_ => {
+							return err_exec!("can't add: a + b");
+						}
+					}
+				}
+				ObjectKind::F64 => {
+					match rhs.kind {
+						ObjectKind::I64 => {
+							let n = lhs.f64_value + (rhs.i64_value as f64);
+							Ok(Object::from_f64(n))
+						}
+						ObjectKind::F64 => {
+							let n = lhs.f64_value + rhs.f64_value;
+							Ok(Object::from_f64(n))
+						}
+						_ => {
+							return err_exec!("can't add: a + b (2)");
+						}
+					}
+				}
+				ObjectKind::String => {
+					match rhs.kind {
+						ObjectKind::String => {
+							let mut n = lhs.string.clone();
+							n.push_str(&rhs.string);
+							Ok(Object::from_string(n))
+						}
+						_ => {
+							return err_exec!("can't add: a + b (3)");
+						}
+					}
+				}
+				ObjectKind::Ident => {
+					match rhs.kind {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
+							let lo = refer_ident(context, &lhs.ident)?;
+							return add_sub_objects(context, &lo, op, rhs);
+						}
+						_ => {
+							return err_exec!("can't add: a + b (4)")
+						}
+					}
+				}
+				_ => err_exec!("can't add: a + b (5)"),
+			}
+		}
+		parser::AddSubOpNode::Sub => {
+			match lhs.kind {
+				ObjectKind::I64 => {
+					match rhs.kind {
+						ObjectKind::I64 => {
+							let n = lhs.i64_value - rhs.i64_value;
+							Ok(Object::from_i64(n))
+						}
+						ObjectKind::F64 => {
+							let n = (lhs.i64_value as f64) - rhs.f64_value;
+							Ok(Object::from_f64(n))
+						}
+						_ => {
+							return err_exec!("can't sub: a - b");
+						}
+					}
+				}
+				ObjectKind::F64 => {
+					match rhs.kind {
+						ObjectKind::I64 => {
+							let n = lhs.f64_value - (rhs.i64_value as f64);
+							Ok(Object::from_f64(n))
+						}
+						ObjectKind::F64 => {
+							let n = lhs.f64_value - rhs.f64_value;
+							Ok(Object::from_f64(n))
+						}
+						_ => {
+							return err_exec!("can't sub: a - b (2)");
+						}
+					}
+				}
+				ObjectKind::Ident => {
+					match rhs.kind {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
+							let lo = refer_ident(context, &lhs.ident)?;
+							return add_sub_objects(context, &lo, op, rhs);
+						}
+						_ => {
+							return err_exec!("can't sub: a - b (4)")
+						}
+					}
+				}
+				_ => err_exec!("can't sub: a - b (5)"),
+			}
+		}
+		_ => err_exec!("invalid operator: a - b"),
+	}
+}
+
+pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivOpNode, rhs: &Object) -> Result<Object, Error> {
+	match op {
+		parser::MulDivOpNode::Mul => {
+			match lhs.kind {
+				ObjectKind::I64 => {
+					match rhs.kind {
+						ObjectKind::I64 => {
+							let n = lhs.i64_value * rhs.i64_value;
+							Ok(Object::from_i64(n))
+						}
+						ObjectKind::F64 => {
+							let n = (lhs.i64_value as f64) * rhs.f64_value;
+							Ok(Object::from_f64(n))
+						}
+						_ => {
+							return err_exec!("can't mul: a * b");
+						}
+					}
+				}
+				ObjectKind::F64 => {
+					match rhs.kind {
+						ObjectKind::I64 => {
+							let n = lhs.f64_value * (rhs.i64_value as f64);
+							Ok(Object::from_f64(n))
+						}
+						ObjectKind::F64 => {
+							let n = lhs.f64_value * rhs.f64_value;
+							Ok(Object::from_f64(n))
+						}
+						_ => {
+							return err_exec!("can't mul: a * b (2)");
+						}
+					}
+				}
+				ObjectKind::Ident => {
+					match rhs.kind {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
+							let lo = refer_ident(context, &lhs.ident)?;
+							return mul_div_objects(context, &lo, op, rhs);
+						}
+						_ => {
+							return err_exec!("can't mul: a * b (4)")
+						}
+					}
+				}
+				_ => err_exec!("can't mul: a * b (5)"),
+			}
+		}
+		parser::MulDivOpNode::Div => {
+			match lhs.kind {
+				ObjectKind::I64 => {
+					match rhs.kind {
+						ObjectKind::I64 => {
+							if rhs.i64_value == 0 {
+								return err_exec!("zero division error: a / b");
+							}
+							let n = lhs.i64_value / rhs.i64_value;
+							Ok(Object::from_i64(n))
+						}
+						ObjectKind::F64 => {
+							if rhs.f64_value == 0.0 {
+								return err_exec!("zero division error: a / b");
+							}
+							let n = (lhs.i64_value as f64) / rhs.f64_value;
+							Ok(Object::from_f64(n))
+						}
+						_ => {
+							return err_exec!("can't div: a / b");
+						}
+					}
+				}
+				ObjectKind::F64 => {
+					match rhs.kind {
+						ObjectKind::I64 => {
+							if rhs.i64_value == 0 {
+								return err_exec!("zero division error: a / b");
+							}
+							let n = lhs.f64_value / (rhs.i64_value as f64);
+							Ok(Object::from_f64(n))
+						}
+						ObjectKind::F64 => {
+							if rhs.f64_value == 0.0 {
+								return err_exec!("zero division error: a / b");
+							}
+							let n = lhs.f64_value / rhs.f64_value;
+							Ok(Object::from_f64(n))
+						}
+						_ => {
+							return err_exec!("can't div: a / b (2)");
+						}
+					}
+				}
+				ObjectKind::Ident => {
+					match rhs.kind {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
+							let lo = refer_ident(context, &lhs.ident)?;
+							return mul_div_objects(context, &lo, op, rhs);
+						}
+						_ => {
+							return err_exec!("can't div: a / b (4)")
+						}
+					}
+				}
+				_ => err_exec!("can't div: a / b (5)"),
+			}
+		}
+		parser::MulDivOpNode::Mod => {
+			match lhs.kind {
+				ObjectKind::I64 => {
+					match rhs.kind {
+						ObjectKind::I64 => {
+							if rhs.i64_value == 0 {
+								return err_exec!("zero division error: a % b");
+							}
+							let n = lhs.i64_value % rhs.i64_value;
+							Ok(Object::from_i64(n))
+						}
+						ObjectKind::F64 => {
+							if rhs.f64_value == 0.0 {
+								return err_exec!("zero division error: a % b");
+							}
+							let n = (lhs.i64_value as f64) % rhs.f64_value;
+							Ok(Object::from_f64(n))
+						}
+						_ => {
+							return err_exec!("can't mod: a % b");
+						}
+					}
+				}
+				ObjectKind::F64 => {
+					match rhs.kind {
+						ObjectKind::I64 => {
+							if rhs.i64_value == 0 {
+								return err_exec!("zero division error: a % b");
+							}
+							let n = lhs.f64_value % (rhs.i64_value as f64);
+							Ok(Object::from_f64(n))
+						}
+						ObjectKind::F64 => {
+							if rhs.f64_value == 0.0 {
+								return err_exec!("zero division error: a % b");
+							}
+							let n = lhs.f64_value % rhs.f64_value;
+							Ok(Object::from_f64(n))
+						}
+						_ => {
+							return err_exec!("can't mod: a % b (2)");
+						}
+					}
+				}
+				ObjectKind::Ident => {
+					match rhs.kind {
+						ObjectKind::I64 |
+						ObjectKind::F64 |
+						ObjectKind::String => {
+							let lo = refer_ident(context, &lhs.ident)?;
+							return mul_div_objects(context, &lo, op, rhs);
+						}
+						_ => {
+							return err_exec!("can't mod: a % b (4)")
+						}
+					}
+				}
+				_ => err_exec!("can't mod: a % b (5)"),
+			}
+		}
+		_ => err_exec!("invalid operator: a % b"),
+	}
+}
 
 pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::CompareOpNode, rhs: &Object) -> Result<Object, Error> {
 	match op {
@@ -1401,7 +1756,7 @@ fn drop_record_column(row: &StringRecord, index: usize) -> Result<StringRecord, 
 	Ok(dst)
 }
 
-pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, writer: &mut Writer<fs::File>, types: &Vec<HeaderType>, headers: &StringRecord) -> Result<(), Error> {
+pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, writer: &mut Writer<fs::File>, types: &Vec<HeaderType>) -> Result<(), Error> {
 	if let Some(project) = &node.project {
 		let mut drop_index: Option<usize> = None;
 
@@ -1564,7 +1919,6 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 		let org_path = context.gen_table_file_path(&table_name)?;
 		let tmp_path = context.gen_tmp_table_file_path(&table_name)?;
 		let mut headers = read_table_headers(context, &table_name)?;
-		let mut org_headers = StringRecord::new();
 		let types = parse_csv_headers_as_types(&headers)?;
 		let mut writer = match Writer::from_path(&tmp_path) {
 			Ok(v) => v,
@@ -1577,7 +1931,6 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 			}
 		} else if let Some(column_drop) = &node.column_drop {
 			if let Some(ident) = &column_drop.ident {
-				org_headers = headers.clone();
 				headers = drop_headers_column(&types, &mut headers, &ident)?;
 			}
 		}
@@ -1591,7 +1944,7 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 		} else if let Some(column_add) = &node.column_add {
 			exec_column_add(context, column_add, &mut writer, &headers)?;
 		} else if let Some(column_drop) = &node.column_drop {
-			exec_column_drop(context, column_drop, &mut writer, &types, &org_headers)?;
+			exec_column_drop(context, column_drop, &mut writer, &types)?;
 		} else {
 			return err_exec!("invalid state: csv file rewrite");
 		}
@@ -2779,4 +3132,95 @@ mod tests {
 		}
 	}
 
+	#[test]
+	fn test_add_sub_expr_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1 + 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2 - 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2 - 1 + 1, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1 + (2 + 3), weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4 - (2 - 1), weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4 - 2 - 1, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+2,3.14,hige
+1,3.14,hoge
+2,3.14,moge
+6,3.14,hoge
+3,3.14,oge
+1,3.14,oge
+");
+	}
+
+	#[test]
+	fn test_mul_div_expr_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 2 * 2, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2 * 2 / 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3 / 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2 * (2 * 3), weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4 / (4 / 2), weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = (4 * 2) / 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+4,3.14,hige
+2,3.14,hoge
+1,3.14,moge
+12,3.14,hoge
+2,3.14,oge
+4,3.14,oge
+");
+	}
+
+	#[test]
+	fn test_add_sub_mul_div_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1 + 2 * 3, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2 * 3 + 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1 + 4 / 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2 - 2 * 3, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2 - 4 / 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1 + 2 - 1 * 3 / 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3 - 2 + 1, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+7,3.14,hige
+8,3.14,hoge
+3,3.14,moge
+-4,3.14,hoge
+0,3.14,oge
+2,3.14,oge
+2,3.14,oge
+");
+	}
 }

@@ -420,11 +420,10 @@ impl AndExprNode {
 
 #[derive(Debug, Clone)]
 pub enum CompareExprItemNode {
-	Left(Box<OperandNode>),
+	Left(Box<AddSubExprNode>),
 	Op(CompareOpNode),
-	Right(Box<OperandNode>),
+	Right(Box<AddSubExprNode>),
 }
-
 
 #[derive(Debug, Clone)]
 pub struct CompareExprNode {
@@ -447,6 +446,59 @@ pub enum CompareOpNode {
 	GtEq,
 	Eq,
 	NotEq,
+}
+
+#[derive(Debug, Clone)]
+pub enum AddSubExprItemNode {
+	Left(Box<MulDivExprNode>),
+	Op(AddSubOpNode),
+	Right(Box<MulDivExprNode>),
+}
+
+#[derive(Debug, Clone)]
+pub struct AddSubExprNode {
+	pub nodes: Vec<AddSubExprItemNode>,
+}
+
+impl AddSubExprNode {
+	pub fn new() -> Self {
+		Self {
+			nodes: vec![],
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub enum AddSubOpNode {
+	Add, // +
+	Sub, // -
+}
+
+#[derive(Debug, Clone)]
+pub enum MulDivExprItemNode {
+	Left(Box<OperandNode>),
+	Op(MulDivOpNode),
+	Right(Box<OperandNode>),
+}
+
+#[derive(Debug, Clone)]
+pub struct MulDivExprNode {
+	pub nodes: Vec<MulDivExprItemNode>,
+}
+
+impl MulDivExprNode {
+	pub fn new() -> Self {
+		Self {
+			nodes: vec![],
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub enum MulDivOpNode {
+	Mul, // *
+	Div, // /
+	Mod, // %
 }
 
 #[derive(Debug, Clone)]
@@ -1161,7 +1213,7 @@ pub fn parse_add_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<AddStmtNo
 
 	let tok = tok_strm.get()?;
 	if tok.kind != TokenKind::Of {
-		return err_parse!("missing 'OF' in add stmt");
+		return err_parse!("missing 'OF' in add stmt: {:?}", tok);
 	}
 
 	n.table = parse_ident(tok_strm)?;
@@ -1390,7 +1442,7 @@ pub fn parse_compare_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<Compa
 		return Ok(None);
 	}
 
-	let left = parse_operand(tok_strm)?;
+	let left = parse_add_sub_expr(tok_strm)?;
 	if left.is_none() {
 		return Ok(None);
 	}
@@ -1407,7 +1459,7 @@ pub fn parse_compare_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<Compa
 		let node = CompareExprItemNode::Op(*op.unwrap());
 		n.nodes.push(node);
 
-		let right = parse_operand(tok_strm)?;
+		let right = parse_add_sub_expr(tok_strm)?;
 		if right.is_none() {
 			return err_parse!("missing right logic expr in compare expr");
 		}		
@@ -1437,6 +1489,86 @@ pub fn parse_compare_op(tok_strm: &mut TokenStream) -> Result<Option<Box<Compare
 		return Ok(Some(Box::new(CompareOpNode::Gt)));
 	} else if tok.kind == TokenKind::GtEq {
 		return Ok(Some(Box::new(CompareOpNode::GtEq)));
+	} else {
+		tok_strm.prev();
+		return Ok(None);
+	}
+}
+
+pub fn parse_add_sub_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<AddSubExprNode>>, Error> {
+	let mut n = AddSubExprNode::new();
+
+	let left = parse_mul_div_expr(tok_strm)?;
+	if left.is_none() {
+		return Ok(None);
+	}
+	n.nodes.push(AddSubExprItemNode::Left(left.unwrap()));
+
+	while !tok_strm.is_end() {
+		let op = parse_add_sub_op(tok_strm)?;
+		if op.is_none() {
+			break;
+		}
+		n.nodes.push(AddSubExprItemNode::Op(op.unwrap()));
+
+		let right = parse_mul_div_expr(tok_strm)?;
+		if right.is_none() {
+			return err_parse!("missing mul div expr in add sub expr");
+		}
+		n.nodes.push(AddSubExprItemNode::Right(right.unwrap()));
+	}
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_add_sub_op(tok_strm: &mut TokenStream) -> Result<Option<AddSubOpNode>, Error> {
+	let tok = tok_strm.get()?;
+
+	if tok.kind == TokenKind::AddOp {
+		return Ok(Some(AddSubOpNode::Add));
+	} else if tok.kind == TokenKind::SubOp {
+		return Ok(Some(AddSubOpNode::Sub));
+	} else {
+		tok_strm.prev();
+		return Ok(None);
+	}
+}
+
+pub fn parse_mul_div_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<MulDivExprNode>>, Error> {
+	let mut n = MulDivExprNode::new();
+
+	let left = parse_operand(tok_strm)?;
+	if left.is_none() {
+		return Ok(None);
+	}
+	n.nodes.push(MulDivExprItemNode::Left(left.unwrap()));
+
+	while !tok_strm.is_end() {
+		let op = parse_mul_div_op(tok_strm)?;
+		if op.is_none() {
+			break;
+		}
+		n.nodes.push(MulDivExprItemNode::Op(op.unwrap()));
+
+		let right = parse_operand(tok_strm)?;
+		if right.is_none() {
+			return err_parse!("missing mul div expr in add sub expr");
+		}
+		n.nodes.push(MulDivExprItemNode::Right(right.unwrap()));
+	}
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_mul_div_op(tok_strm: &mut TokenStream) -> Result<Option<MulDivOpNode>, Error> {
+	let tok = tok_strm.get()?;
+
+	if tok.kind == TokenKind::MulOp {
+		return Ok(Some(MulDivOpNode::Mul));
+	} else if tok.kind == TokenKind::DivOp {
+		return Ok(Some(MulDivOpNode::Div));
+	} else if tok.kind == TokenKind::ModOp {
+		return Ok(Some(MulDivOpNode::Mod));
 	} else {
 		tok_strm.prev();
 		return Ok(None);
@@ -1492,10 +1624,11 @@ pub fn parse_operand(tok_strm: &mut TokenStream) -> Result<Option<Box<OperandNod
 		}
 
 		let tok = tok_strm.get()?;
-		if tok.kind == TokenKind::Star {
+		if tok.kind == TokenKind::MulOp {
 			n.star = true;
 			return Ok(Some(Box::new(n)));
 		}
+		tok_strm.prev();
 
 		return Ok(None);
 	}
@@ -1693,6 +1826,16 @@ CREATE TABLE mytab (
 	#[test]
 	fn test_add_stmt_1() {
 		assert!(do_parse("ADD id = 1, age = 20 OF mytab;") == true);
+	}
+
+	#[test]
+	fn test_add_sub_expr() {
+		assert!(do_parse("ADD id = 1 + 2 - 1, age = 20 OF mytab;") == true);
+	}
+
+	#[test]
+	fn test_mul_div_expr() {
+		assert!(do_parse("ADD id = 2 * 2 / 2, age = 20 OF mytab;") == true);
 	}
 
 	#[test]

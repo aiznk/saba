@@ -794,6 +794,30 @@ fn unwrap_compare_expr_object(node: &Box<parser::CompareExprNode>) -> Result<Obj
 	}
 	let item: &parser::CompareExprItemNode = &node.nodes[0];
 	if let parser::CompareExprItemNode::Left(operand) = item {
+		return Ok(unwrap_add_sub_expr_object(operand)?);
+	}
+	err_planning!("failed")
+}
+
+fn unwrap_add_sub_expr_object(node: &Box<parser::AddSubExprNode>) -> Result<Object, Error> {
+	if node.nodes.len() == 0 {
+		return err_planning!("nodes len is 0 in unwrap add sub expr object");
+	} else if node.nodes.len() >= 2 {
+		return err_planning!("over nodes len in unwrap add sub expr object");
+	}
+	if let parser::AddSubExprItemNode::Left(mul_div_expr) = &node.nodes[0] {
+		return Ok(unwrap_mul_div_expr_object(mul_div_expr)?);
+	}
+	err_planning!("failed")
+}
+
+fn unwrap_mul_div_expr_object(node: &Box<parser::MulDivExprNode>) -> Result<Object, Error> {
+	if node.nodes.len() == 0 {
+		return err_planning!("nodes len is 0 in unwrap mul div expr object");
+	} else if node.nodes.len() >= 2 {
+		return err_planning!("over nodes len in unwrap mul div expr object");
+	}
+	if let parser::MulDivExprItemNode::Left(operand) = &node.nodes[0] {
 		return Ok(unwrap_operand_object(operand)?);
 	}
 	err_planning!("failed")

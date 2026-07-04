@@ -159,8 +159,12 @@ expr ::= ass_expr
 ass_expr ::= or_expr ( '=' or_expr )?
 or_expr ::= and_expr { 'OR' and_expr }*
 and_expr ::= compare_expr { 'AND' compare_expr }*
-compare_expr ::= operand { compare_op operand }*
+compare_expr ::= add_sub_expr { compare_op add_sub_expr }*
 compare_op ::= ('==' | '!=')
+add_sub_expr ::= mul_div_expr { add_sub_op mul_div_expr }*
+add_sub_op ::= ('+' | '-')
+mul_div_expr ::= operand { mul_div_op operand }*
+mul_div_op ::= ('*' | '/' | '%')
 operand ::= (i64_value | f64_value | string | ident | '*') | '(' expr ')'
 value ::= i64_value | f64_value | string
 i64_value ::= ('+' | '-')? [0-9]+

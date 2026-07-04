@@ -3,7 +3,6 @@ use crate::error::{Error, make_error, err_runtime};
 #[derive(Debug, PartialEq)]
 pub enum TokenKind {
 	Nil,
-	Star, // *
 	Ident, // id
 	String, // "str"
 	Create, // CREATE
@@ -38,6 +37,11 @@ pub enum TokenKind {
 	Del, // DEL
 	Of, // OF
 	Where, // WHERE
+	AddOp, // +
+	SubOp, // -
+	MulOp, // *
+	DivOp, // /
+	ModOp, // %
 	Lt, // <
 	LtEq, // <=
 	Gt, // >
@@ -429,8 +433,16 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 			ret.push(Token::from(TokenKind::LBracket, None));
 		} else if c1 == ']' {
 			ret.push(Token::from(TokenKind::RBracket, None));
+		} else if c1 == '+' {
+			ret.push(Token::from(TokenKind::AddOp, None));
+		} else if c1 == '-' {
+			ret.push(Token::from(TokenKind::SubOp, None));
 		} else if c1 == '*' {
-			ret.push(Token::from(TokenKind::Star, None));
+			ret.push(Token::from(TokenKind::MulOp, None));
+		} else if c1 == '/' {
+			ret.push(Token::from(TokenKind::DivOp, None));
+		} else if c1 == '%' {
+			ret.push(Token::from(TokenKind::ModOp, None));
 		} else if c1 == '"' {
 			let tok = read_string(&mut i, &chars);
 			ret.push(tok);
