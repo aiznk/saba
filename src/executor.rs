@@ -1400,28 +1400,36 @@ pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) ->
 		return Ok(());
 	}
 
-	if node.get_stmt_objs.len() == 1 &&
-	   node.get_stmt_objs[0].kind == ObjectKind::Star {
+	let mut objs: Vec<Object> = vec![];
+	if let Some(expr_list) = &node.expr_list {
+		objs = exec_expr_list(context, expr_list)?;
+	}
+
+	if objs.len() == 1 &&
+	   objs[0].kind == ObjectKind::Star {
 	   	for col in row.iter() {
 	   		context.selected_csv_columns.push(col.to_string());
 	   	}
 	   	return Ok(());
 	}
 
-	for get_obj in node.get_stmt_objs.iter() {
+	let mut dst: Vec<String> = vec![];
+
+	for obj in objs.iter() {
 		if let Some(index) = context.csv_header_idents.iter().position(|s| {
-				return *s == *get_obj.to_string();
+				return *s == *obj.to_string();
 			}) {
-			indices.push(index);
+			let col = &row[index];
+			dst.push(col.to_string());
 		} else {
-			return err_exec!("invalid column: {}", get_obj.to_string());
+			if obj.kind == ObjectKind::Ident {
+				return err_exec!("invalid column: {}", obj.to_string());
+			}
+			dst.push(obj.to_string());
 		}
 	}
 
-	for index in indices {
-		let col = &row[index];
-		context.selected_csv_columns.push(col.to_string());
-	}
+	context.selected_csv_columns = dst;
 
 	Ok(())
 }
@@ -2207,6 +2215,59 @@ mod tests {
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64 AUTO_INCREMENT,name: CHAR[4]\n1,hige\n2,hoge\n");
 		assert!(Path::new("test_env/test_db/id/test_table__id.txt").exists());
+	}
+
+	#[test]
+	fn test_get_stmt_and_expr_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,3.14,hoge
+2,3.14,moge
+");
+		do_exec(&mut context, "GET id + 1, weight OF test_table").unwrap();
+		assert!(context.selected_csv_columns.len() == 2);
+		assert!(context.selected_csv_columns[0] == "2");
+		assert!(context.selected_csv_columns[1] == "3.14");
+	}
+
+
+	#[test]
+	fn test_get_stmt_and_expr_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,3.14,hoge
+2,3.14,moge
+");
+		do_exec(&mut context, "GET weight, id + 1 * 2 OF test_table").unwrap();
+		assert!(context.selected_csv_columns.len() == 2);
+		assert!(context.selected_csv_columns[0] == "3.14");
+		assert!(context.selected_csv_columns[1] == "3");
 	}
 
 	#[test]

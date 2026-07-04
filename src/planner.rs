@@ -221,25 +221,21 @@ impl CsvFileAppendNode {
 
 pub struct ProjectNode {
 	pub method: TokenKind,
-	pub get_stmt_objs: Vec<Object>,
 	pub filter: Option<Box<FilterNode>>,
 	pub limit: Option<Box<parser::LimitNode>>,
 	pub all: bool,
+	pub expr_list: Option<Box<parser::ExprListNode>>,
 }
 
 impl ProjectNode {
 	pub fn new() -> Self {
 		Self {
 			method: TokenKind::Nil,
-			get_stmt_objs: vec![],
 			filter: None,
 			limit: None,
 			all: false,
+			expr_list: None,
 		}
-	}
-
-	pub fn has_filter(&self) -> bool {
-		self.filter.is_some()
 	}
 }
 
@@ -723,10 +719,7 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 	project.all = node.all;
 
 	if let Some(expr_list) = &node.expr_list {
-		for expr in expr_list.exprs.iter() {
-			let obj: Object = unwrap_expr_object(&expr)?;
-			project.get_stmt_objs.push(obj);
-		}
+		project.expr_list = Some(expr_list.clone());
 	}
 
 	if let Some(table) = &node.table {
@@ -747,80 +740,6 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 	plan.project = Some(Box::new(project));
 
 	Ok(())
-}
-
-fn unwrap_expr_object(node: &Box<parser::ExprNode>) -> Result<Object, Error> {
-	if let Some(ass_expr) = &node.ass_expr {
-		return Ok(unwrap_ass_expr_object(&ass_expr)?);
-	}
-	err_planning!("failed")
-}
-
-fn unwrap_ass_expr_object(node: &Box<parser::AssExprNode>) -> Result<Object, Error> {
-	if node.right_or_expr.is_some() {
-		return err_planning!("can't assign in ass expr: a = b");
-	}
-	if let Some(or_expr) = &node.left_or_expr {
-		return Ok(unwrap_or_expr_object(or_expr)?);
-	}
-	err_planning!("failed")
-}
-
-fn unwrap_or_expr_object(node: &Box<parser::OrExprNode>) -> Result<Object, Error> {
-	if node.nodes.len() == 0 {
-		return err_planning!("nodes len is 0 in unwrap or expr object");
-	} else if node.nodes.len() >= 2 {
-		return err_planning!("over nodes len in unwrap or expr object");
-	}
-	let n = &node.nodes[0];
-	return Ok(unwrap_and_expr_object(n)?);
-}
-
-fn unwrap_and_expr_object(node: &Box<parser::AndExprNode>) -> Result<Object, Error> {
-	if node.nodes.len() == 0 {
-		return err_planning!("nodes len is 0 in unwrap or expr object");
-	} else if node.nodes.len() >= 2 {
-		return err_planning!("over nodes len in unwrap or expr object");
-	}
-	let n = &node.nodes[0];
-	return Ok(unwrap_compare_expr_object(n)?);
-}
-
-fn unwrap_compare_expr_object(node: &Box<parser::CompareExprNode>) -> Result<Object, Error> {
-	if node.nodes.len() == 0 {
-		return err_planning!("nodes len is 0 in unwrap compare expr object");
-	} else if node.nodes.len() >= 2 {
-		return err_planning!("over nodes len in unwrap compare expr object");
-	}
-	let item: &parser::CompareExprItemNode = &node.nodes[0];
-	if let parser::CompareExprItemNode::Left(operand) = item {
-		return Ok(unwrap_add_sub_expr_object(operand)?);
-	}
-	err_planning!("failed")
-}
-
-fn unwrap_add_sub_expr_object(node: &Box<parser::AddSubExprNode>) -> Result<Object, Error> {
-	if node.nodes.len() == 0 {
-		return err_planning!("nodes len is 0 in unwrap add sub expr object");
-	} else if node.nodes.len() >= 2 {
-		return err_planning!("over nodes len in unwrap add sub expr object");
-	}
-	if let parser::AddSubExprItemNode::Left(mul_div_expr) = &node.nodes[0] {
-		return Ok(unwrap_mul_div_expr_object(mul_div_expr)?);
-	}
-	err_planning!("failed")
-}
-
-fn unwrap_mul_div_expr_object(node: &Box<parser::MulDivExprNode>) -> Result<Object, Error> {
-	if node.nodes.len() == 0 {
-		return err_planning!("nodes len is 0 in unwrap mul div expr object");
-	} else if node.nodes.len() >= 2 {
-		return err_planning!("over nodes len in unwrap mul div expr object");
-	}
-	if let parser::MulDivExprItemNode::Left(operand) = &node.nodes[0] {
-		return Ok(unwrap_operand_object(operand)?);
-	}
-	err_planning!("failed")
 }
 
 fn unwrap_operand_object(node: &Box<parser::OperandNode>) -> Result<Object, Error> {
