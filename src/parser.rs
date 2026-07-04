@@ -105,6 +105,7 @@ pub struct AlterTableNode {
 	pub alter_add_column: Option<Box<AlterAddColumnNode>>,
 	pub alter_drop_column: Option<Box<AlterDropColumnNode>>,
 	pub alter_rename_column: Option<Box<AlterRenameColumnNode>>,
+	pub alter_rename_table: Option<Box<AlterRenameTableNode>>,
 }
 
 impl AlterTableNode {
@@ -114,6 +115,7 @@ impl AlterTableNode {
 			alter_add_column: None,
 			alter_drop_column: None,
 			alter_rename_column: None,
+			alter_rename_table: None,
 		}
 	}
 }
@@ -127,6 +129,19 @@ impl AlterStmtNode {
 	pub fn new() -> Self {
 		Self {
 			alter_table: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterRenameTableNode {
+	pub to_ident: Option<Box<IdentNode>>,
+}
+
+impl AlterRenameTableNode {
+	pub fn new() -> Self {
+		Self {
+			to_ident: None,
 		}
 	}
 }
@@ -774,21 +789,54 @@ pub fn parse_alter_table(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterT
 		return Ok(Some(Box::new(n)));
 	}
 
+	n.alter_rename_table = parse_alter_rename_table(tok_strm)?;
+	if n.alter_rename_table.is_some() {
+		return Ok(Some(Box::new(n)));
+	}
+
 	err_parse!("invalid state: alter table stmt")
+}
+
+pub fn parse_alter_rename_table(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterRenameTableNode>>, Error> {
+	let mut n = AlterRenameTableNode::new();
+
+	let index = tok_strm.index;
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Rename {
+		tok_strm.index = index;
+		return Ok(None);
+	}	
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::To {
+		tok_strm.index = index;
+		return Ok(None);
+	}	
+
+	n.to_ident = parse_ident(tok_strm)?;
+	if n.to_ident.is_none() {
+		return err_parse!("missing ident 1 in alter rename table stmt");
+	}
+
+	Ok(Some(Box::new(n)))
 }
 
 pub fn parse_alter_rename_column(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterRenameColumnNode>>, Error> {
 	let mut n = AlterRenameColumnNode::new();
 
+	let index = tok_strm.index;
+
 	let tok = tok_strm.get()?;
 	if tok.kind != TokenKind::Rename {
-		tok_strm.prev();
+		tok_strm.index = index;
 		return Ok(None);
 	}	
 
 	let tok = tok_strm.get()?;
 	if tok.kind != TokenKind::Column {
-		return err_parse!("missing 'COLUMN' in alter rename column stmt");
+		tok_strm.index = index;
+		return Ok(None);
 	}	
 
 	n.from_ident = parse_ident(tok_strm)?;

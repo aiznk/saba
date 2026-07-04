@@ -76,6 +76,12 @@ Drop column from table.
 ALTER TABLE my_table DROP COLUMN name;
 ```
 
+Rename table name.
+
+```
+ALTER TABLE my_table REANME TO new_table;
+```
+
 ## GET (get CSV records)
 
 ```

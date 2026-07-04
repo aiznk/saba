@@ -27,6 +27,7 @@ pub struct PlanNode {
 	pub csv_file_append: Option<Box<CsvFileAppendNode>>,
 	pub csv_file_delete: Option<Box<CsvFileDeleteNode>>,
 	pub csv_file_rewrite: Option<Box<CsvFileRewriteNode>>,
+	pub csv_file_rename: Option<Box<CsvFileRenameNode>>,
 }
 
 impl PlanNode {
@@ -42,6 +43,7 @@ impl PlanNode {
 			csv_file_append: None,
 			csv_file_delete: None,
 			csv_file_rewrite: None,
+			csv_file_rename: None,
 		}
 	}
 }
@@ -64,6 +66,20 @@ impl CsvFileRewriteNode {
 			column_add: None,
 			column_drop: None,
 			column_rename: None,
+		}
+	}
+}
+
+pub struct CsvFileRenameNode {
+	pub table_name: Option<String>,
+	pub to_ident: Option<String>,
+}
+
+impl CsvFileRenameNode {
+	pub fn new() -> Self {
+		Self {
+			table_name: None,
+			to_ident: None,
 		}
 	}
 }
@@ -389,25 +405,24 @@ fn gen_column_types_string(column_types: &Vec<parser::ColumnTypeNode>) -> Result
 }
 
 pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode) -> Result<(), Error> {
-	let mut n = CsvFileRewriteNode::new();
-	let mut csv_file_scan = CsvFileScanNode::new();
-
-	if let Some(table_name) = &node.table_name {
-		let table_name = unwrap_ident_object(table_name)?.to_string();
-		n.table_name = Some(table_name.clone());
-		csv_file_scan.table_name = table_name.clone();
-		csv_file_scan.all = true; // always true
-	} else {
-		return err_planning!("missing table name in plan alter table");
-	}
-
 	if let Some(alter_add_column) = &node.alter_add_column {
+		let mut n = CsvFileRewriteNode::new();
 		let mut column_add = ColumnAddNode::new();
 		let mut project = ProjectNode::new();
 		let mut filter = FilterNode::new();
+		let mut csv_file_scan = CsvFileScanNode::new();
 
 		project.method = TokenKind::Alter;
 		project.all = true; // always true
+
+		if let Some(table_name) = &node.table_name {
+			let table_name = unwrap_ident_object(table_name)?.to_string();
+			n.table_name = Some(table_name.clone());
+			csv_file_scan.table_name = table_name.clone();
+			csv_file_scan.all = true; // always true
+		} else {
+			return err_planning!("missing table name in plan alter table");
+		}
 
 		if let Some(ident) = &alter_add_column.ident {
 			let ident = unwrap_ident_object(ident)?.to_string();
@@ -432,13 +447,25 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		project.filter = Some(Box::new(filter));
 		column_add.project = Some(Box::new(project));
 		n.column_add = Some(Box::new(column_add));
+		plan.csv_file_rewrite = Some(Box::new(n));
 
 	} else if let Some(alter_drop_column) = &node.alter_drop_column {
+		let mut n = CsvFileRewriteNode::new();
 		let mut column_drop = ColumnDropNode::new();
 		let mut project = ProjectNode::new();
 		let mut filter = FilterNode::new();
+		let mut csv_file_scan = CsvFileScanNode::new();
 
 		project.all = true; // always true
+
+		if let Some(table_name) = &node.table_name {
+			let table_name = unwrap_ident_object(table_name)?.to_string();
+			n.table_name = Some(table_name.clone());
+			csv_file_scan.table_name = table_name.clone();
+			csv_file_scan.all = true; // always true
+		} else {
+			return err_planning!("missing table name in plan alter table");
+		}
 
 		if let Some(ident) = &alter_drop_column.ident {
 			let ident = unwrap_ident_object(ident)?.to_string();
@@ -449,13 +476,25 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		project.filter = Some(Box::new(filter));
 		column_drop.project = Some(Box::new(project));
 		n.column_drop = Some(Box::new(column_drop));
+		plan.csv_file_rewrite = Some(Box::new(n));
 
 	} else if let Some(alter_rename_column) = &node.alter_rename_column {
+		let mut n = CsvFileRewriteNode::new();
 		let mut column_rename = ColumnRenameNode::new();
 		let mut project = ProjectNode::new();
 		let mut filter = FilterNode::new();
+		let mut csv_file_scan = CsvFileScanNode::new();
 
 		project.all = true; // always true
+
+		if let Some(table_name) = &node.table_name {
+			let table_name = unwrap_ident_object(table_name)?.to_string();
+			n.table_name = Some(table_name.clone());
+			csv_file_scan.table_name = table_name.clone();
+			csv_file_scan.all = true; // always true
+		} else {
+			return err_planning!("missing table name in plan alter table");
+		}
 
 		if let Some(ident) = &alter_rename_column.from_ident {
 			let ident = unwrap_ident_object(ident)?.to_string();
@@ -470,11 +509,26 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		project.filter = Some(Box::new(filter));
 		column_rename.project = Some(Box::new(project));
 		n.column_rename = Some(Box::new(column_rename));
+		plan.csv_file_rewrite = Some(Box::new(n));
+
+	} else if let Some(alter_rename_table) = &node.alter_rename_table {
+		let mut csv_file_rename = CsvFileRenameNode::new();
+
+		if let Some(table_name) = &node.table_name {
+			let table_name = unwrap_ident_object(table_name)?.to_string();
+			csv_file_rename.table_name = Some(table_name.clone());
+		} else {
+			return err_planning!("missing table name in plan alter table");
+		}
+
+		if let Some(ident) = &alter_rename_table.to_ident {
+			csv_file_rename.to_ident = Some(unwrap_ident_object(ident)?.to_string());
+		}
+
+		plan.csv_file_rename = Some(Box::new(csv_file_rename));
 	} else {
 		return err_planning!("invalid state: plan alter table");
 	}
-
-	plan.csv_file_rewrite = Some(Box::new(n));
 
 	Ok(())
 }

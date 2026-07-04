@@ -43,6 +43,8 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		exec_csv_file_delete(context, &csv_file_delete)?;
 	} else if let Some(csv_file_rewrite) = &node.csv_file_rewrite {
 		exec_csv_file_rewrite(context, &csv_file_rewrite)?;
+	} else if let Some(csv_file_rename) = &node.csv_file_rename {
+		exec_csv_file_rename(context, &csv_file_rename)?;
 	}
 
 	Ok(())
@@ -1947,6 +1949,24 @@ fn rename_headers_column(types: &Vec<HeaderType>, from_ident: &String, to_ident:
 	Ok(dst)
 }
 
+pub fn exec_csv_file_rename(context: &mut Context, node: &planner::CsvFileRenameNode) -> Result<(), Error> {
+	if let Some(table_name) = &node.table_name {
+		if let Some(to_ident) = &node.to_ident {
+			let old_path = context.gen_table_file_path(table_name)?;
+			let new_path = context.gen_table_file_path(to_ident)?;
+			if !old_path.exists() {
+				return err_exec!("'{}' does not exists", table_name);
+			}
+			if new_path.exists() {
+				return err_exec!("table '{}' is already exists", to_ident);
+			}
+			fs::rename(old_path, new_path);
+		}
+	}
+
+	Ok(())
+}
+
 pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewriteNode) -> Result<(), Error> {
 	if let Some(table_name) = &node.table_name {
 		let org_path = context.gen_table_file_path(&table_name)?;
@@ -2437,6 +2457,41 @@ mod tests {
 2,3.14,hoge
 3,3.14,hoge
 ");
+		do_exec(&mut context, "GET id,weight,name OF test_table WHERE id == 2").unwrap();
+		assert!(context.selected_csv_columns.len() == 3);
+		assert!(context.selected_csv_columns[0] == "2");
+		assert!(context.selected_csv_columns[1] == "3.14");
+		assert!(context.selected_csv_columns[2] == "hoge");
+	}
+
+	#[test]
+	fn test_get_stmt_0g() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,3.14,hige
+2,3.14,hoge
+3,3.14,hoge
+");
+		// 2 repeat call
+		do_exec(&mut context, "GET id,weight,name OF test_table WHERE id == 2").unwrap();
+		assert!(context.selected_csv_columns.len() == 3);
+		assert!(context.selected_csv_columns[0] == "2");
+		assert!(context.selected_csv_columns[1] == "3.14");
+		assert!(context.selected_csv_columns[2] == "hoge");
 		do_exec(&mut context, "GET id,weight,name OF test_table WHERE id == 2").unwrap();
 		assert!(context.selected_csv_columns.len() == 3);
 		assert!(context.selected_csv_columns[0] == "2");
@@ -3274,6 +3329,20 @@ mod tests {
 4,3.14,huge
 5,3.14,oge
 ");
+	}
+
+	#[test]
+	fn test_alter_rename_table_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		do_exec(&mut context, "ALTER TABLE test_table RENAME TO new_table").unwrap();
+		assert!(Path::new("test_env/test_db/tables/new_table.csv").exists());
+		assert!(!Path::new("test_env/test_db/tables/test_table.csv").exists());
 	}
 
 	#[test]

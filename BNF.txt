@@ -71,6 +71,10 @@
 	CsvFileRewrite
 	- RenameColumn
 	 - Project
+
+> ALTER TABLE mytab RENAME TO newtab;
+
+	CsvFileRename
 	 
 ## GET
 
