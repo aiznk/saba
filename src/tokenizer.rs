@@ -239,7 +239,9 @@ pub fn show_tokens(tokens: &Vec<Token>) {
 }
 
 pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
-	let chars: Vec<char> = string.chars().collect();
+	let mut s = string.clone();
+	s.push(' ');
+	let chars: Vec<char> = s.chars().collect();
 	let mut i: usize = 0;
 	let mut ret: Vec<Token> = vec![];
 
@@ -258,6 +260,8 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		let mut c12: char = '?';
 		let mut c13: char = '?';
 		let mut c14: char = '?';
+		let mut c15: char = '?';
+		let mut c16: char = '?';
 
 		c1 = chars[i].to_ascii_lowercase();
 		if i+1 < chars.len() {
@@ -299,116 +303,122 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		if i+13 < chars.len() {
 			c14 = chars[i+13].to_ascii_lowercase();
 		}
+		if i+14 < chars.len() {
+			c15 = chars[i+14].to_ascii_lowercase();
+		}
+		if i+15 < chars.len() {
+			c16 = chars[i+15].to_ascii_lowercase();
+		}
 
 		// println!("{} {} {}", c1, c2, c3);
 
-		if c1 == 'g' && c2 == 'e' && c3 == 't' {
+		if c1 == 'g' && c2 == 'e' && c3 == 't' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Get, None));
 			i += 2;
-		} else if c1 == 's' && c2 == 'e' && c3 == 't' {
+		} else if c1 == 's' && c2 == 'e' && c3 == 't' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Set, None));
 			i += 2;
-		} else if c1 == 'a' && c2 == 'd' && c3 == 'd' {
+		} else if c1 == 'a' && c2 == 'd' && c3 == 'd' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Add, None));
 			i += 2;
-		} else if c1 == 'd' && c2 == 'e' && c3 == 'l' {
+		} else if c1 == 'd' && c2 == 'e' && c3 == 'l' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Del, None));
 			i += 2;
-		} else if c1 == 'a' && c2 == 'l' && c3 == 'l' {
+		} else if c1 == ' ' && c2 == 'a' && c3 == 'l' && c4 == 'l' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::All, None));
-			i += 2;
-		} else if c1 == 'a' && c2 == 'n' && c3 == 'd' {
+			i += 3;
+		} else if c1 == ' ' && c2 == 'a' && c3 == 'n' && c4 == 'd' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::And, None));
-			i += 2;
-		} else if c1 == 'i' && c2 == '6' && c3 == '4' {
+			i += 3;
+		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'i' && c3 == '6' && c4 == '4' && (c5 == ' ' || c5 == ',' || c5 == ')' || c5 == ';') {
 			ret.push(Token::from(TokenKind::TypeI64, None));
-			i += 2;
-		} else if c1 == 'f' && c2 == '6' && c3 == '4' {
+			i += 3;
+		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'f' && c3 == '6' && c4 == '4' && (c5 == ' ' || c5 == ',' || c5 == ')' || c5 == ';') {
 			ret.push(Token::from(TokenKind::TypeF64, None));
-			i += 2;
+			i += 3;
 		} else if c1 == 'u' && c2 == 's' && c3 == 'e' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Use, None));
 			i += 3;
-		} else if c1 == 'n' && c2 == 'o' && c3 == 't' {
+		} else if c1 == ' ' && c2 == 'n' && c3 == 'o' && c4 == 't' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Not, None));
-			i += 2;
-		} else if c1 == 'd' && c2 == 'e' && c3 == 's' && c4 == 'c' {
+			i += 3;
+		} else if c1 == 'd' && c2 == 'e' && c3 == 's' && c4 == 'c' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Desc, None));
 			i += 3;
-		} else if c1 == 'd' && c2 == 'r' && c3 == 'o' && c4 == 'p' {
+		} else if c1 == 'd' && c2 == 'r' && c3 == 'o' && c4 == 'p' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Drop, None));
 			i += 3;
-		} else if c1 == 's' && c2 == 'h' && c3 == 'o' && c4 == 'w' {
+		} else if c1 == 's' && c2 == 'h' && c3 == 'o' && c4 == 'w' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Show, None));
 			i += 3;
-		} else if c1 == 'c' && c2 == 'h' && c3 == 'a' && c4 == 'r' {
+		} else if (c1 == ' ' || c1 == ':' || c1 == '(') && c2 == 'c' && c3 == 'h' && c4 == 'a' && c5 == 'r' && (c6 == ' ' || c6 == '[') {
 			ret.push(Token::from(TokenKind::Char, None));
-			i += 3;
-		} else if c1 == 'b' && c2 == 'o' && c3 == 'o' && c4 == 'l' {
+			i += 4;
+		} else if (c1 == ' ' || c1 == ':' || c1 == '(') && c2 == 'b' && c3 == 'o' && c4 == 'o' && c5 == 'l' && (c6 == ' ' || c6 == ';' || c6 == ')' || c6 == ',') {
 			ret.push(Token::from(TokenKind::Bool, None));
-			i += 3;
-		} else if c1 == 't' && c2 == 'r' && c3 == 'u' && c4 == 'e' {
+			i += 4;
+		} else if (c1 == ' ' || c1 == '=') && c2 == 't' && c3 == 'r' && c4 == 'u' && c5 == 'e' && (c6 == ' ' || c6 == ';' || c6 == ')' || c6 == ',') {
 			ret.push(Token::from(TokenKind::True, None));
-			i += 3;
-		} else if c1 == 'f' && c2 == 'a' && c3 == 'l' && c4 == 's' && c5 == 'e' {
+			i += 4;
+		} else if (c1 == ' ' || c1 == '=') && c2 == 'f' && c3 == 'a' && c4 == 'l' && c5 == 's' && c6 == 'e' && (c7 == ' ' || c7 == ';' || c7 == ',' || c7 == ')') {
 			ret.push(Token::from(TokenKind::False, None));
-			i += 4;
-		} else if c1 == 'o' && c2 == 'r' {
+			i += 5;
+		} else if c1 == ' ' && c2 == 'o' && c3 == 'r' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Or, None));
-			i += 1;
-		} else if c1 == 'o' && c2 == 'f' {
+			i += 2;
+		} else if c1 == ' ' && c2 == 'o' && c3 == 'f' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Of, None));
-			i += 1;
-		} else if c1 == 'w' && c2 == 'h' && c3 == 'e' && c4 == 'r' && c5 == 'e' {
+			i += 2;
+		} else if c1 == ' ' && c2 == 'w' && c3 == 'h' && c4 == 'e' && c5 == 'r' && c6 == 'e' && c7 == ' ' {
 			ret.push(Token::from(TokenKind::Where, None));
-			i += 4;
-		} else if c1 == 'a' && c2 == 'l' && c3 == 't' && c4 == 'e' && c5 == 'r' {
+			i += 5;
+		} else if c1 == 'a' && c2 == 'l' && c3 == 't' && c4 == 'e' && c5 == 'r' && c6 == ' ' {
 			ret.push(Token::from(TokenKind::Alter, None));
 			i += 4;
-		} else if c1 == 'l' && c2 == 'i' && c3 == 'm' && c4 == 'i' && c5 == 't' {
+		} else if c1 == ' ' && c2 == 'l' && c3 == 'i' && c4 == 'm' && c5 == 'i' && c6 == 't' && c7 == ' ' {
 			ret.push(Token::from(TokenKind::Limit, None));
-			i += 4;
-		} else if c1 == 't' && c2 == 'a' && c3 == 'b' && c4 == 'l' && c5 == 'e' && c6 == 's' {
+			i += 5;
+		} else if c1 == ' ' && c2 == 't' && c3 == 'a' && c4 == 'b' && c5 == 'l' && c6 == 'e' && c7 == 's' && c8 == ' ' {
 			ret.push(Token::from(TokenKind::Tables, None));
-			i += 5;
-		} else if c1 == 'e' && c2 == 'x' && c3 == 'i' && c4 == 's' && c5 == 't' && c6 == 's' {
+			i += 6;
+		} else if c1 == ' ' && c2 == 'e' && c3 == 'x' && c4 == 'i' && c5 == 's' && c6 == 't' && c7 == 's' && c8 == ' ' {
 			ret.push(Token::from(TokenKind::Exists, None));
-			i += 5;
-		} else if c1 == 't' && c2 == 'a' && c3 == 'b' && c4 == 'l' && c5 == 'e' {
+			i += 6;
+		} else if c1 == ' ' && c2 == 't' && c3 == 'a' && c4 == 'b' && c5 == 'l' && c6 == 'e' && c7 == ' ' {
 			ret.push(Token::from(TokenKind::Table, None));
-			i += 4;
-		} else if c1 == 'c' && c2 == 'o' && c3 == 'l' && c4 == 'u' && c5 == 'm' && c6 == 'n' {
-			ret.push(Token::from(TokenKind::Column, None));
 			i += 5;
-		} else if c1 == 'c' && c2 == 'r' && c3 == 'e' && c4 == 'a' && c5 == 't' && c6 == 'e' {
+		} else if c1 == ' ' && c2 == 'c' && c3 == 'o' && c4 == 'l' && c5 == 'u' && c6 == 'm' && c7 == 'n' && c8 == ' ' {
+			ret.push(Token::from(TokenKind::Column, None));
+			i += 6;
+		} else if c1 == 'c' && c2 == 'r' && c3 == 'e' && c4 == 'a' && c5 == 't' && c6 == 'e' && c7 == ' ' {
 			ret.push(Token::from(TokenKind::Create, None));
 			i += 5;
-		} else if c1 == 'r' && c2 == 'e' && c3 == 'n' && c4 == 'a' && c5 == 'm' && c6 == 'e' {
+		} else if c1 == ' ' && c2 == 'r' && c3 == 'e' && c4 == 'n' && c5 == 'a' && c6 == 'm' && c7 == 'e' && c8 == ' ' {
 			ret.push(Token::from(TokenKind::Rename, None));
-			i += 5;
-		} else if c1 == 'd' && c2 == 'a' && c3 == 't' && c4 == 'a' && c5 == 'b' && c6 == 'a' && c7 == 's' && c8 == 'e' && c9 == 's' {
-			ret.push(Token::from(TokenKind::Databases, None));
-			i += 8;
-		} else if c1 == 'd' && c2 == 'e' && c3 == 'f' && c4 == 'a' && c5 == 'u' && c6 == 'l' && c7 == 't' {
-			ret.push(Token::from(TokenKind::Default, None));
 			i += 6;
-		} else if c1 == 'd' && c2 == 'a' && c3 == 't' && c4 == 'a' && c5 == 'b' && c6 == 'a' && c7 == 's' && c8 == 'e' {
-			ret.push(Token::from(TokenKind::Database, None));
+		} else if c1 == ' ' && c2 == 'd' && c3 == 'a' && c4 == 't' && c5 == 'a' && c6 == 'b' && c7 == 'a' && c8 == 's' && c9 == 'e' && c10 == 's' && c11 == ' ' {
+			ret.push(Token::from(TokenKind::Databases, None));
+			i += 9;
+		} else if c1 == ' ' && c2 == 'd' && c3 == 'e' && c4 == 'f' && c5 == 'a' && c6 == 'u' && c7 == 'l' && c8 == 't' && c9 == ' ' {
+			ret.push(Token::from(TokenKind::Default, None));
 			i += 7;
-		} else if c1 == 'p' && c2 == 'r' && c3 == 'i' && c4 == 'm' && c5 == 'a' && c6 == 'r' && c7 == 'y' && c8 == '_' && c9 == 'k' && c10 == 'e' && c11 == 'y' {
+		} else if c1 == ' ' && c2 == 'd' && c3 == 'a' && c4 == 't' && c5 == 'a' && c6 == 'b' && c7 == 'a' && c8 == 's' && c9 == 'e' && c10 == ' ' {
+			ret.push(Token::from(TokenKind::Database, None));
+			i += 8;
+		} else if (c1 == ' ' || c1 == '(' || c1 == ',' || c1 == ':') && c2 == 'p' && c3 == 'r' && c4 == 'i' && c5 == 'm' && c6 == 'a' && c7 == 'r' && c8 == 'y' && c9 == '_' && c10 == 'k' && c11 == 'e' && c12 == 'y' && (c13 == ' ' || c13 == ',' || c13 == ')' || c13 == ';') {
 			// primary_key
 			ret.push(Token::from(TokenKind::PrimaryKey, None));
-			i += 10;
-		} else if c1 == 'a' && c2 == 'u' && c3 == 't' && c4 == 'o' && c5 == '_' && c6 == 'i' && c7 == 'n' && c8 == 'c' && c9 == 'r' && c10 == 'e' && c11 == 'm' && c12 == 'e' && c13 == 'n' && c14 == 't' {
+			i += 11;
+		} else if (c1 == ' ' || c1 == '(' || c1 == ',' || c1 == ':') && c2 == 'a' && c3 == 'u' && c4 == 't' && c5 == 'o' && c6 == '_' && c7 == 'i' && c8 == 'n' && c9 == 'c' && c10 == 'r' && c11 == 'e' && c12 == 'm' && c13 == 'e' && c14 == 'n' && c15 == 't' && (c16 == ' ' || c16 == ',' || c16 == ')' || c16 == ';') {
 			// auto_increment
 			ret.push(Token::from(TokenKind::AutoIncrement, None));
-			i += 13;
-		} else if c1 == 't' && c2 == 'o' {
+			i += 14;
+		} else if c1 == ' ' && c2 == 't' && c3 == 'o' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::To, None));
-			i += 1;
-		} else if c1 == 'i' && c2 == 'f' {
+			i += 2;
+		} else if c1 == ' ' && c2 == 'i' && c3 == 'f' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::If, None));
-			i += 1;
+			i += 2;
 		} else if c1 == '=' && c2 == '=' {
 			ret.push(Token::from(TokenKind::Eq, None));
 			i += 1;
