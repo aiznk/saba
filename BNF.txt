@@ -84,7 +84,7 @@
 
 	Project (select columns)
 	- Filter (WHERE id == 123)
-	- CsvScan (read mytab)
+	 - CsvScan (read mytab)
 
 > GET ALL id OF mytab WHERE id == 123;
 
@@ -92,13 +92,20 @@
 
 	Project (select columns)
 	- Filter (WHERE id == 123)
-	- CsvScan (read mytab)
+	 - CsvScan (read mytab)
 
 > GET ALL COUNT(*) OF mytab WHERE id == 123;
 
 	Aggregate (COUNT(*))
 	- Filter (WHERE id == 123)
-	- CsvScan (read mytab)
+	 - CsvScan (read mytab)
+
+> GET ALL id OF mytab ORDER BY age; 
+	
+	Sort
+	- Project
+	 - Filter
+	  - CsvScan
 
 ## ADD
 
