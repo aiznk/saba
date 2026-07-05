@@ -1960,7 +1960,10 @@ pub fn exec_csv_file_rename(context: &mut Context, node: &planner::CsvFileRename
 			if new_path.exists() {
 				return err_exec!("table '{}' is already exists", to_ident);
 			}
-			fs::rename(old_path, new_path);
+			match fs::rename(old_path, new_path) {
+				Ok(_) => {},
+				Err(e) => return err_exec!("failed to rename table. {}", e),
+			}
 		}
 	}
 
@@ -3343,6 +3346,36 @@ mod tests {
 		do_exec(&mut context, "ALTER TABLE test_table RENAME TO new_table").unwrap();
 		assert!(Path::new("test_env/test_db/tables/new_table.csv").exists());
 		assert!(!Path::new("test_env/test_db/tables/test_table.csv").exists());
+	}
+
+	#[test]
+	fn test_alter_rename_table_error_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		match do_exec(&mut context, "ALTER TABLE nothing RENAME TO new_table") {
+			Ok(_) => panic!("failed"),
+			Err(_) => {},
+		}
+	}
+
+	#[test]
+	fn test_alter_rename_table_error_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		match do_exec(&mut context, "ALTER TABLE test_table RENAME TO test_table") {
+			Ok(_) => panic!("failed"),
+			Err(_) => {},
+		}
 	}
 
 	#[test]
