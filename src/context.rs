@@ -88,6 +88,9 @@ impl Context {
 		}
 
 		let path = Path::new(&self.root_dir_path).join(&self.using_db_name).join("tables");
+		if path.as_os_str().to_string_lossy().contains("..") {
+			return err_runtime!("directory traversal error");
+		}
 
 		Ok(path)		
 	}
@@ -102,6 +105,9 @@ impl Context {
 			.join(&self.using_db_name)
 			.join("id")
 			.join(format!("{}__{}.txt", table_name, typ.ident));
+		if path.as_os_str().to_string_lossy().contains("..") {
+			return err_runtime!("directory traversal error");
+		}
 
 		Ok(path)		
 	}
@@ -114,6 +120,9 @@ impl Context {
 		}
 
 		let path = Path::new(&self.root_dir_path).join(&self.using_db_name);
+		if path.as_os_str().to_string_lossy().contains("..") {
+			return err_runtime!("directory traversal error");
+		}
 
 		Ok(path)		
 	}
@@ -128,6 +137,9 @@ impl Context {
 			.join(&self.using_db_name)
 			.join("tables")
 			.join(table_name.to_lowercase() + ".csv");
+		if path.as_os_str().to_string_lossy().contains("..") {
+			return err_runtime!("directory traversal error");
+		}
 
 		Ok(path)
 	}
@@ -142,6 +154,9 @@ impl Context {
 			.join(&self.using_db_name)
 			.join("tables")
 			.join(table_name.to_lowercase() + ".tmp.csv");
+		if path.as_os_str().to_string_lossy().contains("..") {
+			return err_runtime!("directory traversal error");
+		}
 
 		Ok(path)
 	}

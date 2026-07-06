@@ -324,6 +324,9 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
 }
 
 pub fn exec_use_db(context: &mut Context, node: &planner::UseDatabaseNode) -> Result<(), Error> {
+	if node.db_name.contains("..") {
+		return err_exec!("directory traversal error");
+	}
 	context.using_db_name = node.db_name.clone();
 	let path = context.gen_db_dir_path(&context.using_db_name)?;
 	if !path.exists() {
@@ -1670,6 +1673,9 @@ pub fn exec_dir_delete_all(context: &mut Context, node: &planner::DirDeleteAllNo
 	if db_name == context.using_db_name {
 		return err_exec!("{} database is using now. can't delete", db_name);
 	}
+	if db_name.contains("..") {
+		return err_exec!("directory traversal error");
+	}
 	let path = context.gen_db_dir_path(&db_name)?;
 	if path.as_os_str().is_empty() {
 		return err_exec!("invalid path in dir delete all");
@@ -2311,6 +2317,17 @@ mod tests {
 		match do_exec(&mut context, "USE hige") {
 			Ok(_) => panic!("failed"),
 			Err(_) => {}
+		}
+	}
+
+	#[test]
+	fn test_use_db_2() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS hige").unwrap();
+		do_exec(&mut context, "CREATE DATABASE hige").unwrap();
+		match do_exec(&mut context, "USE ..") {
+			Ok(_) => panic!("failed"),
+			Err(_) => {},
 		}
 	}
 
