@@ -72,6 +72,21 @@ impl DescStmtNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct AlterColumnTypeNode {
+	pub ident: Option<Box<IdentNode>>,
+	pub column_types: Vec<ColumnTypeNode>,
+}
+
+impl AlterColumnTypeNode {
+	pub fn new() -> Self {
+		Self {
+			ident: None,
+			column_types: vec![],
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 pub struct AlterAddColumnNode {
 	pub ident: Option<Box<IdentNode>>,
 	pub column_types: Vec<ColumnTypeNode>,
@@ -106,6 +121,7 @@ pub struct AlterTableNode {
 	pub alter_drop_column: Option<Box<AlterDropColumnNode>>,
 	pub alter_rename_column: Option<Box<AlterRenameColumnNode>>,
 	pub alter_rename_table: Option<Box<AlterRenameTableNode>>,
+	pub alter_column_type: Option<Box<AlterColumnTypeNode>>,
 }
 
 impl AlterTableNode {
@@ -116,6 +132,7 @@ impl AlterTableNode {
 			alter_drop_column: None,
 			alter_rename_column: None,
 			alter_rename_table: None,
+			alter_column_type: None,
 		}
 	}
 }
@@ -811,7 +828,56 @@ pub fn parse_alter_table(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterT
 		return Ok(Some(Box::new(n)));
 	}
 
+	n.alter_column_type = parse_alter_column_type(tok_strm)?;
+	if n.alter_column_type.is_some() {
+		return Ok(Some(Box::new(n)));
+	}
+
 	err_parse!("invalid state: alter table stmt")
+}
+
+pub fn parse_alter_column_type(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterColumnTypeNode>>, Error> {
+	let mut n = AlterColumnTypeNode::new();
+
+	let index = tok_strm.index;
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Alter {
+		tok_strm.index = index;
+		return Ok(None);
+	}	
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Column {
+		tok_strm.index = index;
+		return Ok(None);
+	}	
+
+	n.ident = parse_ident(tok_strm)?;
+	if n.ident.is_none() {
+		return err_parse!("missing table name in alter column type");
+	}
+	
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Type {
+		return err_parse!("missing 'TYPE' in alter column type");
+	}		
+
+	let t = parse_column_type(tok_strm)?;
+	if t.is_none() {
+		return err_parse!("missing column type in alter column type");
+	}
+	n.column_types.push(t.unwrap());
+
+	while !tok_strm.is_end() {
+		let t = parse_column_type(tok_strm)?;
+		if t.is_none() {
+			break;
+		}
+		n.column_types.push(t.unwrap());
+	}
+
+	Ok(Some(Box::new(n)))
 }
 
 pub fn parse_alter_rename_table(tok_strm: &mut TokenStream) -> Result<Option<Box<AlterRenameTableNode>>, Error> {

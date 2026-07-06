@@ -76,6 +76,12 @@
 
 	CsvFileRename
 	 
+> ALTER TABLE mytab ALTER COLUMN age TYPE I64;
+
+	CsvFileRewrite
+	- AlterColumnType
+	 - Project
+
 ## GET
 
 > GET name OF mytab WHERE id == 123;
@@ -147,9 +153,10 @@ query ::= { stmt ';' }*
 stmt ::= (desc_stmt | alter_stmt | drop_stmt | show_stmt | use_stmt | create_stmt | get_stmt | set_stmt | add_stmt | del_stmt)
 desc_stmt ::= 'DESC' ident
 alter_stmt ::= alter_table
-alter_table ::= 'ALTER' 'TABLE' ident (alter_add_column | alter_drop_column)
+alter_table ::= 'ALTER' 'TABLE' ident (alter_add_column | alter_drop_column | alter_column_type)
 alter_add_column ::= 'ADD' 'COLUMN' ident { column_type }+
 alter_drop_column ::= 'DROP' 'COLUMN' ident
+alter_column_type ::= 'ALTER' 'COLUMN' ident 'TYPE' { column_type }+
 drop_stmt ::= ( 'DROP' 'TABLE' ('IF' 'EXISTS')? ident ) |
               ( 'DROP' 'DATABASE' ('IF' 'EXISTS')? ident )
 show_stmt ::= ( 'SHOW' 'TABLES' ) | ( 'SHOW' 'DATABASES' )

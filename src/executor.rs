@@ -1380,6 +1380,19 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 	}
 }
 
+pub fn exec_value(context: &mut Context, node: &parser::ValueNode) -> Result<Object, Error> {
+	if let Some(i64_value) = &node.i64_value {
+		return exec_i64_value(context, i64_value);
+	} else if let Some(f64_value) = &node.f64_value {
+		return exec_f64_value(context, f64_value);
+	} else if let Some(bool_value) = &node.bool_value {
+		return exec_bool_value(context, bool_value);
+	} else if let Some(string) = &node.string {
+		return exec_string(context, string);
+	}
+	return err_exec!("invalid state: value");
+}
+
 pub fn exec_operand(context: &mut Context, node: &parser::OperandNode) -> Result<Object, Error> {
 	if let Some(i64_value) = &node.i64_value {
 		return Ok(exec_i64_value(context, i64_value)?);
@@ -1850,6 +1863,43 @@ fn drop_record_column(row: &StringRecord, index: usize) -> Result<StringRecord, 
 	Ok(dst)
 }
 
+fn alter_field_column_type(types: &Vec<HeaderType>, node: &planner::ColumnAlterTypeNode, row: &StringRecord) -> Result<StringRecord, Error> {
+	if let Some(ident) = &node.ident {
+		let index = types.iter().position(|t| t.ident == *ident);
+		if index.is_none() {
+			return err_exec!("not found '{}' in column types", *ident);
+		}
+		let index = index.unwrap();
+		let val = row[index].to_string();
+		let typ = &types[index];
+		let obj = typ.parse_str(val.as_str())?;
+		let mut dst = StringRecord::new();
+
+		for (i, val) in row.iter().enumerate() {
+			if i == index {
+				dst.push_field(obj.to_string().as_str());
+			} else {
+				dst.push_field(val);
+			}
+		}
+
+		return Ok(dst);
+	}
+	return err_exec!("invalid state: alter field column type");
+}
+
+pub fn exec_column_alter_type(context: &mut Context, types: &Vec<HeaderType>, node: &planner::ColumnAlterTypeNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+
+	if let Some(project) = &node.project {
+		while exec_project(context, &project)? {
+			let row = alter_field_column_type(types, node, &context.scan_record.clone())?;
+			writer.write_record(&row).unwrap();
+		}
+	}	
+
+	Ok(())
+}
+
 pub fn exec_column_rename(context: &mut Context, node: &planner::ColumnRenameNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 	if let Some(project) = &node.project {
 		while exec_project(context, &project)? {
@@ -2044,6 +2094,52 @@ pub fn exec_csv_file_rename(context: &mut Context, node: &planner::CsvFileRename
 	Ok(())
 }
 
+pub fn alter_headers_column_type(context: &mut Context, types: &Vec<HeaderType>, column_ident: &String, column_types: &Vec<parser::ColumnTypeNode>) -> Result<StringRecord, Error> {
+	let mut headers = StringRecord::new();
+
+	for otyp in types.iter() {
+		if otyp.ident == *column_ident {
+			let mut typ = HeaderType::new();
+
+			typ.ident = otyp.ident.clone();
+
+			for col_type in column_types.iter() {
+				match col_type {
+					parser::ColumnTypeNode::I64 => {
+						typ.is_i64 = true;
+					}
+					parser::ColumnTypeNode::F64 => {
+						typ.is_f64 = true;
+					}
+					parser::ColumnTypeNode::Bool => {
+						typ.is_bool = true;
+					}
+					parser::ColumnTypeNode::Char(size) => {
+						typ.is_char = true;
+						typ.char_size = *size;
+					}
+					parser::ColumnTypeNode::PrimaryKey => {
+						typ.is_primary_key = true;
+					}
+					parser::ColumnTypeNode::AutoIncrement => {
+						typ.is_auto_increment = true;
+					}
+					parser::ColumnTypeNode::Default(value) => {
+						typ.is_default = true;
+						typ.default_value = Some(exec_value(context, &value)?);
+					}
+				}
+			}
+
+			headers.push_field(typ.to_string().as_str());
+		} else {
+			headers.push_field(otyp.to_string().as_str());
+		}
+	}
+
+	Ok(headers)
+}
+
 pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewriteNode) -> Result<(), Error> {
 	if let Some(table_name) = &node.table_name {
 		let org_path = context.gen_table_file_path(&table_name)?;
@@ -2069,6 +2165,10 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 					headers = rename_headers_column(&types, from_ident, to_ident)?;
 				}
 			}
+		} else if let Some(column_alter_type) = &node.column_alter_type {
+			if let Some(column_ident) = &column_alter_type.ident {
+				headers = alter_headers_column_type(context, &types, column_ident, &column_alter_type.column_types)?;
+			}
 		}
 		
 		writer.write_record(&headers).unwrap();
@@ -2083,6 +2183,15 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 			exec_column_drop(context, column_drop, &mut writer, &types)?;
 		} else if let Some(column_rename) = &node.column_rename {
 			exec_column_rename(context, column_rename, &mut writer)?;
+		} else if let Some(column_alter_type) = &node.column_alter_type {
+			let types = parse_csv_headers_as_types(&headers)?;
+			match exec_column_alter_type(context, &types, column_alter_type, &mut writer) {
+				Ok(_) => {},
+				Err(e) => {
+					fs::remove_file(&tmp_path).unwrap();
+					return Err(e);
+				}
+			}
 		} else {
 			return err_exec!("invalid state: csv file rewrite");
 		}
@@ -3190,6 +3299,127 @@ mod tests {
 ");
 	}
 	
+	#[test]
+	fn test_alter_column_type_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE I64 AUTO_INCREMENT PRIMARY_KEY").unwrap();
+
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64 PRIMARY_KEY AUTO_INCREMENT,weight: F64,name: CHAR[128]
+1,3.14,hige
+2,3.14,hoge
+3,3.14,moge
+4,3.14,huge
+5,3.14,oge
+");
+	}
+
+	#[test]
+	fn test_alter_column_type_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+
+		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN name TYPE CHAR[10]").unwrap();
+
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[10]
+1,3.14,hige
+2,3.14,hoge
+");
+	}
+
+	#[test]
+	fn test_alter_column_type_2() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+
+		match do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN name TYPE CHAR[2]") {
+			Ok(_) => panic!("failed"),
+			Err(e) => {},
+		}
+	}
+
+	#[test]
+	fn test_alter_column_type_2a() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+
+		match do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN weight TYPE I64") {
+			Ok(_) => panic!("failed"),
+			Err(e) => {},
+		}
+	}
+
+	#[test]
+	fn test_alter_column_type_3() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+
+		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE F64").unwrap();
+
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: F64,weight: F64,name: CHAR[128]
+1,3.14,hige
+2,3.14,hoge
+");
+	}
+
 	#[test]
 	fn test_alter_add_column_0() {
 		let path = gen_test_table_path();

@@ -57,6 +57,7 @@ pub struct CsvFileRewriteNode {
 	pub column_add: Option<Box<ColumnAddNode>>,
 	pub column_drop: Option<Box<ColumnDropNode>>,
 	pub column_rename: Option<Box<ColumnRenameNode>>,
+	pub column_alter_type: Option<Box<ColumnAlterTypeNode>>,
 }
 
 impl CsvFileRewriteNode {
@@ -68,6 +69,7 @@ impl CsvFileRewriteNode {
 			column_add: None,
 			column_drop: None,
 			column_rename: None,
+			column_alter_type: None,
 		}
 	}
 }
@@ -98,6 +100,22 @@ impl CsvFileRenameNode {
 		Self {
 			table_name: None,
 			to_ident: None,
+		}
+	}
+}
+
+pub struct ColumnAlterTypeNode {
+	pub project: Option<Box<ProjectNode>>,
+	pub ident: Option<String>,
+	pub column_types: Vec<parser::ColumnTypeNode>,
+}
+
+impl ColumnAlterTypeNode {
+	pub fn new() -> Self {
+		Self {
+			project: None,
+			ident: None,
+			column_types: vec![],
 		}
 	}
 }
@@ -544,6 +562,37 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		}
 
 		plan.csv_file_rename = Some(Box::new(csv_file_rename));
+
+	} else if let Some(alter_column_type) = &node.alter_column_type {
+		let mut rewrite = CsvFileRewriteNode::new();
+		let mut column_alter_type = ColumnAlterTypeNode::new();
+		let mut project = ProjectNode::new();
+		let mut filter = FilterNode::new();
+		let mut csv_file_scan = CsvFileScanNode::new();
+
+		project.all = true; // always true
+
+		if let Some(table_name) = &node.table_name {
+			let table_name = unwrap_ident_object(table_name)?.to_string();
+			rewrite.table_name = Some(table_name.clone());
+			csv_file_scan.table_name = table_name.clone();
+			csv_file_scan.all = true; // always true
+		} else {
+			return err_planning!("missing table name in plan alter table");
+		}
+
+		if let Some(ident) = &alter_column_type.ident {
+			let ident = unwrap_ident_object(ident)?.to_string();
+			column_alter_type.ident = Some(ident);
+		}
+
+		column_alter_type.column_types = alter_column_type.column_types.clone();
+
+		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		project.filter = Some(Box::new(filter));
+		column_alter_type.project = Some(Box::new(project));
+		rewrite.column_alter_type = Some(Box::new(column_alter_type));
+		plan.csv_file_rewrite = Some(Box::new(rewrite));
 	} else {
 		return err_planning!("invalid state: plan alter table");
 	}

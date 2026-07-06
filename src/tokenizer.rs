@@ -34,6 +34,7 @@ pub enum TokenKind {
 	Column, // COLUMN
 	Char, // CHAR
 	If, // IF
+	Type, // TYPE
 	Exists, // EXISTS
 	Not, // NOT
 	Get, // GET
@@ -70,7 +71,6 @@ pub enum TokenKind {
 pub struct Token {
 	pub kind: TokenKind,
 	pub text: Option<String>,
-	pub u64_value: Option<u64>,
 	pub i64_value: Option<i64>,
 	pub f64_value: Option<f64>,
 }
@@ -81,7 +81,6 @@ impl Token {
 		Self {
 			kind: TokenKind::Nil,
 			text: None,
-			u64_value: None,
 			i64_value: None,
 			f64_value: None,
 		}
@@ -91,7 +90,6 @@ impl Token {
 		Self {
 			kind,
 			text,
-			u64_value: None,
 			i64_value: None,
 			f64_value: None,
 		}
@@ -101,7 +99,6 @@ impl Token {
 		Self {
 			kind: TokenKind::Int,
 			text: None,
-			u64_value: None,
 			i64_value: Some(n),
 			f64_value: None,
 		}
@@ -111,7 +108,6 @@ impl Token {
 		Self {
 			kind: TokenKind::Float,
 			text: None,
-			u64_value: None,
 			i64_value: None,
 			f64_value: Some(n),
 		}
@@ -350,6 +346,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'n' && c3 == 'o' && c4 == 't' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Not, None));
 			i += 3;
+		} else if c1 == ' ' && c2 == 't' && c3 == 'y' && c4 == 'p' && c5 == 'e' && c6 == ' ' {
+			ret.push(Token::from(TokenKind::Type, None));
+			i += 4;
 		} else if c1 == 'd' && c2 == 'e' && c3 == 's' && c4 == 'c' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Desc, None));
 			i += 3;
