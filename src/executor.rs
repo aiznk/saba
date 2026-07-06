@@ -116,11 +116,11 @@ fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Erro
 			*test_get_records = records.clone();
 		}
 
-		// if context.is_cli {
+		if context.is_cli {
 			for rec in records.iter() {
 				print_string_record(&rec)?;
 			}
-		// }
+		}
 	}
 
 	Ok(())
