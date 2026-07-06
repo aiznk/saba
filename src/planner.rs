@@ -78,6 +78,7 @@ pub struct SortNode {
 	pub expr: Option<Box<parser::ExprNode>>,
 	pub project: Option<Box<ProjectNode>>,
 	pub is_asc: bool,
+	pub all: bool,
 }
 
 impl SortNode {
@@ -86,6 +87,7 @@ impl SortNode {
 			expr: None,
 			project: None,
 			is_asc: true,
+			all: false,
 		}
 	}
 }
@@ -877,7 +879,6 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 	let mut sort = SortNode::new();
 
 	project.method = TokenKind::Get;
-	project.all = node.all;
 
 	if let Some(expr_list) = &node.expr_list {
 		project.expr_list = Some(expr_list.clone());
@@ -900,14 +901,17 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 		if let Some(expr) = &order_by.expr {
 			filter.csv_file_scan = Some(Box::new(csv_file_scan));
 			project.filter = Some(Box::new(filter));
+			project.all = true; // always true
 			sort.expr = Some(expr.clone());	
 			sort.project = Some(Box::new(project));
 			sort.is_asc = order_by.is_asc;
+			sort.all = node.all;
 			plan.sort = Some(Box::new(sort));
 		}
 	} else {
 		filter.csv_file_scan = Some(Box::new(csv_file_scan));
 		project.filter = Some(Box::new(filter));
+		project.all = node.all;
 		plan.project = Some(Box::new(project));		
 	}
 

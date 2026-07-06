@@ -52,17 +52,27 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 	Ok(())
 }
 
-fn exec_sort(context: &mut Context, node: &planner::SortNode) -> Result<(), Error> {
+fn string_record_to_vev_string(record: &StringRecord) -> Vec<String> {
+	let mut v: Vec<String> = vec![];
+
+	for col in record.iter() {
+		v.push(col.to_string());
+	}
+
+	v
+}
+
+fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Error> {
 	let mut obj = Object::new();
 
-	if let Some(expr) = &node.expr {
+	if let Some(expr) = &sort.expr {
 		obj = exec_expr(context, expr)?;
 		if obj.kind != ObjectKind::Ident {
 			return err_exec!("not ident: order by");
 		}
 	}
 
-	if let Some(project) = &node.project {
+	if let Some(project) = &sort.project {
 		let mut records: Vec<StringRecord> = vec![];
 		let is_cli = context.is_cli;
 		context.is_cli = false;
@@ -85,7 +95,7 @@ fn exec_sort(context: &mut Context, node: &planner::SortNode) -> Result<(), Erro
 		}
 		let index = index.unwrap();
 
-		if node.is_asc {
+		if sort.is_asc {
 			records.sort_by(|a, b| {
 				a[index].cmp(&b[index])
 			});
@@ -95,15 +105,22 @@ fn exec_sort(context: &mut Context, node: &planner::SortNode) -> Result<(), Erro
 			});
 		}
 
+		if !sort.all && records.len() > 0 {
+			let first = records.first().unwrap().clone();
+			records.clear();
+			records.push(first.clone());
+			context.selected_csv_columns = string_record_to_vev_string(&first);
+		}
+
 		if let Some(test_get_records) = context.test_get_records.as_mut() {
 			*test_get_records = records.clone();
 		}
 
-		if context.is_cli {
+		// if context.is_cli {
 			for rec in records.iter() {
 				print_string_record(&rec)?;
 			}
-		}
+		// }
 	}
 
 	Ok(())
@@ -1544,6 +1561,7 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 		}
 		if context.filtered {
 			if context.matched {
+				print_record("matched", &context.matched_record);
 				if let Some(limit_value) = limit_value {
 					if context.limit_counter >= limit_value &&
 					   project.method == TokenKind::Get {
@@ -2517,6 +2535,42 @@ mod tests {
 ");
 	}
 
+	#[test]
+	fn test_get_stmt_once_where_order_by() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 6, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, name = \"moge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,name: CHAR[128]
+1,hoge
+5,moge
+6,moge
+4,moge
+2,moge
+3,moge
+");
+		context.test_get_records = Some(vec![]);
+
+		do_exec(&mut context, "get * of test_table where id < 5 order by id desc").unwrap();
+		assert!(context.selected_csv_columns.len() == 2);
+		println!("[{}]", context.selected_csv_columns[0]);
+		println!("[{}]", context.selected_csv_columns[1]);
+		assert!(context.selected_csv_columns[0] == "4");
+		assert!(context.selected_csv_columns[1] == "moge");
+	}
 
 	#[test]
 	fn test_get_stmt_and_expr_0() {
