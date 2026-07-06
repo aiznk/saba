@@ -3317,6 +3317,20 @@ mod tests {
 	}
 	
 	#[test]
+	fn test_alter_column_type_0a() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		match do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE F64 AUTO_INCREMENT") {
+			Ok(_) => panic!("failed"),
+			Err(_) => {},
+		}
+	}
+
+	#[test]
 	fn test_alter_column_type_0() {
 		let path = gen_test_table_path();
 		let mut context = Context::new();

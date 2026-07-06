@@ -93,18 +93,27 @@ impl HeaderType {
 			};
 			return Ok(Object::from_i64(n));
 		} else if self.is_f64 {
+			if self.is_auto_increment {
+				return err_parse!("cannot auto increment f64");
+			}
 			let n = match s.parse::<f64>() {
 				Ok(v) => v,
 				Err(e) => return err_parse!("failed to parse as f64. {}", e),
 			};
 			return Ok(Object::from_f64(n));
 		} else if self.is_bool {
+			if self.is_auto_increment {
+				return err_parse!("cannot auto increment bool");
+			}
 			let n = match s.parse::<bool>() {
 				Ok(v) => v,
 				Err(e) => return err_parse!("failed to parse as bool. {}", e),
 			};
 			return Ok(Object::from_bool(n));
 		} else if self.is_char {
+			if self.is_auto_increment {
+				return err_parse!("cannot auto increment char[]");
+			}
 			if s.len() > self.char_size {
 				return err_parse!("{} size is over char size of {}", s.len(), self.char_size);
 			}
