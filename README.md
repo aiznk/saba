@@ -82,6 +82,12 @@ Rename table name.
 ALTER TABLE my_table REANME TO new_table;
 ```
 
+Change column type.
+
+```
+ALTER TABLE my_table ALTER COLUMN id TYPE I64 AUTO_INCREMENT;
+```
+
 ## GET (get CSV records)
 
 ```
