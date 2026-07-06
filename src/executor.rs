@@ -1521,13 +1521,8 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 			println!("filtered {}", context.filtered);
 			println!("matched {}", context.matched);
 		}
-		select_get_columns(context, project)?;
-		if context.is_cli {
-			print_selected_columns(context)?;
-		}
 		if context.filtered {
 			if context.matched {
-				context.counter_selected += 1;
 				if let Some(limit_value) = limit_value {
 					if context.limit_counter >= limit_value &&
 					   project.method == TokenKind::Get {
@@ -1538,9 +1533,13 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 				if let Some(test_get_records) = context.test_get_records.as_mut() {
 					test_get_records.push(context.matched_record.clone());
 				}
+				select_get_columns(context, project)?;
+				if context.is_cli {
+					print_selected_columns(context)?;
+				}
+				context.counter_selected += 1;
 			}
 		} else {
-			context.counter_selected += 1;
 			if let Some(limit_value) = limit_value {
 				if context.limit_counter >= limit_value &&
 				   project.method == TokenKind::Get {
@@ -1551,6 +1550,11 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 			if let Some(test_get_records) = context.test_get_records.as_mut() {
 				test_get_records.push(context.scan_record.clone());
 			}
+			select_get_columns(context, project)?;
+			if context.is_cli {
+				print_selected_columns(context)?;
+			}
+			context.counter_selected += 1;
 		}
 		if !project.all && context.counter_selected >= 1 {
 			if DEBUG {
