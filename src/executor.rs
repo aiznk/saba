@@ -1561,7 +1561,6 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 		}
 		if context.filtered {
 			if context.matched {
-				print_record("matched", &context.matched_record);
 				if let Some(limit_value) = limit_value {
 					if context.limit_counter >= limit_value &&
 					   project.method == TokenKind::Get {
@@ -2515,7 +2514,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 2, name = \"moge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, name = \"moge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,name: CHAR[128]
 1,hoge
 5,moge
@@ -2527,7 +2525,6 @@ mod tests {
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "get all * of test_table where id < 5 order by id limit 4").unwrap();
 		let s = test_get_records_to_string(&mut context);
-		println!("s[{}]", s);
 		assert!(s == "1,hoge
 2,moge
 3,moge
@@ -2566,8 +2563,6 @@ mod tests {
 
 		do_exec(&mut context, "get * of test_table where id < 5 order by id desc").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
-		println!("[{}]", context.selected_csv_columns[0]);
-		println!("[{}]", context.selected_csv_columns[1]);
 		assert!(context.selected_csv_columns[0] == "4");
 		assert!(context.selected_csv_columns[1] == "moge");
 	}
@@ -2587,7 +2582,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,3.14,hoge
 2,3.14,moge
@@ -2614,7 +2608,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,3.14,hoge
 2,3.14,moge
@@ -2752,7 +2745,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
@@ -2781,7 +2773,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
@@ -3440,7 +3431,6 @@ mod tests {
 		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE I64 AUTO_INCREMENT PRIMARY_KEY").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64 PRIMARY_KEY AUTO_INCREMENT,weight: F64,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
@@ -3470,7 +3460,6 @@ mod tests {
 		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN name TYPE CHAR[10]").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[10]
 1,3.14,hige
 2,3.14,hoge
@@ -3543,7 +3532,6 @@ mod tests {
 		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE F64").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: F64,weight: F64,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
@@ -3830,7 +3818,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 4 - (2 - 1), weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 4 - 2 - 1, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 2,3.14,hige
 1,3.14,hoge
@@ -3862,7 +3849,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 4 % 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2 * 3 % 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 4,3.14,hige
 2,3.14,hoge
@@ -3895,7 +3881,6 @@ mod tests {
 		do_exec(&mut context, "ADD id = 1 + 2 - 1 * 3 / 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3 - 2 + 1, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 7,3.14,hige
 8,3.14,hoge
@@ -3948,7 +3933,6 @@ mod tests {
 		do_exec(&mut context, "GET ALL id,weight,name OF test_table ORDER BY id").unwrap();
 
 		let s = test_get_records_to_string(&mut context);
-		println!("s[{}]", s);
 		assert!(s == "1,3.14,hoge
 2,3.14,moge
 3,3.14,oge
@@ -3979,7 +3963,6 @@ mod tests {
 		do_exec(&mut context, "GET ALL id,weight,name OF test_table WHERE name == \"hoge\" ORDER BY id").unwrap();
 
 		let s = test_get_records_to_string(&mut context);
-		println!("s[{}]", s);
 		assert!(s == "1,3.14,hoge
 4,3.14,hoge
 ");
@@ -4007,7 +3990,6 @@ mod tests {
 		do_exec(&mut context, "GET ALL id,weight,name OF test_table ORDER BY id ASC").unwrap();
 
 		let s = test_get_records_to_string(&mut context);
-		println!("s[{}]", s);
 		assert!(s == "1,3.14,hoge
 2,3.14,moge
 3,3.14,oge
@@ -4038,7 +4020,6 @@ mod tests {
 		do_exec(&mut context, "GET ALL id,weight,name OF test_table ORDER BY id DESC").unwrap();
 
 		let s = test_get_records_to_string(&mut context);
-		println!("s[{}]", s);
 		assert!(s == "5,3.14,hige
 4,3.14,hoge
 3,3.14,oge
@@ -4069,7 +4050,6 @@ mod tests {
 		do_exec(&mut context, "GET ALL id,weight,name OF test_table ORDER BY name").unwrap();
 
 		let s = test_get_records_to_string(&mut context);
-		println!("s[{}]", s);
 		assert!(s == "1,3.14,aaa
 2,3.14,bbb
 3,3.14,ccc
