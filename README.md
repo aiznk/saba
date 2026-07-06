@@ -88,6 +88,7 @@ ALTER TABLE my_table REANME TO new_table;
 GET id, weight, name OF my_table;
 GET id, weight, name OF my_table WHERE id == 2;
 GET ALL id, weight, name OF my_table WHERE id < 5;
+GET ALL * OF my_table WHERE id < 5 ORDER BY id;
 ```
 
 ## ADD (add CSV record)
