@@ -64,6 +64,9 @@ fn exec_sort(context: &mut Context, node: &planner::SortNode) -> Result<(), Erro
 
 	if let Some(project) = &node.project {
 		let mut records: Vec<StringRecord> = vec![];
+		let is_cli = context.is_cli;
+		context.is_cli = false;
+
 		while exec_project(context, project)? {
 			if context.filtered {
 				if context.matched {
@@ -73,6 +76,8 @@ fn exec_sort(context: &mut Context, node: &planner::SortNode) -> Result<(), Erro
 				records.push(context.scan_record.clone());
 			}
 		}
+
+		context.is_cli = is_cli;
 
 		let index = context.csv_header_idents.iter().position(|s| *s == obj.ident);
 		if index.is_none() {
@@ -2472,6 +2477,46 @@ mod tests {
 		assert!(s == "id: I64 AUTO_INCREMENT,name: CHAR[4]\n1,hige\n2,hoge\n");
 		assert!(Path::new("test_env/test_db/id/test_table__id.txt").exists());
 	}
+
+	#[test]
+	fn test_get_stmt_where_order_by_limit_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 6, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, name = \"moge\" OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,name: CHAR[128]
+1,hoge
+5,moge
+6,moge
+4,moge
+2,moge
+3,moge
+");
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "get all * of test_table where id < 5 order by id limit 4").unwrap();
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,hoge
+2,moge
+3,moge
+4,moge
+");
+	}
+
 
 	#[test]
 	fn test_get_stmt_and_expr_0() {
