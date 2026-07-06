@@ -26,6 +26,8 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		exec_use_db(context, &use_db)?;
 	} else if let Some(desc_table) = &node.desc_table {
 		exec_desc_table(context, &desc_table)?;
+	} else if let Some(sort) = &node.sort {
+		exec_sort(context, &sort)?;
 	} else if let Some(project) = &node.project {
 		while exec_project(context, &project)? {
 		}
@@ -45,6 +47,58 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		exec_csv_file_rewrite(context, &csv_file_rewrite)?;
 	} else if let Some(csv_file_rename) = &node.csv_file_rename {
 		exec_csv_file_rename(context, &csv_file_rename)?;
+	}
+
+	Ok(())
+}
+
+fn exec_sort(context: &mut Context, node: &planner::SortNode) -> Result<(), Error> {
+	let mut obj = Object::new();
+
+	if let Some(expr) = &node.expr {
+		obj = exec_expr(context, expr)?;
+		if obj.kind != ObjectKind::Ident {
+			return err_exec!("not ident: order by");
+		}
+	}
+
+	if let Some(project) = &node.project {
+		let mut records: Vec<StringRecord> = vec![];
+		while exec_project(context, project)? {
+			if context.filtered {
+				if context.matched {
+					records.push(context.matched_record.clone());
+				}
+			} else {
+				records.push(context.scan_record.clone());
+			}
+		}
+
+		let index = context.csv_header_idents.iter().position(|s| *s == obj.ident);
+		if index.is_none() {
+			return err_exec!("not found '{}' ident in sort", obj.ident);
+		}
+		let index = index.unwrap();
+
+		if node.is_asc {
+			records.sort_by(|a, b| {
+				a[index].cmp(&b[index])
+			});
+		} else {
+			records.sort_by(|a, b| {
+				b[index].cmp(&a[index])
+			});
+		}
+
+		if let Some(test_get_records) = context.test_get_records.as_mut() {
+			*test_get_records = records.clone();
+		}
+
+		if context.is_cli {
+			for rec in records.iter() {
+				print_string_record(&rec)?;
+			}
+		}
 	}
 
 	Ok(())
@@ -275,6 +329,22 @@ pub fn exec_use_db(context: &mut Context, node: &planner::UseDatabaseNode) -> Re
 	if !path.exists() {
 		return err_exec!("{} does not exists database", context.using_db_name);
 	}
+	Ok(())
+}
+
+fn print_string_record(record: &StringRecord) -> Result<(), Error> {
+	if record.len() == 0 {
+		return Ok(());
+	}
+
+	let mut s = String::new();
+
+	for col in record.iter() {
+		s.push_str(col);
+		s.push_str(",");
+	}
+	s.pop();
+	println!("{}", s);	
 	Ok(())
 }
 
@@ -1396,7 +1466,7 @@ pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) ->
 	context.selected_csv_columns.clear();
 
 	if context.filtered {
-		row = context.matched_csv_record.clone();
+		row = context.matched_record.clone();
 	} else {
 		row = context.scan_record.clone();
 	}
@@ -1466,7 +1536,7 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 				}
 				context.limit_counter += 1;
 				if let Some(test_get_records) = context.test_get_records.as_mut() {
-					test_get_records.push(context.matched_csv_record.clone());
+					test_get_records.push(context.matched_record.clone());
 				}
 			}
 		} else {
@@ -1505,12 +1575,12 @@ pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<
 
 			let o = exec_where_clause(context, where_clause)?;
 			if o.bool_value {
-				context.matched_csv_record = context.scan_record.clone();
-				context.unmatched_csv_record.clear();
+				context.matched_record = context.scan_record.clone();
+				context.unmatched_record.clear();
 				context.matched = true;
 			} else {
-				context.matched_csv_record.clear();
-				context.unmatched_csv_record = context.scan_record.clone();
+				context.matched_record.clear();
+				context.unmatched_record = context.scan_record.clone();
 				context.matched = false;
 			}
 			return Ok(result);
@@ -1679,7 +1749,7 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNod
 								}
 							}
 						} else {
-							writer.write_record(&context.unmatched_csv_record).unwrap();
+							writer.write_record(&context.unmatched_record).unwrap();
 						}
 					} else {
 						// delete
@@ -1716,7 +1786,7 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNod
 									}
 								}
 							} else {
-								writer.write_record(&context.unmatched_csv_record).unwrap();
+								writer.write_record(&context.unmatched_record).unwrap();
 							}
 						} else {
 							writer.write_record(&context.scan_record).unwrap();
@@ -1846,7 +1916,7 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 					if !limited {
 						if context.filtered {
 							if context.matched {
-								let cols = context.matched_csv_record.clone();
+								let cols = context.matched_record.clone();
 								let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
 								writer.write_record(&cols).unwrap();
 								if let Some(limit_value) = limit_value {
@@ -1855,7 +1925,7 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 									}
 								}
 							} else {
-								let cols = context.unmatched_csv_record.clone();
+								let cols = context.unmatched_record.clone();
 								writer.write_record(&cols).unwrap();
 							}
 						} else {
@@ -1880,7 +1950,7 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 					if !limited {
 						if context.filtered {
 							if context.matched && !writted {
-								let cols = context.matched_csv_record.clone();
+								let cols = context.matched_record.clone();
 								let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
 								writer.write_record(&cols).unwrap();
 								writted = true;
@@ -2365,7 +2435,6 @@ mod tests {
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET ALL id, name OF test_table").unwrap();
-		print_selected_columns(&mut context).unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
 		assert!(context.selected_csv_columns[1] == "hoge");
@@ -3472,5 +3541,176 @@ mod tests {
 2,3.14,oge
 2,3.14,oge
 ");
+	}
+
+	#[test]
+	fn test_show_tables() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "SHOW TABLES").unwrap();
+	}
+
+	#[test]
+	fn test_show_databases() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "SHOW DATABASES").unwrap();
+	}
+
+	#[test]
+	fn test_order_by_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,weight,name OF test_table ORDER BY id").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,3.14,hoge
+2,3.14,moge
+3,3.14,oge
+4,3.14,hoge
+5,3.14,hige
+");
+	}
+
+	#[test]
+	fn test_order_by_0c() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,weight,name OF test_table WHERE name == \"hoge\" ORDER BY id").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,3.14,hoge
+4,3.14,hoge
+");
+	}
+
+	#[test]
+	fn test_order_by_0b() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,weight,name OF test_table ORDER BY id ASC").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,3.14,hoge
+2,3.14,moge
+3,3.14,oge
+4,3.14,hoge
+5,3.14,hige
+");
+	}
+
+	#[test]
+	fn test_order_by_0a() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,weight,name OF test_table ORDER BY id DESC").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "5,3.14,hige
+4,3.14,hoge
+3,3.14,oge
+2,3.14,moge
+1,3.14,hoge
+");
+	}
+
+	#[test]
+	fn test_order_by_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"xxx\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"ccc\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,weight,name OF test_table ORDER BY name").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,3.14,aaa
+2,3.14,bbb
+3,3.14,ccc
+4,3.14,xxx
+5,3.14,zzz
+"); 
 	}
 }

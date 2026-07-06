@@ -301,6 +301,7 @@ pub struct GetStmtNode {
 	pub table: Option<Box<IdentNode>>,
 	pub where_clause: Option<Box<WhereClauseNode>>,
 	pub limit: Option<Box<LimitNode>>,
+	pub order_by: Option<Box<OrderByNode>>,
 }
 
 impl GetStmtNode {
@@ -311,6 +312,22 @@ impl GetStmtNode {
 			table: None,
 			where_clause: None,
 			limit: None,
+			order_by: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct OrderByNode {
+	pub expr: Option<Box<ExprNode>>,
+	pub is_asc: bool,
+}
+
+impl OrderByNode {
+	pub fn new() -> Self {
+		Self {
+			expr: None,
+			is_asc: true,
 		}
 	}
 }
@@ -1247,7 +1264,48 @@ pub fn parse_get_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<GetStmtNo
 	}
 
 	n.where_clause = parse_where_clause(tok_strm)?;
+	n.order_by = parse_order_by(tok_strm)?;
 	n.limit = parse_limit(tok_strm)?;
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_order_by(tok_strm: &mut TokenStream) -> Result<Option<Box<OrderByNode>>, Error> {
+	let mut n = OrderByNode::new();
+
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Order {
+		tok_strm.prev();
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::By {
+		return err_parse!("missing 'BY' in order by clause");
+	}
+
+	n.expr = parse_expr(tok_strm)?;
+	if n.expr.is_none() {
+		return err_parse!("missing expr in order by");
+	}
+
+	if tok_strm.is_end() {
+		return Ok(Some(Box::new(n)));
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind == TokenKind::Asc {
+		n.is_asc = true;
+	} else if tok.kind == TokenKind::Desc {
+		n.is_asc = false;
+	} else {
+		n.is_asc = true;
+		tok_strm.prev();
+	}
 
 	Ok(Some(Box::new(n)))
 }
@@ -1953,5 +2011,22 @@ CREATE TABLE mytab (
 	#[test]
 	fn test_first_column_type() {
 		assert!(do_parse("CREATE TABLE mytab (id: PRIMARY_KEY)") == false);
+	}
+
+	#[test]
+	fn test_show_tables() {
+		assert!(do_parse("SHOW TABLES") == true);
+		assert!(do_parse("SHOW TABLES;") == true);
+	}
+
+	#[test]
+	fn test_show_databases() {
+		assert!(do_parse("SHOW DATABASES") == true);
+		assert!(do_parse("SHOW DATABASES;") == true);
+	}
+
+	#[test]
+	fn test_order_by_0() {
+		assert!(do_parse("GET ALL id,weight,name OF test_table ORDER BY id") == true);
 	}
 }

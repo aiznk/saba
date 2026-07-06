@@ -8,13 +8,16 @@ pub enum TokenKind {
 	Create, // CREATE
 	Rename, // RENAME
 	To, // TO
+	Order, // ORDER
+	By, // BY
+	Desc, // DESC
+	Asc, // ASC
 	PrimaryKey, // PRIMARY_KEY
 	AutoIncrement, // AUTO_INCREMENT
 	Database, // DATABASE
 	Databases, // DATABASES
 	Default, // DEFAULT
 	Alter, // ALTER
-	Desc, // DESC
 	Use, // USE
 	Show, // SHOW
 	Limit, // LIMIT
@@ -240,6 +243,8 @@ pub fn show_tokens(tokens: &Vec<Token>) {
 
 pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 	let mut s = string.clone();
+	s = s.replace("\n", " ");
+	s = s.replace("\t", " ");
 	s.push(' ');
 	let chars: Vec<char> = s.chars().collect();
 	let mut i: usize = 0;
@@ -330,6 +335,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'a' && c3 == 'n' && c4 == 'd' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::And, None));
 			i += 3;
+		} else if c1 == ' ' && c2 == 'a' && c3 == 's' && c4 == 'c' && c5 == ' ' {
+			ret.push(Token::from(TokenKind::Asc, None));
+			i += 3;
 		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'i' && c3 == '6' && c4 == '4' && (c5 == ' ' || c5 == ',' || c5 == ')' || c5 == ';') {
 			ret.push(Token::from(TokenKind::TypeI64, None));
 			i += 3;
@@ -369,6 +377,12 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'o' && c3 == 'f' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Of, None));
 			i += 2;
+		} else if c1 == ' ' && c2 == 'b' && c3 == 'y' && c4 == ' ' {
+			ret.push(Token::from(TokenKind::By, None));
+			i += 2;
+		} else if c1 == ' ' && c2 == 'o' && c3 == 'r' && c4 == 'd' && c5 == 'e' && c6 == 'r' && c7 == ' ' {
+			ret.push(Token::from(TokenKind::Order, None));
+			i += 5;
 		} else if c1 == ' ' && c2 == 'w' && c3 == 'h' && c4 == 'e' && c5 == 'r' && c6 == 'e' && c7 == ' ' {
 			ret.push(Token::from(TokenKind::Where, None));
 			i += 5;
@@ -378,7 +392,7 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'l' && c3 == 'i' && c4 == 'm' && c5 == 'i' && c6 == 't' && c7 == ' ' {
 			ret.push(Token::from(TokenKind::Limit, None));
 			i += 5;
-		} else if c1 == ' ' && c2 == 't' && c3 == 'a' && c4 == 'b' && c5 == 'l' && c6 == 'e' && c7 == 's' && c8 == ' ' {
+		} else if c1 == ' ' && c2 == 't' && c3 == 'a' && c4 == 'b' && c5 == 'l' && c6 == 'e' && c7 == 's' && (c8 == ' ' || c8 == ';') {
 			ret.push(Token::from(TokenKind::Tables, None));
 			i += 6;
 		} else if c1 == ' ' && c2 == 'e' && c3 == 'x' && c4 == 'i' && c5 == 's' && c6 == 't' && c7 == 's' && c8 == ' ' {
@@ -396,7 +410,7 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'r' && c3 == 'e' && c4 == 'n' && c5 == 'a' && c6 == 'm' && c7 == 'e' && c8 == ' ' {
 			ret.push(Token::from(TokenKind::Rename, None));
 			i += 6;
-		} else if c1 == ' ' && c2 == 'd' && c3 == 'a' && c4 == 't' && c5 == 'a' && c6 == 'b' && c7 == 'a' && c8 == 's' && c9 == 'e' && c10 == 's' && c11 == ' ' {
+		} else if c1 == ' ' && c2 == 'd' && c3 == 'a' && c4 == 't' && c5 == 'a' && c6 == 'b' && c7 == 'a' && c8 == 's' && c9 == 'e' && c10 == 's' && (c11 == ' ' || c11 == ';') {
 			ret.push(Token::from(TokenKind::Databases, None));
 			i += 9;
 		} else if c1 == ' ' && c2 == 'd' && c3 == 'e' && c4 == 'f' && c5 == 'a' && c6 == 'u' && c7 == 'l' && c8 == 't' && c9 == ' ' {

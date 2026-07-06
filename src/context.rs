@@ -21,8 +21,8 @@ pub struct Context {
 	pub is_cli: bool,
 
 	// if filter matched/unmatched store record
-	pub matched_csv_record: StringRecord,
-	pub unmatched_csv_record: StringRecord,
+	pub matched_record: StringRecord,
+	pub unmatched_record: StringRecord,
 
 	pub test_get_records: Option<Vec<StringRecord>>,
 	pub limit_counter: i64,
@@ -43,8 +43,8 @@ impl Context {
 			vars: HashMap::new(),
 			counter_selected: 0,
 			is_cli: false,
-			matched_csv_record: StringRecord::new(),
-			unmatched_csv_record: StringRecord::new(),
+			matched_record: StringRecord::new(),
+			unmatched_record: StringRecord::new(),
 			test_get_records: None,
 			limit_counter: 0,
 			filtered: false,
@@ -60,8 +60,8 @@ impl Context {
 		self.selected_csv_columns.clear();
 		self.vars.clear();
 		self.counter_selected = 0;
-		self.matched_csv_record.clear();
-		self.unmatched_csv_record.clear();
+		self.matched_record.clear();
+		self.unmatched_record.clear();
 		if let Some(test_get_records) = self.test_get_records.as_mut() {
 			test_get_records.clear();
 		}

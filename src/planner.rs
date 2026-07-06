@@ -19,6 +19,7 @@ impl PlansNode {
 pub struct PlanNode {
 	pub desc_table: Option<Box<DescTableNode>>,
 	pub use_db: Option<Box<UseDatabaseNode>>,
+	pub sort: Option<Box<SortNode>>,
 	pub project: Option<Box<ProjectNode>>,
 	pub database_create: Option<Box<DatabaseCreateNode>>,
 	pub dir_list: Option<Box<DirListNode>>,
@@ -35,6 +36,7 @@ impl PlanNode {
 		Self {
 			desc_table: None,
 			use_db: None,
+			sort: None,
 			project: None,
 			database_create: None,
 			dir_list: None,
@@ -66,6 +68,22 @@ impl CsvFileRewriteNode {
 			column_add: None,
 			column_drop: None,
 			column_rename: None,
+		}
+	}
+}
+
+pub struct SortNode {
+	pub expr: Option<Box<parser::ExprNode>>,
+	pub project: Option<Box<ProjectNode>>,
+	pub is_asc: bool,
+}
+
+impl SortNode {
+	pub fn new() -> Self {
+		Self {
+			expr: None,
+			project: None,
+			is_asc: true,
 		}
 	}
 }
@@ -807,6 +825,7 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 	let mut project = ProjectNode::new();
 	let mut filter = FilterNode::new();
 	let mut csv_file_scan = CsvFileScanNode::new();
+	let mut sort = SortNode::new();
 
 	project.method = TokenKind::Get;
 	project.all = node.all;
@@ -828,20 +847,22 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 		project.limit = Some(limit.clone());
 	}
 
-	filter.csv_file_scan = Some(Box::new(csv_file_scan));
-	project.filter = Some(Box::new(filter));
-	plan.project = Some(Box::new(project));
+	if let Some(order_by) = &node.order_by {
+		if let Some(expr) = &order_by.expr {
+			filter.csv_file_scan = Some(Box::new(csv_file_scan));
+			project.filter = Some(Box::new(filter));
+			sort.expr = Some(expr.clone());	
+			sort.project = Some(Box::new(project));
+			sort.is_asc = order_by.is_asc;
+			plan.sort = Some(Box::new(sort));
+		}
+	} else {
+		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		project.filter = Some(Box::new(filter));
+		plan.project = Some(Box::new(project));		
+	}
 
 	Ok(())
-}
-
-fn unwrap_operand_object(node: &Box<parser::OperandNode>) -> Result<Object, Error> {
-	if let Some(ident) = &node.ident {
-		return Ok(unwrap_ident_object(&ident)?);
-	} else if node.star {
-		return Ok(Object::from_star());
-	}
-	err_planning!("failed")
 }
 
 fn unwrap_ident_object(node: &Box<parser::IdentNode>) -> Result<Object, Error> {
