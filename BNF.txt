@@ -173,7 +173,7 @@ column_type ::= 'PRIMARY_KEY' |
              'DEFAULT' value
 get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' table:ident where? limit? order_by?
 set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' table:ident where? limit?
-add_stmt ::= 'ADD' (expr_list) 'OF' table:ident
+add_stmt ::= 'ADD' expr_list? 'OF' table:ident
 del_stmt ::= 'DEL' 'ALL'? 'OF' table:ident where? limit?
 where ::= 'WHERE' expr
 limit ::= 'LIMIT' expr

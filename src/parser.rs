@@ -1434,7 +1434,7 @@ pub fn parse_add_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<AddStmtNo
 
 	n.expr_list = parse_expr_list(tok_strm)?;
 	if n.expr_list.is_none() {
-		return err_parse!("failed to parse expr list in add stmt");
+		// pass
 	}
 
 	let tok = tok_strm.get()?;
@@ -1534,7 +1534,6 @@ pub fn parse_expr_list(tok_strm: &mut TokenStream) -> Result<Option<Box<ExprList
 
 	let expr = parse_expr(tok_strm)?;
 	if expr.is_none() {
-		tok_strm.prev();
 		return Ok(None);
 	}
 	n.exprs.push(expr.unwrap());

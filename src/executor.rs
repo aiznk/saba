@@ -195,8 +195,6 @@ fn rewrite_append_record_by_vars(context: &mut Context, node: &planner::CsvFileA
 				return err_exec!("failed to get value of vars");
 			}
 		}
-	} else {
-		return err_exec!("invalid state: csv file append");
 	}
 
 	Ok(())
@@ -2397,6 +2395,24 @@ mod tests {
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: I64 PRIMARY_KEY AUTO_INCREMENT,weight: F64,name: CHAR[4]\n");
+	}
+
+	#[test]
+	fn test_add_stmt_0a() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD OF test_table").unwrap();
+		do_exec(&mut context, "ADD OF test_table").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n0,0.0,\n0,0.0,\n");
 	}
 
 	#[test]
