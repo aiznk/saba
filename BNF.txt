@@ -183,7 +183,8 @@ order_by ::= 'ORDER' 'BY' expr
 expr_list ::= expr { ',' expr }*
 ident ::= [a-zA-Z_]+
 expr ::= ass_expr
-ass_expr ::= or_expr ( '=' or_expr )?
+ass_expr ::= func_expr ( '=' func_expr )?
+func_expr ::= or_expr | ( ident '(' ( or_expr { ',' or_expr }* )? ')' )
 or_expr ::= and_expr { 'OR' and_expr }*
 and_expr ::= compare_expr { 'AND' compare_expr }*
 compare_expr ::= add_sub_expr { compare_op add_sub_expr }*

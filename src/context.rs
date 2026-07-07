@@ -28,6 +28,7 @@ pub struct Context {
 	pub limit_counter: i64,
 	pub filtered: bool,
 	pub matched: bool,
+	pub count_counter: usize,
 }
 
 impl Context {
@@ -49,6 +50,7 @@ impl Context {
 			limit_counter: 0,
 			filtered: false,
 			matched: false,
+			count_counter: 0,
 		}
 	}
 
@@ -68,6 +70,7 @@ impl Context {
 		self.limit_counter = 0;
 		self.filtered = false;
 		self.matched = false;
+		self.count_counter = 0;
 	}
 
 	pub fn gen_db_dir_path(&self, db_name: &str) -> Result<PathBuf, Error> {

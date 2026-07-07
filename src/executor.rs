@@ -31,6 +31,8 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 	} else if let Some(project) = &node.project {
 		while exec_project(context, &project)? {
 		}
+	} else if let Some(aggregate) = &node.aggregate {
+		exec_aggregate(context, &aggregate)?;
 	} else if let Some(database_create) = &node.database_create {
 		exec_database_create(context, &database_create)?;
 	} else if let Some(dir_list) = &node.dir_list {
@@ -477,17 +479,15 @@ pub fn exec_limit(context: &mut Context, node: &Box<parser::LimitNode>) -> Resul
 	}
 }
 
-fn gen_limit_value(context: &mut Context, node: &planner::ProjectNode) -> Result<Option<i64>, Error> {
+fn gen_limit_value(context: &mut Context, limit: &Box<parser::LimitNode>) -> Result<Option<i64>, Error> {
 	let mut limit_value: Option<i64> = None;
 
-	if let Some(limit) = &node.limit {
-		let o = exec_limit(context, limit)?;
-		match o.kind {
-			ObjectKind::I64 => {
-				limit_value = Some(o.i64_value);
-			}
-			_ => return err_exec!("invalid limit expression"),
+	let o = exec_limit(context, limit)?;
+	match o.kind {
+		ObjectKind::I64 => {
+			limit_value = Some(o.i64_value);
 		}
+		_ => return err_exec!("invalid limit expression"),
 	}
 
 	Ok(limit_value)
@@ -524,18 +524,18 @@ pub fn exec_ass_expr(context: &mut Context, node: &parser::AssExprNode) -> Resul
 	let lhs: Object;
 	let rhs: Object;
 
-	if let Some(or_expr) = &node.left_or_expr {
-		lhs = exec_or_expr(context, or_expr)?;
+	if let Some(func_expr) = &node.left_func_expr {
+		lhs = exec_func_expr(context, func_expr)?;
 	} else {
 		return err_exec!("impossible");
 	}
 
-	if node.right_or_expr.is_none() {
+	if node.right_func_expr.is_none() {
 		return Ok(lhs);
 	}
 
-	if let Some(or_expr) = &node.right_or_expr {
-		rhs = exec_or_expr(context, or_expr)?;
+	if let Some(func_expr) = &node.right_func_expr {
+		rhs = exec_func_expr(context, func_expr)?;
 	} else {
 		return err_exec!("impossible");
 	}
@@ -549,6 +549,76 @@ pub fn exec_ass_expr(context: &mut Context, node: &parser::AssExprNode) -> Resul
 	}
 
 	Ok(lhs)
+}
+
+fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
+	let record;
+	if context.filtered {
+		if context.matched {
+			record = &context.matched_record;
+		} else {
+			return Ok(Object::from_i64(context.count_counter as i64));
+		}
+	} else {
+		record = &context.scan_record;
+	}
+
+	if args.len() != 1 {
+		return err_exec!("invalid args length in count function");
+	}
+	let arg = &args[0];
+
+	if arg.kind == ObjectKind::Star {
+		// pass
+	} else {
+		let ident = arg.to_string();
+		let header_idents = parse_header_idents(&context.csv_header)?;
+		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
+			return err_exec!("invalid column '{}'", ident);
+		};
+		if index >= record.len() {
+			return err_exec!("index out of range in count function");
+		}
+		let _ = &record[index];
+	}
+	
+	context.count_counter += 1;
+
+	return Ok(Object::from_i64(context.count_counter as i64));
+}
+
+fn call_func(context: &mut Context, func_name: &Object, args: &Vec<Object>) -> Result<Object, Error> {
+	if func_name.kind != ObjectKind::Ident {
+		return err_exec!("function name was not ident");
+	}
+	let func_name = func_name.ident.to_lowercase();
+
+	match func_name.as_str() {
+		"count" => {
+			return call_count(context, args);
+		}
+		&_ => {},
+	}
+
+	Ok(Object::new())
+}
+
+pub fn exec_func_expr(context: &mut Context, node: &parser::FuncExprNode) -> Result<Object, Error> {
+	if let Some(ident) = &node.ident {
+		let ident_obj = exec_ident(context, ident)?;
+		let mut arg_objs = vec![];
+
+		for or_expr in node.or_exprs.iter() {
+			let obj = exec_or_expr(context, or_expr)?;
+			arg_objs.push(obj);
+		}
+
+		return Ok(call_func(context, &ident_obj, &arg_objs)?);
+	} else if let Some(or_expr) = &node.or_expr {
+		return Ok(exec_or_expr(context, or_expr)?);
+	}
+	
+	return err_exec!("invalid state: func expr");
 }
 
 pub fn or_objects(context: &mut Context, a: &Object, b: &Object) -> Result<Object, Error> {
@@ -1599,7 +1669,47 @@ fn print_record(head: &str, row: &StringRecord) {
 	println!("");
 }
 
-pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
+fn select_record(context: &mut Context, expr_list: &parser::ExprListNode) -> Result<StringRecord, Error> {
+	let row;
+	let mut record = StringRecord::new();
+
+	if context.filtered {
+		row = context.matched_record.clone();
+	} else {
+		row = context.scan_record.clone();
+	}
+	if row.len() == 0 {
+		return Ok(record);
+	}
+
+	let objs = exec_expr_list(context, expr_list)?;
+
+	if objs.len() == 1 &&
+	   objs[0].kind == ObjectKind::Star {
+	   	for col in row.iter() {
+	   		record.push_field(col.to_string().as_str());
+	   	}
+	   	return Ok(record);
+	}
+
+	for obj in objs.iter() {
+		if let Some(index) = context.csv_header_idents.iter().position(|s| {
+				return *s == *obj.to_string();
+			}) {
+			let col = &row[index];
+			record.push_field(col.to_string().as_str());
+		} else {
+			if obj.kind == ObjectKind::Ident {
+				return err_exec!("invalid column: {}", obj.to_string());
+			}
+			record.push_field(obj.to_string().as_str());
+		}
+	}
+
+	Ok(record)
+}
+
+fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
 	let row;
 
 	context.selected_csv_columns.clear();
@@ -1647,8 +1757,75 @@ pub fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) ->
 	Ok(())
 }
 
+fn objects_to_string_record(objs: &Vec<Object>) -> StringRecord {
+	let mut record = StringRecord::new();
+
+	for obj in objs.iter() {
+		record.push_field(obj.to_string().as_str());
+	}
+
+	record
+}
+
+pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode) -> Result<(), Error> {
+	let mut limit_value = None;
+
+	if let Some(limit) = &aggregate.limit {
+		limit_value = gen_limit_value(context, limit)?;
+	}
+
+	if let Some(filter) = &aggregate.filter {
+		let mut record = StringRecord::new();
+
+		while exec_filter(context, filter)? {
+			if DEBUG {
+				print_record("scan_record", &context.scan_record);
+				println!("filtered {}", context.filtered);
+				println!("matched {}", context.matched);
+			}
+			if context.filtered {
+				if context.matched {
+					if let Some(limit_value) = limit_value {
+						if context.limit_counter >= limit_value {	
+							break;
+						}
+					}
+					if let Some(expr_list) = &aggregate.expr_list {
+						record = select_record(context, expr_list)?;
+					}
+					context.limit_counter += 1;
+				}
+			} else {
+				if let Some(limit_value) = limit_value {
+					if context.limit_counter >= limit_value {
+						break;
+					}
+				}
+				if let Some(expr_list) = &aggregate.expr_list {
+					record = select_record(context, expr_list)?;
+				}
+				context.limit_counter += 1;
+			}
+			if !aggregate.all {
+				context.table_csv_reader = None;
+				break;
+			}
+		}
+
+		context.selected_csv_columns = string_record_to_vev_string(&record);
+		print_string_record(&record)?;
+
+		return Ok(());
+	}
+	return err_exec!("invalid state: aggregate");
+}
+
 pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Result<bool, Error> {
-	let limit_value = gen_limit_value(context, project)?;
+	let mut limit_value = None;
+
+	if let Some(limit) = &project.limit {
+		limit_value = gen_limit_value(context, limit)?;
+	}
 
 	if let Some(filter) = &project.filter {
 		let result = exec_filter(context, filter)?;
@@ -1887,9 +2064,12 @@ pub fn exec_database_create(context: &mut Context, node: &planner::DatabaseCreat
 pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 	if let Some(project) = &row_delete.project {
 		let all = row_delete.all;
-		let limit_value = gen_limit_value(context, project)?;
+		let mut limit_value = None;
 		let mut limited = false;
 
+		if let Some(limit) = &project.limit {
+			limit_value = gen_limit_value(context, limit)?;
+		}
 		if let Some(limit_value) = limit_value {
 			if context.limit_counter >= limit_value {
 				limited = true;
@@ -2098,9 +2278,12 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 	if let Some(project) = &row_update.project {
 		if let Some(expr_list) = &row_update.expr_list {
 			let update_expr_list_objs = exec_expr_list(context, expr_list)?;
-			let limit_value = gen_limit_value(context, project)?;
+			let mut limit_value = None;
 			let mut limited = false;
 
+			if let Some(limit) = &project.limit {
+				limit_value = gen_limit_value(context, limit)?;
+			}
 			if let Some(limit_value) = limit_value {
 				if context.limit_counter >= limit_value {
 					limited = true;
@@ -4248,5 +4431,106 @@ mod tests {
 4,3.14,xxx
 5,3.14,zzz
 "); 
+	}
+
+	#[test]
+	fn test_count_func_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"xxx\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"ccc\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL COUNT(id) OF test_table").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "5");
+	}
+
+	#[test]
+	fn test_count_func_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"xxx\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"ccc\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,COUNT(id) OF test_table").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 2);
+		assert!(context.selected_csv_columns[0] == "5");
+		assert!(context.selected_csv_columns[1] == "5");
+	}
+
+	#[test]
+	fn test_count_func_2() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"xxx\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"ccc\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL COUNT(*) OF test_table").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "5");
+	}
+
+	#[test]
+	fn test_count_func_3() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"xxx\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"ccc\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET COUNT(id) OF test_table").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "1");
 	}
 }

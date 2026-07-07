@@ -1,4 +1,4 @@
-use crate::parser::{QueryNode};
+use crate::parser::{FuncExprNode, QueryNode};
 use crate::parser;
 use crate::error::{Error, make_error, err_planning};
 use crate::tokenizer::{TokenKind};
@@ -20,6 +20,7 @@ pub struct PlanNode {
 	pub desc_table: Option<Box<DescTableNode>>,
 	pub use_db: Option<Box<UseDatabaseNode>>,
 	pub sort: Option<Box<SortNode>>,
+	pub aggregate: Option<Box<AggregateNode>>,
 	pub project: Option<Box<ProjectNode>>,
 	pub database_create: Option<Box<DatabaseCreateNode>>,
 	pub dir_list: Option<Box<DirListNode>>,
@@ -37,6 +38,7 @@ impl PlanNode {
 			desc_table: None,
 			use_db: None,
 			sort: None,
+			aggregate: None,
 			project: None,
 			database_create: None,
 			dir_list: None,
@@ -291,6 +293,24 @@ impl CsvFileAppendNode {
 			expr_list: None,
 			paren_idents: None,
 			paren_values_list: vec![],
+		}
+	}
+}
+
+pub struct AggregateNode {
+	pub filter: Option<Box<FilterNode>>,
+	pub limit: Option<Box<parser::LimitNode>>,
+	pub all: bool,
+	pub expr_list: Option<Box<parser::ExprListNode>>,
+}
+
+impl AggregateNode {
+	pub fn new() -> Self {
+		Self {
+			filter: None,
+			limit: None,
+			all: false,
+			expr_list: None,
 		}
 	}
 }
@@ -884,47 +904,115 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 	Ok(())
 }
 
+fn needs_aggregate(node: &Box<parser::GetStmtNode>) -> Result<bool, Error> {
+	if let Some(expr_list) = &node.expr_list {
+		return Ok(needs_aggregate_expr_list(expr_list)?);
+	}
+	return err_planning!("invalid state: needs aggregate");
+}
+
+fn needs_aggregate_expr_list(node: &Box<parser::ExprListNode>) -> Result<bool, Error> {
+	for expr in node.exprs.iter() {
+		if needs_aggregate_expr(expr)? {
+			return Ok(true);
+		}
+	}
+	return Ok(false);
+}
+
+fn needs_aggregate_expr(node: &Box<parser::ExprNode>) -> Result<bool, Error> {
+	if let Some(ass_expr) = &node.ass_expr {
+		return Ok(needs_aggregate_ass_expr(ass_expr)?);
+	}
+	return err_planning!("invalid state: needs aggregate expr");
+}
+
+fn needs_aggregate_ass_expr(node: &Box<parser::AssExprNode>) -> Result<bool, Error> {
+	if let Some(func_expr) = &node.left_func_expr {
+		return Ok(needs_aggregate_func_expr(func_expr)?);
+	}
+	if let Some(func_expr) = &node.right_func_expr {
+		return Ok(needs_aggregate_func_expr(func_expr)?);
+	}
+	return err_planning!("invalid state: needs aggregate ass expr");
+}
+
+fn needs_aggregate_func_expr(node: &Box<parser::FuncExprNode>) -> Result<bool, Error> {
+	if let Some(ident) = &node.ident {
+		let func_name = unwrap_ident_object(ident)?.to_string().to_lowercase();
+		match func_name.as_str() {
+			"count" => return Ok(true),
+			&_ => return Ok(false),
+		}
+	}
+	return Ok(false);
+}
+
 pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
-	let mut project = ProjectNode::new();
 	let mut filter = FilterNode::new();
 	let mut csv_file_scan = CsvFileScanNode::new();
 	let mut sort = SortNode::new();
 
-	project.method = TokenKind::Get;
+	if needs_aggregate(node)? {
+		let mut aggregate = AggregateNode::new();
+		aggregate.all = node.all;
+		if let Some(expr_list) = &node.expr_list {
+			aggregate.expr_list = Some(expr_list.clone());
+		}		
+		if let Some(table) = &node.table {
+			csv_file_scan.table_name = unwrap_ident_object(&table)?.to_string();
+			csv_file_scan.all = node.all;
+		}
+		if let Some(where_clause) = &node.where_clause {
+			filter.where_clause = Some((*where_clause).clone());
+		}
+		if let Some(limit) = &node.limit {
+			aggregate.limit = Some(limit.clone());
+		}
 
-	if let Some(expr_list) = &node.expr_list {
-		project.expr_list = Some(expr_list.clone());
-	}
+		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		aggregate.filter = Some(Box::new(filter));
+		aggregate.all = node.all;
+		plan.aggregate = Some(Box::new(aggregate));		
 
-	if let Some(table) = &node.table {
-		csv_file_scan.table_name = unwrap_ident_object(&table)?.to_string();
-		csv_file_scan.all = node.all;
-	}
+	} else {
+		let mut project = ProjectNode::new();
+		project.method = TokenKind::Get;
 
-	if let Some(where_clause) = &node.where_clause {
-		filter.where_clause = Some((*where_clause).clone());
-	}
+		if let Some(expr_list) = &node.expr_list {
+			project.expr_list = Some(expr_list.clone());
+		}
 
-	if let Some(limit) = &node.limit {
-		project.limit = Some(limit.clone());
-	}
+		if let Some(table) = &node.table {
+			csv_file_scan.table_name = unwrap_ident_object(&table)?.to_string();
+			csv_file_scan.all = node.all;
+		}
 
-	if let Some(order_by) = &node.order_by {
-		if let Some(expr) = &order_by.expr {
+		if let Some(where_clause) = &node.where_clause {
+			filter.where_clause = Some((*where_clause).clone());
+		}
+
+		if let Some(limit) = &node.limit {
+			project.limit = Some(limit.clone());
+		}
+
+		if let Some(order_by) = &node.order_by {
+			if let Some(expr) = &order_by.expr {
+				filter.csv_file_scan = Some(Box::new(csv_file_scan));
+				project.filter = Some(Box::new(filter));
+				project.all = true; // always true
+				sort.expr = Some(expr.clone());	
+				sort.project = Some(Box::new(project));
+				sort.is_asc = order_by.is_asc;
+				sort.all = node.all;
+				plan.sort = Some(Box::new(sort));
+			}
+		} else {
 			filter.csv_file_scan = Some(Box::new(csv_file_scan));
 			project.filter = Some(Box::new(filter));
-			project.all = true; // always true
-			sort.expr = Some(expr.clone());	
-			sort.project = Some(Box::new(project));
-			sort.is_asc = order_by.is_asc;
-			sort.all = node.all;
-			plan.sort = Some(Box::new(sort));
+			project.all = node.all;
+			plan.project = Some(Box::new(project));		
 		}
-	} else {
-		filter.csv_file_scan = Some(Box::new(csv_file_scan));
-		project.filter = Some(Box::new(filter));
-		project.all = node.all;
-		plan.project = Some(Box::new(project));		
 	}
 
 	Ok(())

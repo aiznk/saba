@@ -475,15 +475,32 @@ impl ExprNode {
 
 #[derive(Debug, Clone)]
 pub struct AssExprNode {
-	pub left_or_expr: Option<Box<OrExprNode>>,
-	pub right_or_expr: Option<Box<OrExprNode>>,
+	pub left_func_expr: Option<Box<FuncExprNode>>,
+	pub right_func_expr: Option<Box<FuncExprNode>>,
 }
 
 impl AssExprNode {
 	pub fn new() -> Self {
 		Self {
-			left_or_expr: None,
-			right_or_expr: None,
+			left_func_expr: None,
+			right_func_expr: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncExprNode {
+	pub ident: Option<Box<IdentNode>>,
+	pub or_expr: Option<Box<OrExprNode>>,
+	pub or_exprs: Vec<Box<OrExprNode>>,
+}
+
+impl FuncExprNode {
+	pub fn new() -> Self {
+		Self {
+			ident: None,
+			or_expr: None,
+			or_exprs: vec![],
 		}
 	}
 }
@@ -1379,6 +1396,10 @@ pub fn parse_order_by(tok_strm: &mut TokenStream) -> Result<Option<Box<OrderByNo
 		return Ok(None);
 	}
 
+	if tok_strm.is_end() {
+		return err_parse!("reached EOS");
+	}
+
 	let tok = tok_strm.get()?;
 	if tok.kind != TokenKind::By {
 		return err_parse!("missing 'BY' in order by clause");
@@ -1722,8 +1743,8 @@ pub fn parse_ass_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<AssExprNo
 		return Ok(None);
 	}
 
-	n.left_or_expr = parse_or_expr(tok_strm)?;
-	if n.left_or_expr.is_none() {
+	n.left_func_expr = parse_func_expr(tok_strm)?;
+	if n.left_func_expr.is_none() {
 		return Ok(None);
 	}
 
@@ -1737,9 +1758,79 @@ pub fn parse_ass_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<AssExprNo
 		return Ok(Some(Box::new(n)));
 	}
 
-	n.right_or_expr = parse_or_expr(tok_strm)?;
-	if n.right_or_expr.is_none() {
+	n.right_func_expr = parse_func_expr(tok_strm)?;
+	if n.right_func_expr.is_none() {
 		return err_parse!("missing right hand operand in ass expr");
+	}
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_func_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<FuncExprNode>>, Error> {
+	let mut n = FuncExprNode::new();
+	let index = tok_strm.index;
+
+	n.ident = parse_ident(tok_strm)?;
+	if n.ident.is_some() {
+		if tok_strm.is_end() {
+			tok_strm.index = index;
+			n.ident = None;
+
+			n.or_expr = parse_or_expr(tok_strm)?;
+			if n.or_expr.is_none() {
+				tok_strm.index = index;
+				return Ok(None);
+			}
+		} else {
+			let tok = tok_strm.get()?;
+			if tok.kind == TokenKind::LParen {
+				let or_expr = parse_or_expr(tok_strm)?;
+				if or_expr.is_none() {
+					let tok = tok_strm.get()?;
+					if tok.kind != TokenKind::RParen {
+						return err_exec!("missing ')' in func expr");
+					}
+				} else {
+					n.or_exprs.push(or_expr.unwrap());
+
+					while !tok_strm.is_end() {
+						let tok = tok_strm.get()?;
+						if tok.kind != TokenKind::Comma {
+							tok_strm.prev();
+							break;
+						}
+
+						let or_expr = parse_or_expr(tok_strm)?;
+						if or_expr.is_none() {
+							return err_exec!("missing or expr in func expr");
+						}
+						n.or_exprs.push(or_expr.unwrap());
+					}
+
+					let tok = tok_strm.get()?;
+					if tok.kind != TokenKind::RParen {
+						return err_exec!("missing ')' in func expr");
+					}
+				}
+			} else {
+				tok_strm.index = index;
+				n.ident = None;
+
+				n.or_expr = parse_or_expr(tok_strm)?;
+				if n.or_expr.is_none() {
+					tok_strm.index = index;
+					return Ok(None);
+				}
+			}
+		}
+	} else {
+		tok_strm.index = index;
+
+		n.or_expr = parse_or_expr(tok_strm)?;
+		if n.or_expr.is_none() {
+			tok_strm.index = index;
+			return Ok(None);
+		}
 	}
 
 	Ok(Some(Box::new(n)))
@@ -2245,5 +2336,15 @@ CREATE TABLE mytab (
 		assert!(do_parse("ADD OF test_table (id, age, name) VALUES (1, 2, \"hige\")") == true);
 		assert!(do_parse("ADD OF test_table (id, age, name) VALUES (1, 20, \"hige\"), (2, 30, \"hoge\")") == true);
 		assert!(do_parse("ADD OF test_table VALUES (1, 20, \"hige\"), (2, 30, \"hoge\")") == true);
+	}
+
+	#[test]
+	fn test_func_expr_0() {
+		assert!(do_parse("GET ALL COUNT(*) OF test_table") == true);
+	}
+
+	#[test]
+	fn test_func_expr_1() {
+		assert!(do_parse("GET ALL COUNT(id, weight) OF test_table") == true);
 	}
 }
