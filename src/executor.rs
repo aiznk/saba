@@ -364,8 +364,6 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
 
 			let mut indices: Vec<usize> = vec![];
 
-			print_vec_string("header", &header_idents);
-
 			for ident_obj in ident_objs.iter() {
 				let ident = ident_obj.to_string();
 				let index = header_idents.iter().position(|s| *s == ident);
@@ -373,7 +371,6 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
 					return err_exec!("not found ident '{}' in add stmt", ident);
 				}
 				let index = index.unwrap();
-				println!("obj[{}] index[{}]", ident, index);
 				indices.push(index);
 			}
 
@@ -382,10 +379,8 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
 
 				for (i, index) in indices.iter().enumerate() {
 					let value = value_objs[i].to_string();
-					println!("index[{}] value[{}]", *index, value);
 					row[*index] = value;
 				}
-				print_vec_string("hige", &row);
 
 			    set_auto_increment_ids(context, &node.table_name, &headers, &mut row)?;
 			    check_invalid_append_record(&row, &headers)?;
@@ -2534,7 +2529,6 @@ mod tests {
 		do_exec(&mut context, "ADD OF test_table (id, name, weight) VALUES (1, \"aaa\", 1.23), (2, \"bbb\", 2.23)").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,1.23,aaa
 2,2.23,bbb
@@ -2555,7 +2549,6 @@ mod tests {
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD OF test_table VALUES (1, 1.23, \"aaa\"), (2, 2.23, \"bbb\")").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]",s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]
 1,1.23,aaa
 2,2.23,bbb
@@ -2595,7 +2588,6 @@ mod tests {
 		do_exec(&mut context, "ADD OF test_table").unwrap();
 		do_exec(&mut context, "ADD OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n0,0.0,\n0,0.0,\n");
 	}
 
