@@ -398,6 +398,9 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
 		} else {
 			for value_objs in value_objs_list.iter() {
 				let mut row: Vec<String> = gen_default_record(&headers)?;
+				if value_objs.len() > row.len() {
+					return err_exec!("does not match length: add stmt");
+				}
 
 				for (i, value_obj) in value_objs.iter().enumerate() {
 					let value = value_obj.to_string();
