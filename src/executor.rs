@@ -76,10 +76,18 @@ fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Erro
 
 	if let Some(project) = &sort.project {
 		let mut records: Vec<StringRecord> = vec![];
+		let mut limit_value = None;
 		let is_cli = context.is_cli;
 		context.is_cli = false;
 
-		while exec_project(context, project)? {
+		if let Some(limit) = &project.limit {
+			limit_value = gen_limit_value(context, limit)?;
+		}
+
+		let mut project = (*project).clone();
+		project.limit = None;
+
+		while exec_project(context, &project)? {
 			if context.filtered {
 				if context.matched {
 					records.push(context.matched_record.clone());
@@ -105,6 +113,10 @@ fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Erro
 			records.sort_by(|a, b| {
 				b[index].cmp(&a[index])
 			});
+		}
+
+		if let Some(limit_value) = limit_value {
+			records.truncate(limit_value as usize);
 		}
 
 		if !sort.all && records.len() > 0 {
@@ -4284,6 +4296,33 @@ mod tests {
 		let mut context = Context::new();
 		remove_file(&path);
 		do_exec(&mut context, "SHOW DATABASES").unwrap();
+	}
+
+	#[test]
+	fn test_order_by_limit() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL id,weight,name OF test_table ORDER BY id DESC LIMIT 2").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "5,3.14,hige
+4,3.14,hoge
+");
 	}
 
 	#[test]

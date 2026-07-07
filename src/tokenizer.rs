@@ -1,6 +1,6 @@
 use crate::error::{Error, make_error, err_runtime};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind {
 	Nil,
 	Ident, // id

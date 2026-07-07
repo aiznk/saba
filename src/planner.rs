@@ -4,6 +4,7 @@ use crate::error::{Error, make_error, err_planning};
 use crate::tokenizer::{TokenKind};
 use crate::objects::{Object, ObjectKind};
 
+#[derive(Clone, Debug)]
 pub struct PlansNode {
 	pub plans: Vec<PlanNode>,
 }
@@ -16,6 +17,7 @@ impl PlansNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct PlanNode {
 	pub desc_table: Option<Box<DescTableNode>>,
 	pub use_db: Option<Box<UseDatabaseNode>>,
@@ -52,6 +54,7 @@ impl PlanNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct CsvFileRewriteNode {
 	pub table_name: Option<String>,
 	pub row_delete: Option<Box<RowDeleteNode>>,
@@ -76,6 +79,7 @@ impl CsvFileRewriteNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct SortNode {
 	pub expr: Option<Box<parser::ExprNode>>,
 	pub project: Option<Box<ProjectNode>>,
@@ -94,6 +98,7 @@ impl SortNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct CsvFileRenameNode {
 	pub table_name: Option<String>,
 	pub to_ident: Option<String>,
@@ -108,6 +113,7 @@ impl CsvFileRenameNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct ColumnAlterTypeNode {
 	pub project: Option<Box<ProjectNode>>,
 	pub ident: Option<String>,
@@ -124,6 +130,7 @@ impl ColumnAlterTypeNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct ColumnRenameNode {
 	pub project: Option<Box<ProjectNode>>,
 	pub from_ident: Option<String>,
@@ -140,6 +147,7 @@ impl ColumnRenameNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct ColumnDropNode {
 	pub ident: Option<String>,
 	pub project: Option<Box<ProjectNode>>,
@@ -154,6 +162,7 @@ impl ColumnDropNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct ColumnAddNode {
 	pub ident: Option<String>,
 	pub column_types_string: Option<String>,
@@ -172,6 +181,7 @@ impl ColumnAddNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct DescTableNode {
 	pub table_name: Option<String>,
 }
@@ -184,6 +194,7 @@ impl DescTableNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct RowDeleteNode {
 	pub all: bool,
 	pub project: Option<Box<ProjectNode>>,
@@ -198,6 +209,7 @@ impl RowDeleteNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct RowUpdateNode {
 	pub project: Option<Box<ProjectNode>>,
 	pub expr_list: Option<Box<parser::ExprListNode>>,
@@ -214,6 +226,7 @@ impl RowUpdateNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct DirDeleteAllNode {
 	pub db_name: Option<String>,
 	pub if_exists: bool,
@@ -228,6 +241,7 @@ impl DirDeleteAllNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct CsvFileDeleteNode {
 	pub table_name: Option<String>,
 	pub if_exists: bool,
@@ -242,6 +256,7 @@ impl CsvFileDeleteNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct DirListNode {
 	pub csv_file_grep: Option<Box<CsvFileGrepNode>>,
 }
@@ -254,6 +269,7 @@ impl DirListNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct CsvFileGrepNode {
 	#[allow(dead_code)]
 	dummy: i32,
@@ -267,6 +283,7 @@ impl CsvFileGrepNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct UseDatabaseNode {
 	pub db_name: String,
 }
@@ -279,6 +296,7 @@ impl UseDatabaseNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct CsvFileAppendNode {
 	pub table_name: String,
 	pub expr_list: Option<Box<parser::ExprListNode>>,
@@ -297,6 +315,7 @@ impl CsvFileAppendNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct AggregateNode {
 	pub filter: Option<Box<FilterNode>>,
 	pub limit: Option<Box<parser::LimitNode>>,
@@ -315,6 +334,7 @@ impl AggregateNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct ProjectNode {
 	pub method: TokenKind,
 	pub filter: Option<Box<FilterNode>>,
@@ -335,6 +355,7 @@ impl ProjectNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct FilterNode {
 	pub where_clause: Option<Box<parser::WhereClauseNode>>,
 	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
@@ -349,6 +370,7 @@ impl FilterNode {
 	}
 }
 
+#[derive(Clone, Debug)]
 pub struct CsvFileScanNode {
 	pub table_name: String,
 	pub all: bool,
@@ -363,7 +385,7 @@ impl CsvFileScanNode {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct DatabaseCreateNode {
 	pub db_name: String,
 }
@@ -376,7 +398,7 @@ impl DatabaseCreateNode {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct CsvFileCreateNode {
 	pub table_name: String,
 	pub csv_head_row: String,
