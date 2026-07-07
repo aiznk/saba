@@ -1,5 +1,5 @@
 use crate::tokenizer::{Token, TokenKind, TokenStream, tokenize};
-use crate::error::{Error, make_error, err_parse};
+use crate::error::{Error, err_exec, err_parse, make_error};
 
 #[derive(Debug, Clone)]
 pub struct QueryNode {
@@ -374,6 +374,8 @@ impl SetStmtNode {
 pub struct AddStmtNode {
 	pub expr_list: Option<Box<ExprListNode>>,
 	pub table: Option<Box<IdentNode>>,
+	pub paren_idents: Option<Box<ParenIdentsNode>>,
+	pub paren_values_list: Vec<Box<ParenValuesNode>>,
 }
 
 impl AddStmtNode {
@@ -381,6 +383,34 @@ impl AddStmtNode {
 		Self {
 			expr_list: None,
 			table: None,
+			paren_idents: None,
+			paren_values_list: vec![],
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct ParenIdentsNode {
+	pub idents: Vec<Box<IdentNode>>,
+}
+
+impl ParenIdentsNode {
+	pub fn new() -> Self {
+		Self {
+			idents: vec![],
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct ParenValuesNode {
+	pub exprs: Vec<Box<ExprNode>>,
+}
+
+impl ParenValuesNode {
+	pub fn new() -> Self {
+		Self {
+			exprs: vec![],
 		}
 	}
 }
@@ -1439,13 +1469,128 @@ pub fn parse_add_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<AddStmtNo
 
 	let tok = tok_strm.get()?;
 	if tok.kind != TokenKind::Of {
-		return err_parse!("missing 'OF' in add stmt: {:?}", tok);
+		return err_parse!("missing 'OF' in add stmt");
 	}
 
 	n.table = parse_ident(tok_strm)?;
 	if n.table.is_none() {
 		return err_parse!("missing table name in add stmt");
 	}
+
+	if n.expr_list.is_none() {
+		n.paren_idents = parse_paren_idents(tok_strm)?;
+
+		if tok_strm.is_end() {
+			return Ok(Some(Box::new(n)));
+		}
+
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::Values {
+			return err_parse!("missing 'VALUES' in add stmt");
+		}
+
+		let paren_values = parse_paren_values(tok_strm)?;
+		if paren_values.is_none() {
+			return err_parse!("missing values in add stmt");
+		}
+		n.paren_values_list.push(paren_values.unwrap());
+
+		while !tok_strm.is_end() {
+			let tok = tok_strm.get()?;
+			if tok.kind != TokenKind::Comma {
+				tok_strm.prev();
+				break;
+			}
+
+			let paren_values = parse_paren_values(tok_strm)?;
+			if paren_values.is_none() {
+				return err_parse!("missing values in add stmt");
+			}
+			n.paren_values_list.push(paren_values.unwrap());
+		}
+	}
+
+	Ok(Some(Box::new(n)))
+}
+
+fn parse_paren_idents(tok_strm: &mut TokenStream) -> Result<Option<Box<ParenIdentsNode>>, Error> {
+	let mut n = ParenIdentsNode::new();
+
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::LParen {
+		tok_strm.prev();
+		return Ok(None);
+	}	
+
+	let ident = parse_ident(tok_strm)?;
+	if ident.is_none() {
+		return err_exec!("missing ident in paren idents");
+	}
+	n.idents.push(ident.unwrap());
+
+	while !tok_strm.is_end() {
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::Comma {
+			tok_strm.prev();
+			break;
+		}
+
+		let ident = parse_ident(tok_strm)?;
+		if ident.is_none() {
+			return err_exec!("missing ident in paren idents (2)");
+		}
+		n.idents.push(ident.unwrap());
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::RParen {
+		return err_exec!("missing ')' in paren idents");
+	}	
+
+	Ok(Some(Box::new(n)))
+}
+
+fn parse_paren_values(tok_strm: &mut TokenStream) -> Result<Option<Box<ParenValuesNode>>, Error> {
+	let mut n = ParenValuesNode::new();
+
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::LParen {
+		tok_strm.prev();
+		return Ok(None);
+	}	
+
+	let expr = parse_expr(tok_strm)?;
+	if expr.is_none() {
+		return err_exec!("missing expr in paren exprs");
+	}
+	n.exprs.push(expr.unwrap());
+
+	while !tok_strm.is_end() {
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::Comma {
+			tok_strm.prev();
+			break;
+		}
+
+		let expr = parse_expr(tok_strm)?;
+		if expr.is_none() {
+			return err_exec!("missing expr in paren exprs (2)");
+		}
+		n.exprs.push(expr.unwrap());
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::RParen {
+		return err_exec!("missing ')' in paren idents");
+	}	
 
 	Ok(Some(Box::new(n)))
 }
@@ -2093,5 +2238,12 @@ CREATE TABLE mytab (
 	#[test]
 	fn test_order_by_0() {
 		assert!(do_parse("GET ALL id,weight,name OF test_table ORDER BY id") == true);
+	}
+
+	#[test]
+	fn test_add_stmt_values() {
+		assert!(do_parse("ADD OF test_table (id, age, name) VALUES (1, 2, \"hige\")") == true);
+		assert!(do_parse("ADD OF test_table (id, age, name) VALUES (1, 20, \"hige\"), (2, 30, \"hoge\")") == true);
+		assert!(do_parse("ADD OF test_table VALUES (1, 20, \"hige\"), (2, 30, \"hoge\")") == true);
 	}
 }

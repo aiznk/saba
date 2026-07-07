@@ -280,6 +280,8 @@ impl UseDatabaseNode {
 pub struct CsvFileAppendNode {
 	pub table_name: String,
 	pub expr_list: Option<Box<parser::ExprListNode>>,
+	pub paren_idents: Option<Box<parser::ParenIdentsNode>>,
+	pub paren_values_list: Vec<Box<parser::ParenValuesNode>>,
 }
 
 impl CsvFileAppendNode {
@@ -287,6 +289,8 @@ impl CsvFileAppendNode {
 		Self {
 			table_name: String::new(),
 			expr_list: None,
+			paren_idents: None,
+			paren_values_list: vec![],
 		}
 	}
 }
@@ -787,6 +791,14 @@ pub fn plan_add_stmt(node: &Box<parser::AddStmtNode>, plan: &mut PlanNode) -> Re
 
 	if let Some(table) = &node.table {
 		append.table_name = unwrap_ident_object(&table)?.to_string();
+	}
+
+	if node.expr_list.is_none() {
+		if let Some(paren_idents) = &node.paren_idents {
+			append.paren_idents = Some(paren_idents.clone());
+		}
+
+		append.paren_values_list = node.paren_values_list.clone();
 	}
 	
 	plan.csv_file_append = Some(Box::new(append));

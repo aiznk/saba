@@ -43,6 +43,7 @@ pub enum TokenKind {
 	Del, // DEL
 	Of, // OF
 	Where, // WHERE
+	Values, // VALUES
 	AddOp, // +
 	SubOp, // -
 	MulOp, // *
@@ -346,6 +347,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'n' && c3 == 'o' && c4 == 't' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Not, None));
 			i += 3;
+		} else if c1 == ' ' && c2 == 'v' && c3 == 'a' && c4 == 'l' && c5 == 'u' && c6 == 'e' && c7 == 's' && c8 == ' ' {
+			ret.push(Token::from(TokenKind::Values, None));
+			i += 6;
 		} else if c1 == ' ' && c2 == 't' && c3 == 'y' && c4 == 'p' && c5 == 'e' && c6 == ' ' {
 			ret.push(Token::from(TokenKind::Type, None));
 			i += 4;

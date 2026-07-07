@@ -1,5 +1,5 @@
 use crate::error::{Error, make_error, err_exec, err_parse, err_planning};
-use crate::parser;
+use crate::parser::{self, ParenIdentsNode};
 use crate::planner;
 use crate::tokenizer::{TokenKind};
 use crate::context::{Context};
@@ -327,19 +327,102 @@ fn check_invalid_append_record(record: &Vec<String>, headers: &StringRecord) -> 
 
 pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppendNode) -> Result<(), Error> {
 	let path = context.gen_table_file_path(&node.table_name)?;
-    let headers = read_table_headers(context, &node.table_name)?;
-	let mut row: Vec<String> = gen_default_record(&headers)?;
     let mut writer = open_append_writer(&path)?;
+    let headers = read_table_headers(context, &node.table_name)?;
 
-    rewrite_append_record_by_vars(context, node, &headers, &mut row)?;
-    set_auto_increment_ids(context, &node.table_name, &headers, &mut row)?;
-    check_invalid_append_record(&row, &headers)?;
+    if node.expr_list.is_some() {
+		let mut row: Vec<String> = gen_default_record(&headers)?;
+	    rewrite_append_record_by_vars(context, node, &headers, &mut row)?;
+	    set_auto_increment_ids(context, &node.table_name, &headers, &mut row)?;
+	    check_invalid_append_record(&row, &headers)?;
 
-	match writer.write_record(&row) {
-		Ok(_) => {},
-		Err(e) => return err_exec!("failed to write CSV row {}", e),
+		match writer.write_record(&row) {
+			Ok(_) => {},
+			Err(e) => return err_exec!("failed to write CSV row {}", e),
+		}
+
+	} else if node.paren_values_list.len() > 0 {
+		let mut ident_objs: Option<Vec<Object>> = None;
+		let mut value_objs_list = vec![];
+		let header_idents = parse_header_idents(&headers)?;
+
+		if let Some(paren_idents) = &node.paren_idents {
+			ident_objs = Some(exec_paren_idents(context, paren_idents)?);
+		}	
+
+		for paren_values in node.paren_values_list.iter() {
+			let value_objs = exec_paren_values(context, paren_values)?;
+			value_objs_list.push(value_objs);
+		}
+
+		if let Some(ident_objs) = ident_objs {
+			for value_objs in value_objs_list.iter() {
+				if value_objs.len() != ident_objs.len() {
+					return err_exec!("not same length values list");
+				}
+			}
+
+			let mut indices: Vec<usize> = vec![];
+
+			print_vec_string("header", &header_idents);
+
+			for ident_obj in ident_objs.iter() {
+				let ident = ident_obj.to_string();
+				let index = header_idents.iter().position(|s| *s == ident);
+				if index.is_none() {
+					return err_exec!("not found ident '{}' in add stmt", ident);
+				}
+				let index = index.unwrap();
+				println!("obj[{}] index[{}]", ident, index);
+				indices.push(index);
+			}
+
+			for value_objs in value_objs_list.iter() {
+				let mut row: Vec<String> = gen_default_record(&headers)?;
+
+				for (i, index) in indices.iter().enumerate() {
+					let value = value_objs[i].to_string();
+					println!("index[{}] value[{}]", *index, value);
+					row[*index] = value;
+				}
+				print_vec_string("hige", &row);
+
+			    set_auto_increment_ids(context, &node.table_name, &headers, &mut row)?;
+			    check_invalid_append_record(&row, &headers)?;
+
+				match writer.write_record(&row) {
+					Ok(_) => {},
+					Err(e) => return err_exec!("failed to write CSV row (2). {}", e),
+				}
+			}
+		} else {
+			for value_objs in value_objs_list.iter() {
+				let mut row: Vec<String> = gen_default_record(&headers)?;
+
+				for (i, value_obj) in value_objs.iter().enumerate() {
+					let value = value_obj.to_string();
+					row[i] = value;
+				}
+
+			    set_auto_increment_ids(context, &node.table_name, &headers, &mut row)?;
+			    check_invalid_append_record(&row, &headers)?;
+
+				match writer.write_record(&row) {
+					Ok(_) => {},
+					Err(e) => return err_exec!("failed to write CSV row (3). {}", e),
+				}
+			}
+		}
+	} else {
+		let mut row: Vec<String> = gen_default_record(&headers)?;
+	    set_auto_increment_ids(context, &node.table_name, &headers, &mut row)?;
+	    check_invalid_append_record(&row, &headers)?;
+
+		match writer.write_record(&row) {
+			Ok(_) => {},
+			Err(e) => return err_exec!("failed to write CSV row {}", e),
+		}
 	}
-
 	Ok(())
 }
 
@@ -1403,6 +1486,28 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 	}
 }
 
+pub fn exec_paren_values(context: &mut Context, node: &parser::ParenValuesNode) -> Result<Vec<Object>, Error> {
+	let mut v: Vec<Object> = vec![];
+
+	for expr in node.exprs.iter() {
+		let obj = exec_expr(context, expr)?;
+		v.push(obj);
+	}
+
+	Ok(v)
+}
+
+pub fn exec_paren_idents(context: &mut Context, node: &parser::ParenIdentsNode) -> Result<Vec<Object>, Error> {
+	let mut v: Vec<Object> = vec![];
+
+	for ident in node.idents.iter() {
+		let obj = exec_ident(context, ident)?;
+		v.push(obj);
+	}
+
+	Ok(v)
+}
+
 pub fn exec_value(context: &mut Context, node: &parser::ValueNode) -> Result<Object, Error> {
 	if let Some(i64_value) = &node.i64_value {
 		return exec_i64_value(context, i64_value);
@@ -1686,6 +1791,19 @@ pub fn parse_csv_header_idents(context: &mut Context) -> Result<(), Error> {
 	}
 
 	Ok(())
+}
+
+pub fn parse_header_idents(headers: &StringRecord) -> Result<Vec<String>, Error> {
+	let mut v = vec![];
+
+	for col in headers.iter() {
+		if let Some((left, _right)) = col.split_once(':') {
+			let val = left.trim().to_string();
+			v.push(val);
+		}
+	}
+
+	Ok(v)
 }
 
 pub fn exec_dir_delete_all(context: &mut Context, node: &planner::DirDeleteAllNode) -> Result<(), Error> {
@@ -2398,6 +2516,68 @@ mod tests {
 	}
 
 	#[test]
+	fn test_add_stmt_0d() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+
+		do_exec(&mut context, "ADD OF test_table (id, name, weight) VALUES (1, \"aaa\", 1.23), (2, \"bbb\", 2.23)").unwrap();
+
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,1.23,aaa
+2,2.23,bbb
+");
+	}
+
+	#[test]
+	fn test_add_stmt_0c() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD OF test_table VALUES (1, 1.23, \"aaa\"), (2, 2.23, \"bbb\")").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]",s);
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+1,1.23,aaa
+2,2.23,bbb
+");
+	}
+
+	#[test]
+	fn test_add_stmt_0b() {
+		let path = gen_test_table_path();
+		remove_file(&path);
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD OF test_table VALUES (1, 1.23, \"aaa\")").unwrap();
+		do_exec(&mut context, "ADD OF test_table VALUES (1, 2.23, \"bbb\")").unwrap();
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,1.23,aaa\n1,2.23,bbb\n");
+	}
+
+	#[test]
 	fn test_add_stmt_0a() {
 		let path = gen_test_table_path();
 		remove_file(&path);
@@ -2412,6 +2592,7 @@ mod tests {
 		do_exec(&mut context, "ADD OF test_table").unwrap();
 		do_exec(&mut context, "ADD OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
+		println!("s[{}]", s);
 		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n0,0.0,\n0,0.0,\n");
 	}
 

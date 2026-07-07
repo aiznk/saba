@@ -103,6 +103,13 @@ GET ALL * OF my_table WHERE id < 5 ORDER BY id;
 ADD id = 1, weight = 60.3, name = "hige" OF my_table;
 ```
 
+SQL like statement.
+
+```
+ADD OF my_table (id, weight, name) VALUES (1, 1.23, "hige"), (2, 2.23, "hoge");
+ADD OF my_table VALUES (1, 1.23, "hige"), (2, 2.23, "hoge");
+```
+
 ## DEL (delete CSV records)
 
 ```
