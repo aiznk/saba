@@ -75,6 +75,7 @@ impl Context {
 		self.filtered = false;
 		self.matched = false;
 		self.count_counter = 0;
+		self.sum_value = 0.0;
 	}
 
 	pub fn gen_db_dir_path(&self, db_name: &str) -> Result<PathBuf, Error> {
