@@ -777,8 +777,8 @@ pub fn gen_csv_head_col_type_by_column_type(column_type: &parser::ColumnTypeNode
 	match column_type {
 		parser::ColumnTypeNode::PrimaryKey => Ok(String::from("PRIMARY_KEY")),
 		parser::ColumnTypeNode::AutoIncrement => Ok(String::from("AUTO_INCREMENT")),
-		parser::ColumnTypeNode::I64 => Ok(String::from("I64")),
-		parser::ColumnTypeNode::F64 => Ok(String::from("F64")),
+		parser::ColumnTypeNode::Int => Ok(String::from("INT")),
+		parser::ColumnTypeNode::Float => Ok(String::from("FLOAT")),
 		parser::ColumnTypeNode::Char(nelems) => Ok(format!("CHAR[{}]", nelems)),
 		parser::ColumnTypeNode::Bool => Ok(String::from("BOOL")),
 		parser::ColumnTypeNode::Default(value) => {
@@ -795,10 +795,10 @@ pub fn gen_csv_head_col_type_by_column_type(column_type: &parser::ColumnTypeNode
 }
 
 fn unwrap_value(node: &parser::ValueNode) -> Result<Object, Error> {
-	if let Some(i64_value) = &node.i64_value {
-		return Ok(unwrap_i64_value(&i64_value)?);
-	} else if let Some(f64_value) = &node.f64_value {
-		return Ok(unwrap_f64_value(&f64_value)?);
+	if let Some(int_value) = &node.int_value {
+		return Ok(unwrap_i64_value(&int_value)?);
+	} else if let Some(float_value) = &node.float_value {
+		return Ok(unwrap_f64_value(&float_value)?);
 	} else if let Some(bool_value) = &node.bool_value {
 		return Ok(unwrap_bool_value(&bool_value)?);		
 	} else if let Some(string) = &node.string {
@@ -808,12 +808,12 @@ fn unwrap_value(node: &parser::ValueNode) -> Result<Object, Error> {
 	}
 }
 
-fn unwrap_i64_value(node: &parser::I64ValueNode) -> Result<Object, Error> {
-	Ok(Object::from_i64(node.value))
+fn unwrap_i64_value(node: &parser::IntValueNode) -> Result<Object, Error> {
+	Ok(Object::from_int(node.value))
 }
 
-fn unwrap_f64_value(node: &parser::F64ValueNode) -> Result<Object, Error> {
-	Ok(Object::from_f64(node.value))
+fn unwrap_f64_value(node: &parser::FloatValueNode) -> Result<Object, Error> {
+	Ok(Object::from_float(node.value))
 }
 
 fn unwrap_bool_value(node: &parser::BoolValueNode) -> Result<Object, Error> {

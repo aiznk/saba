@@ -245,7 +245,7 @@ fn set_auto_increment_ids(context: &mut Context, table_name: &String, headers: &
 		if !typ.is_auto_increment {
 			continue;
 		}
-		if !typ.is_i64 {
+		if !typ.is_int {
 			return err_exec!("cannot auto increment. id must be int");
 		}
 		let id = gen_auto_increment_id(context, table_name, &typ)?;
@@ -264,10 +264,10 @@ fn parse_csv_headerss_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>
 			typ.ident = left.trim().to_string();
 			let stype = right.to_lowercase();
 
-			if stype.contains("i64") {
-				typ.is_i64 = true;
-			} else if stype.contains("f64") {
-				typ.is_f64 = true;
+			if stype.contains("int") {
+				typ.is_int = true;
+			} else if stype.contains("float") {
+				typ.is_float = true;
 			} else if stype.contains("bool") {
 				typ.is_bool = true;
 			} else if stype.contains("char") {
@@ -296,9 +296,9 @@ fn parse_csv_headerss_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>
 							).unwrap();
 				if let Some(cap) = re.captures(stype.as_str()) {
 				    if let Some(v) = cap.name("int") {
-				    	typ.default_value = Some(Object::from_i64(v.as_str().parse::<i64>().unwrap()));
+				    	typ.default_value = Some(Object::from_int(v.as_str().parse::<i128>().unwrap()));
 				    } else if let Some(v) = cap.name("float") {
-				    	typ.default_value = Some(Object::from_f64(v.as_str().parse::<f64>().unwrap()));
+				    	typ.default_value = Some(Object::from_float(v.as_str().parse::<f64>().unwrap()));
 				    } else if let Some(v) = cap.name("string") {
 				    	typ.default_value = Some(Object::from_string(v.as_str().to_string()));
 				    } else if let Some(v) = cap.name("bool") {
@@ -491,13 +491,13 @@ pub fn exec_limit(context: &mut Context, node: &Box<parser::LimitNode>) -> Resul
 	}
 }
 
-fn gen_limit_value(context: &mut Context, limit: &Box<parser::LimitNode>) -> Result<Option<i64>, Error> {
-	let mut limit_value: Option<i64> = None;
+fn gen_limit_value(context: &mut Context, limit: &Box<parser::LimitNode>) -> Result<Option<i128>, Error> {
+	let limit_value: Option<i128>;
 
 	let o = exec_limit(context, limit)?;
 	match o.kind {
-		ObjectKind::I64 => {
-			limit_value = Some(o.i64_value);
+		ObjectKind::Int => {
+			limit_value = Some(o.int_value);
 		}
 		_ => return err_exec!("invalid limit expression"),
 	}
@@ -569,7 +569,7 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 		if context.matched {
 			record = &context.matched_record;
 		} else {
-			return Ok(Object::from_i64(context.count_counter as i64));
+			return Ok(Object::from_int(context.count_counter as i128));
 		}
 	} else {
 		record = &context.scan_record;
@@ -596,7 +596,7 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 	
 	context.count_counter += 1;
 
-	return Ok(Object::from_i64(context.count_counter as i64));
+	return Ok(Object::from_int(context.count_counter as i128));
 }
 
 fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
@@ -605,7 +605,7 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		if context.matched {
 			record = &context.matched_record;
 		} else {
-			return Ok(Object::from_f64(context.sum_value));
+			return Ok(Object::from_float(context.sum_value));
 		}
 	} else {
 		record = &context.scan_record;
@@ -632,17 +632,17 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		let field = &record[index];
 		let obj = typ.parse_str(field)?;
 		match obj.kind {
-			ObjectKind::I64 => {
-				context.sum_value += obj.i64_value as f64;
+			ObjectKind::Int => {
+				context.sum_value += obj.int_value as f64;
 			}
-			ObjectKind::F64 => {
-				context.sum_value += obj.f64_value as f64;
+			ObjectKind::Float => {
+				context.sum_value += obj.float_value as f64;
 			}
 			_ => { return err_exec!("invalid value type in count function"); }
 		}
 	}
 
-	return Ok(Object::from_f64(context.sum_value));
+	return Ok(Object::from_float(context.sum_value));
 }
 
 fn call_func(context: &mut Context, func_name: &Object, args: &Vec<Object>) -> Result<Object, Error> {
@@ -897,18 +897,18 @@ pub fn exec_mul_div_expr(context: &mut Context, node: &parser::MulDivExprNode) -
 pub fn parse_column_by_head(head: &str, col: &str) -> Result<Object, Error> {
 	let head = head.to_lowercase();
 
-	if head.contains("i64") {
-		let n = match col.parse::<i64>() {
+	if head.contains("int") {
+		let n = match col.parse::<i128>() {
 			Ok(v) => v,
 			Err(e) => return err_exec!("failed to parse column as i64. {}", e),
 		};
-		return Ok(Object::from_i64(n));
-	} else if head.contains("f64") {
+		return Ok(Object::from_int(n));
+	} else if head.contains("float") {
 		let n = match col.parse::<f64>() {
 			Ok(v) => v,
 			Err(e) => return err_exec!("failed to parse column as f64. {}", e),
 		};
-		return Ok(Object::from_f64(n));
+		return Ok(Object::from_float(n));
 	} else if head.contains("bool") {
 		let n = match col.parse::<bool>() {
 			Ok(v) => v,
@@ -937,30 +937,30 @@ pub fn add_sub_objects(context: &mut Context, lhs: &Object, op: &parser::AddSubO
 	match op {
 		parser::AddSubOpNode::Add => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let n = lhs.i64_value + rhs.i64_value;
-							Ok(Object::from_i64(n))
+						ObjectKind::Int => {
+							let n = lhs.int_value + rhs.int_value;
+							Ok(Object::from_int(n))
 						}
-						ObjectKind::F64 => {
-							let n = (lhs.i64_value as f64) + rhs.f64_value;
-							Ok(Object::from_f64(n))
+						ObjectKind::Float => {
+							let n = (lhs.int_value as f64) + rhs.float_value;
+							Ok(Object::from_float(n))
 						}
 						_ => {
 							return err_exec!("can't add: a + b");
 						}
 					}
 				}
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let n = lhs.f64_value + (rhs.i64_value as f64);
-							Ok(Object::from_f64(n))
+						ObjectKind::Int => {
+							let n = lhs.float_value + (rhs.int_value as f64);
+							Ok(Object::from_float(n))
 						}
-						ObjectKind::F64 => {
-							let n = lhs.f64_value + rhs.f64_value;
-							Ok(Object::from_f64(n))
+						ObjectKind::Float => {
+							let n = lhs.float_value + rhs.float_value;
+							Ok(Object::from_float(n))
 						}
 						_ => {
 							return err_exec!("can't add: a + b (2)");
@@ -981,8 +981,8 @@ pub fn add_sub_objects(context: &mut Context, lhs: &Object, op: &parser::AddSubO
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							return add_sub_objects(context, &lo, op, rhs);
@@ -997,30 +997,30 @@ pub fn add_sub_objects(context: &mut Context, lhs: &Object, op: &parser::AddSubO
 		}
 		parser::AddSubOpNode::Sub => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let n = lhs.i64_value - rhs.i64_value;
-							Ok(Object::from_i64(n))
+						ObjectKind::Int => {
+							let n = lhs.int_value - rhs.int_value;
+							Ok(Object::from_int(n))
 						}
-						ObjectKind::F64 => {
-							let n = (lhs.i64_value as f64) - rhs.f64_value;
-							Ok(Object::from_f64(n))
+						ObjectKind::Float => {
+							let n = (lhs.int_value as f64) - rhs.float_value;
+							Ok(Object::from_float(n))
 						}
 						_ => {
 							return err_exec!("can't sub: a - b");
 						}
 					}
 				}
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let n = lhs.f64_value - (rhs.i64_value as f64);
-							Ok(Object::from_f64(n))
+						ObjectKind::Int => {
+							let n = lhs.float_value - (rhs.int_value as f64);
+							Ok(Object::from_float(n))
 						}
-						ObjectKind::F64 => {
-							let n = lhs.f64_value - rhs.f64_value;
-							Ok(Object::from_f64(n))
+						ObjectKind::Float => {
+							let n = lhs.float_value - rhs.float_value;
+							Ok(Object::from_float(n))
 						}
 						_ => {
 							return err_exec!("can't sub: a - b (2)");
@@ -1029,8 +1029,8 @@ pub fn add_sub_objects(context: &mut Context, lhs: &Object, op: &parser::AddSubO
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							return add_sub_objects(context, &lo, op, rhs);
@@ -1043,7 +1043,6 @@ pub fn add_sub_objects(context: &mut Context, lhs: &Object, op: &parser::AddSubO
 				_ => err_exec!("can't sub: a - b (5)"),
 			}
 		}
-		_ => err_exec!("invalid operator: a - b"),
 	}
 }
 
@@ -1051,30 +1050,30 @@ pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivO
 	match op {
 		parser::MulDivOpNode::Mul => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let n = lhs.i64_value * rhs.i64_value;
-							Ok(Object::from_i64(n))
+						ObjectKind::Int => {
+							let n = lhs.int_value * rhs.int_value;
+							Ok(Object::from_int(n))
 						}
-						ObjectKind::F64 => {
-							let n = (lhs.i64_value as f64) * rhs.f64_value;
-							Ok(Object::from_f64(n))
+						ObjectKind::Float => {
+							let n = (lhs.int_value as f64) * rhs.float_value;
+							Ok(Object::from_float(n))
 						}
 						_ => {
 							return err_exec!("can't mul: a * b");
 						}
 					}
 				}
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let n = lhs.f64_value * (rhs.i64_value as f64);
-							Ok(Object::from_f64(n))
+						ObjectKind::Int => {
+							let n = lhs.float_value * (rhs.int_value as f64);
+							Ok(Object::from_float(n))
 						}
-						ObjectKind::F64 => {
-							let n = lhs.f64_value * rhs.f64_value;
-							Ok(Object::from_f64(n))
+						ObjectKind::Float => {
+							let n = lhs.float_value * rhs.float_value;
+							Ok(Object::from_float(n))
 						}
 						_ => {
 							return err_exec!("can't mul: a * b (2)");
@@ -1083,8 +1082,8 @@ pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivO
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							return mul_div_objects(context, &lo, op, rhs);
@@ -1099,42 +1098,42 @@ pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivO
 		}
 		parser::MulDivOpNode::Div => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							if rhs.i64_value == 0 {
+						ObjectKind::Int => {
+							if rhs.int_value == 0 {
 								return err_exec!("zero division error: a / b");
 							}
-							let n = lhs.i64_value / rhs.i64_value;
-							Ok(Object::from_i64(n))
+							let n = lhs.int_value / rhs.int_value;
+							Ok(Object::from_int(n))
 						}
-						ObjectKind::F64 => {
-							if rhs.f64_value == 0.0 {
+						ObjectKind::Float => {
+							if rhs.float_value == 0.0 {
 								return err_exec!("zero division error: a / b");
 							}
-							let n = (lhs.i64_value as f64) / rhs.f64_value;
-							Ok(Object::from_f64(n))
+							let n = (lhs.int_value as f64) / rhs.float_value;
+							Ok(Object::from_float(n))
 						}
 						_ => {
 							return err_exec!("can't div: a / b");
 						}
 					}
 				}
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							if rhs.i64_value == 0 {
+						ObjectKind::Int => {
+							if rhs.int_value == 0 {
 								return err_exec!("zero division error: a / b");
 							}
-							let n = lhs.f64_value / (rhs.i64_value as f64);
-							Ok(Object::from_f64(n))
+							let n = lhs.float_value / (rhs.int_value as f64);
+							Ok(Object::from_float(n))
 						}
-						ObjectKind::F64 => {
-							if rhs.f64_value == 0.0 {
+						ObjectKind::Float => {
+							if rhs.float_value == 0.0 {
 								return err_exec!("zero division error: a / b");
 							}
-							let n = lhs.f64_value / rhs.f64_value;
-							Ok(Object::from_f64(n))
+							let n = lhs.float_value / rhs.float_value;
+							Ok(Object::from_float(n))
 						}
 						_ => {
 							return err_exec!("can't div: a / b (2)");
@@ -1143,8 +1142,8 @@ pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivO
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							return mul_div_objects(context, &lo, op, rhs);
@@ -1159,42 +1158,42 @@ pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivO
 		}
 		parser::MulDivOpNode::Mod => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							if rhs.i64_value == 0 {
+						ObjectKind::Int => {
+							if rhs.int_value == 0 {
 								return err_exec!("zero division error: a % b");
 							}
-							let n = lhs.i64_value % rhs.i64_value;
-							Ok(Object::from_i64(n))
+							let n = lhs.int_value % rhs.int_value;
+							Ok(Object::from_int(n))
 						}
-						ObjectKind::F64 => {
-							if rhs.f64_value == 0.0 {
+						ObjectKind::Float => {
+							if rhs.float_value == 0.0 {
 								return err_exec!("zero division error: a % b");
 							}
-							let n = (lhs.i64_value as f64) % rhs.f64_value;
-							Ok(Object::from_f64(n))
+							let n = (lhs.int_value as f64) % rhs.float_value;
+							Ok(Object::from_float(n))
 						}
 						_ => {
 							return err_exec!("can't mod: a % b");
 						}
 					}
 				}
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							if rhs.i64_value == 0 {
+						ObjectKind::Int => {
+							if rhs.int_value == 0 {
 								return err_exec!("zero division error: a % b");
 							}
-							let n = lhs.f64_value % (rhs.i64_value as f64);
-							Ok(Object::from_f64(n))
+							let n = lhs.float_value % (rhs.int_value as f64);
+							Ok(Object::from_float(n))
 						}
-						ObjectKind::F64 => {
-							if rhs.f64_value == 0.0 {
+						ObjectKind::Float => {
+							if rhs.float_value == 0.0 {
 								return err_exec!("zero division error: a % b");
 							}
-							let n = lhs.f64_value % rhs.f64_value;
-							Ok(Object::from_f64(n))
+							let n = lhs.float_value % rhs.float_value;
+							Ok(Object::from_float(n))
 						}
 						_ => {
 							return err_exec!("can't mod: a % b (2)");
@@ -1203,8 +1202,8 @@ pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivO
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							return mul_div_objects(context, &lo, op, rhs);
@@ -1217,7 +1216,6 @@ pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivO
 				_ => err_exec!("can't mod: a % b (5)"),
 			}
 		}
-		_ => err_exec!("invalid operator: a % b"),
 	}
 }
 
@@ -1225,15 +1223,15 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 	match op {
 		parser::CompareOpNode::Lt => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.i64_value < rhs.i64_value;
+						ObjectKind::Int => {
+							let b = lhs.int_value < rhs.int_value;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let l = lhs.i64_value as f64;
-							let b = l < rhs.f64_value;
+						ObjectKind::Float => {
+							let l = lhs.int_value as f64;
+							let b = l < rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1243,14 +1241,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						_ => err_exec!("can't compare i64 and other: a < b"),
 					}
 				},
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.f64_value < rhs.i64_value as f64;
+						ObjectKind::Int => {
+							let b = lhs.float_value < rhs.int_value as f64;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.f64_value < rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.float_value < rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1262,8 +1260,8 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
@@ -1281,14 +1279,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 		},
 		parser::CompareOpNode::LtEq => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.i64_value <= rhs.i64_value;
+						ObjectKind::Int => {
+							let b = lhs.int_value <= rhs.int_value;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.i64_value as f64 <= rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.int_value as f64 <= rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1298,14 +1296,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						_ => err_exec!("can't compare i64 and other: a <= b"),
 					}
 				},
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.f64_value <= rhs.i64_value as f64;
+						ObjectKind::Int => {
+							let b = lhs.float_value <= rhs.int_value as f64;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.f64_value <= rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.float_value <= rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1317,8 +1315,8 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
@@ -1336,14 +1334,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 		},
 		parser::CompareOpNode::Gt => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.i64_value > rhs.i64_value;
+						ObjectKind::Int => {
+							let b = lhs.int_value > rhs.int_value;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.i64_value as f64 > rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.int_value as f64 > rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1353,14 +1351,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						_ => err_exec!("can't compare i64 and other: a > b"),
 					}
 				},
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.f64_value > rhs.i64_value as f64;
+						ObjectKind::Int => {
+							let b = lhs.float_value > rhs.int_value as f64;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.f64_value > rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.float_value > rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1372,8 +1370,8 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
@@ -1391,14 +1389,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 		},
 		parser::CompareOpNode::GtEq => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.i64_value >= rhs.i64_value;
+						ObjectKind::Int => {
+							let b = lhs.int_value >= rhs.int_value;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.i64_value as f64 >= rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.int_value as f64 >= rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1408,14 +1406,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						_ => err_exec!("can't compare i64 and other: a >= b"),
 					}
 				},
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.f64_value >= rhs.i64_value as f64;
+						ObjectKind::Int => {
+							let b = lhs.float_value >= rhs.int_value as f64;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.f64_value >= rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.float_value >= rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1427,8 +1425,8 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
@@ -1446,14 +1444,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 		},
 		parser::CompareOpNode::Eq => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.i64_value == rhs.i64_value;
+						ObjectKind::Int => {
+							let b = lhs.int_value == rhs.int_value;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.i64_value as f64 == rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.int_value as f64 == rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1463,14 +1461,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						_ => err_exec!("can't compare i64 and other: a == b"),
 					}
 				},
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.f64_value == rhs.i64_value as f64;
+						ObjectKind::Int => {
+							let b = lhs.float_value == rhs.int_value as f64;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.f64_value == rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.float_value == rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1508,8 +1506,8 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::Bool |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
@@ -1528,14 +1526,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 		},
 		parser::CompareOpNode::NotEq => {
 			match lhs.kind {
-				ObjectKind::I64 => {
+				ObjectKind::Int => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.i64_value != rhs.i64_value;
+						ObjectKind::Int => {
+							let b = lhs.int_value != rhs.int_value;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.i64_value as f64 != rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.int_value as f64 != rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1545,14 +1543,14 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						_ => err_exec!("can't compare i64 and other: a != b"),
 					}
 				},
-				ObjectKind::F64 => {
+				ObjectKind::Float => {
 					match rhs.kind {
-						ObjectKind::I64 => {
-							let b = lhs.f64_value != rhs.i64_value as f64;
+						ObjectKind::Int => {
+							let b = lhs.float_value != rhs.int_value as f64;
 							Ok(Object::from_bool(b))
 						},
-						ObjectKind::F64 => {
-							let b = lhs.f64_value != rhs.f64_value;
+						ObjectKind::Float => {
+							let b = lhs.float_value != rhs.float_value;
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
@@ -1590,8 +1588,8 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
-						ObjectKind::I64 |
-						ObjectKind::F64 |
+						ObjectKind::Int |
+						ObjectKind::Float |
 						ObjectKind::Bool |
 						ObjectKind::String => {
 							let lo = refer_ident(context, &lhs.ident)?;
@@ -1634,10 +1632,10 @@ pub fn exec_paren_idents(context: &mut Context, node: &parser::ParenIdentsNode) 
 }
 
 pub fn exec_value(context: &mut Context, node: &parser::ValueNode) -> Result<Object, Error> {
-	if let Some(i64_value) = &node.i64_value {
-		return exec_i64_value(context, i64_value);
-	} else if let Some(f64_value) = &node.f64_value {
-		return exec_f64_value(context, f64_value);
+	if let Some(int_value) = &node.int_value {
+		return exec_i64_value(context, int_value);
+	} else if let Some(float_value) = &node.float_value {
+		return exec_f64_value(context, float_value);
 	} else if let Some(bool_value) = &node.bool_value {
 		return exec_bool_value(context, bool_value);
 	} else if let Some(string) = &node.string {
@@ -1647,10 +1645,10 @@ pub fn exec_value(context: &mut Context, node: &parser::ValueNode) -> Result<Obj
 }
 
 pub fn exec_operand(context: &mut Context, node: &parser::OperandNode) -> Result<Object, Error> {
-	if let Some(i64_value) = &node.i64_value {
-		return Ok(exec_i64_value(context, i64_value)?);
-	} else if let Some(f64_value) = &node.f64_value {
-		return Ok(exec_f64_value(context, f64_value)?);
+	if let Some(int_value) = &node.int_value {
+		return Ok(exec_i64_value(context, int_value)?);
+	} else if let Some(float_value) = &node.float_value {
+		return Ok(exec_f64_value(context, float_value)?);
 	} else if let Some(bool_value) = &node.bool_value {
 		return Ok(exec_bool_value(context, bool_value)?);
 	} else if let Some(string) = &node.string {
@@ -1672,17 +1670,17 @@ pub fn exec_bool_value(_: &mut Context, node: &parser::BoolValueNode) -> Result<
 	Ok(o)
 }
 
-pub fn exec_i64_value(_: &mut Context, node: &parser::I64ValueNode) -> Result<Object, Error> {
+pub fn exec_i64_value(_: &mut Context, node: &parser::IntValueNode) -> Result<Object, Error> {
 	let mut o = Object::new();
-	o.kind = ObjectKind::I64;
-	o.i64_value = node.value;
+	o.kind = ObjectKind::Int;
+	o.int_value = node.value;
 	Ok(o)
 }
 
-pub fn exec_f64_value(_: &mut Context, node: &parser::F64ValueNode) -> Result<Object, Error> {
+pub fn exec_f64_value(_: &mut Context, node: &parser::FloatValueNode) -> Result<Object, Error> {
 	let mut o = Object::new();
-	o.kind = ObjectKind::F64;
-	o.f64_value = node.value;
+	o.kind = ObjectKind::Float;
+	o.float_value = node.value;
 	Ok(o)
 }
 
@@ -2477,11 +2475,11 @@ pub fn alter_headers_column_type(context: &mut Context, types: &Vec<HeaderType>,
 
 			for col_type in column_types.iter() {
 				match col_type {
-					parser::ColumnTypeNode::I64 => {
-						typ.is_i64 = true;
+					parser::ColumnTypeNode::Int => {
+						typ.is_int = true;
 					}
-					parser::ColumnTypeNode::F64 => {
-						typ.is_f64 = true;
+					parser::ColumnTypeNode::Float => {
+						typ.is_float = true;
 					}
 					parser::ColumnTypeNode::Bool => {
 						typ.is_bool = true;
@@ -2723,10 +2721,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64)").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT)").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64\n");
+		assert!(s == "id: INT,weight: FLOAT\n");
 	}
 
 	#[test]
@@ -2737,10 +2735,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64 PRIMARY_KEY AUTO_INCREMENT, weight: F64, name: CHAR[4])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT PRIMARY_KEY AUTO_INCREMENT, weight: FLOAT, name: CHAR[4])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64 PRIMARY_KEY AUTO_INCREMENT,weight: F64,name: CHAR[4]\n");
+		assert!(s == "id: INT PRIMARY_KEY AUTO_INCREMENT,weight: FLOAT,name: CHAR[4]\n");
 	}
 
 	#[test]
@@ -2751,15 +2749,15 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 
 		do_exec(&mut context, "ADD OF test_table (id, name, weight) VALUES (1, \"aaa\", 1.23), (2, \"bbb\", 2.23)").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,1.23,aaa
 2,2.23,bbb
 ");
@@ -2773,13 +2771,13 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD OF test_table VALUES (1, 1.23, \"aaa\"), (2, 2.23, \"bbb\")").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,1.23,aaa
 2,2.23,bbb
 ");
@@ -2793,14 +2791,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD OF test_table VALUES (1, 1.23, \"aaa\")").unwrap();
 		do_exec(&mut context, "ADD OF test_table VALUES (1, 2.23, \"bbb\")").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,1.23,aaa\n1,2.23,bbb\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,1.23,aaa\n1,2.23,bbb\n");
 	}
 
 	#[test]
@@ -2811,14 +2809,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD OF test_table").unwrap();
 		do_exec(&mut context, "ADD OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n0,0.0,\n0,0.0,\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n0,0.0,\n0,0.0,\n");
 	}
 
 	#[test]
@@ -2829,14 +2827,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 	}
 
 	#[test]
@@ -2847,14 +2845,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1 OF test_table").unwrap();
 		do_exec(&mut context, "ADD weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,0.0,\n0,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,0.0,\n0,3.14,hoge\n");
 	}
 
 	#[test]
@@ -2865,14 +2863,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64 DEFAULT 1.23, name: CHAR[128] DEFAULT \"def\")").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT DEFAULT 1.23, name: CHAR[128] DEFAULT \"def\")").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64 DEFAULT 1.23,name: CHAR[128] DEFAULT \"def\"\n");
+		assert!(s == "id: INT,weight: FLOAT DEFAULT 1.23,name: CHAR[128] DEFAULT \"def\"\n");
 		do_exec(&mut context, "ADD id = 1 OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2 OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64 DEFAULT 1.23,name: CHAR[128] DEFAULT \"def\"\n1,1.23,def\n2,1.23,def\n");
+		assert!(s == "id: INT,weight: FLOAT DEFAULT 1.23,name: CHAR[128] DEFAULT \"def\"\n1,1.23,def\n2,1.23,def\n");
 	}
 
 	#[test]
@@ -2883,13 +2881,13 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, name: CHAR[4])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, name: CHAR[4])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,name: CHAR[4]\n");
+		assert!(s == "id: INT,name: CHAR[4]\n");
 		do_exec(&mut context, "ADD id = 1, name = \"hige\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,name: CHAR[4]\n1,hige\n");
+		assert!(s == "id: INT,name: CHAR[4]\n1,hige\n");
 		match do_exec(&mut context, "ADD id = 2, name = \"hogehoge\" OF test_table") {
 			Ok(_) => panic!("why ok?"),
 			Err(e) => eprintln!("OK: {}", e),
@@ -2904,16 +2902,16 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64 AUTO_INCREMENT, name: CHAR[4])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT AUTO_INCREMENT, name: CHAR[4])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64 AUTO_INCREMENT,name: CHAR[4]\n");
+		assert!(s == "id: INT AUTO_INCREMENT,name: CHAR[4]\n");
 		do_exec(&mut context, "ADD name = \"hige\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64 AUTO_INCREMENT,name: CHAR[4]\n1,hige\n");
+		assert!(s == "id: INT AUTO_INCREMENT,name: CHAR[4]\n1,hige\n");
 		do_exec(&mut context, "ADD name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64 AUTO_INCREMENT,name: CHAR[4]\n1,hige\n2,hoge\n");
+		assert!(s == "id: INT AUTO_INCREMENT,name: CHAR[4]\n1,hige\n2,hoge\n");
 		assert!(Path::new("test_env/test_db/id/test_table__id.txt").exists());
 	}
 
@@ -2925,10 +2923,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,name: CHAR[128]\n");
+		assert!(s == "id: INT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 5, name = \"moge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 6, name = \"moge\" OF test_table").unwrap();
@@ -2936,7 +2934,7 @@ mod tests {
 		do_exec(&mut context, "ADD id = 2, name = \"moge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, name = \"moge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,name: CHAR[128]
+		assert!(s == "id: INT,name: CHAR[128]
 1,hoge
 5,moge
 6,moge
@@ -2962,10 +2960,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,name: CHAR[128]\n");
+		assert!(s == "id: INT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 5, name = \"moge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 6, name = \"moge\" OF test_table").unwrap();
@@ -2973,7 +2971,7 @@ mod tests {
 		do_exec(&mut context, "ADD id = 2, name = \"moge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, name = \"moge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,name: CHAR[128]
+		assert!(s == "id: INT,name: CHAR[128]
 1,hoge
 5,moge
 6,moge
@@ -2997,14 +2995,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,3.14,hoge
 2,3.14,moge
 ");
@@ -3023,14 +3021,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,3.14,hoge
 2,3.14,moge
 ");
@@ -3048,14 +3046,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET id, name OF test_table").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "1");
@@ -3070,14 +3068,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET ALL id, name OF test_table").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
@@ -3092,14 +3090,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET id, name OF test_table WHERE id == 2").unwrap();
 		print_selected_columns(&mut context).unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
@@ -3115,14 +3113,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET id, name OF test_table WHERE name == \"hoge\"").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
@@ -3137,14 +3135,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET id, name OF test_table WHERE id == 1 AND name == \"hige\"").unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "1");
@@ -3159,15 +3157,15 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
 3,3.14,hoge
@@ -3187,15 +3185,15 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
 3,3.14,hoge
@@ -3221,14 +3219,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET * OF test_table").unwrap();
 		assert!(context.selected_csv_columns.len() == 3);
 		assert!(context.selected_csv_columns[0] == "1");
@@ -3244,14 +3242,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table").unwrap();
@@ -3277,14 +3275,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 OR name == \"hoge\"").unwrap();
 		let s = test_get_records_to_string(&mut context);
@@ -3299,14 +3297,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id, name OF test_table WHERE id == 1 AND name == \"hige\"").unwrap();
 		let s = test_get_records_to_string(&mut context);
@@ -3320,14 +3318,14 @@ mod tests {
 			do_exec(&mut $context, "DROP DATABASE IF EXISTS test_db").unwrap();
 			do_exec(&mut $context, "CREATE DATABASE test_db").unwrap();
 			do_exec(&mut $context, "USE test_db").unwrap();
-			do_exec(&mut $context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+			do_exec(&mut $context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 			assert!(path.exists());
 			let s = fs::read_to_string(&path).unwrap();
-			assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+			assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 			do_exec(&mut $context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 			do_exec(&mut $context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 			let s = fs::read_to_string(&path).unwrap();
-			assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+			assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 	    };
 	}
 
@@ -3338,17 +3336,17 @@ mod tests {
 			do_exec(&mut $context, "DROP DATABASE IF EXISTS test_db").unwrap();
 			do_exec(&mut $context, "CREATE DATABASE test_db").unwrap();
 			do_exec(&mut $context, "USE test_db").unwrap();
-			do_exec(&mut $context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+			do_exec(&mut $context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 			assert!(path.exists());
 			let s = fs::read_to_string(&path).unwrap();
-			assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+			assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 			do_exec(&mut $context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 			do_exec(&mut $context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 			do_exec(&mut $context, "ADD id = 3, weight = 3.14, name = \"moge\" OF test_table").unwrap();
 			do_exec(&mut $context, "ADD id = 4, weight = 3.14, name = \"huge\" OF test_table").unwrap();
 			do_exec(&mut $context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 			let s = fs::read_to_string(&path).unwrap();
-			assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+			assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	    };
 	}
 
@@ -3359,14 +3357,14 @@ mod tests {
 			do_exec(&mut $context, "DROP DATABASE IF EXISTS test_db").unwrap();
 			do_exec(&mut $context, "CREATE DATABASE test_db").unwrap();
 			do_exec(&mut $context, "USE test_db").unwrap();
-			do_exec(&mut $context, "CREATE TABLE test_table (id: I64 AUTO_INCREMENT, weight: F64, is_login: BOOL, name: CHAR[128])").unwrap();
+			do_exec(&mut $context, "CREATE TABLE test_table (id: INT AUTO_INCREMENT, weight: FLOAT, is_login: BOOL, name: CHAR[128])").unwrap();
 			assert!(path.exists());
 			let s = fs::read_to_string(&path).unwrap();
-			assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n");
+			assert!(s == "id: INT AUTO_INCREMENT,weight: FLOAT,is_login: BOOL,name: CHAR[128]\n");
 			do_exec(&mut $context, "ADD weight = 60.2, is_login = true, name = \"hige\" OF test_table").unwrap();
 			do_exec(&mut $context, "ADD weight = 60.2, is_login = false, name = \"hoge\" OF test_table").unwrap();
 			let s = fs::read_to_string(&path).unwrap();
-			assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
+			assert!(s == "id: INT AUTO_INCREMENT,weight: FLOAT,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
 	    };
 	}
 
@@ -3377,7 +3375,7 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table LIMIT 2").unwrap();
@@ -3392,7 +3390,7 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id OF test_table LIMIT 0").unwrap();
@@ -3408,17 +3406,17 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"moge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,hoge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,hoge\n5,3.14,oge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
@@ -3514,7 +3512,7 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		do_exec(&mut context, "DROP TABLE test_table").unwrap();
 		assert!(!path.exists());
@@ -3528,14 +3526,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "DEL ALL OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 	}
 
 	#[test]
@@ -3546,14 +3544,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "DEL ALL OF test_table WHERE id == 1").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n2,3.14,hoge\n");
 	}
 
 	#[test]
@@ -3564,15 +3562,15 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"moge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n");
 		do_exec(&mut context, "DEL ALL OF test_table WHERE id == 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n3,3.14,moge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n3,3.14,moge\n");
 	}
 
 	#[test]
@@ -3582,19 +3580,19 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "DEL ALL OF test_table WHERE id == 1").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "DEL ALL OF test_table WHERE name == \"oge\"").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n");
 
 		do_exec(&mut context, "DEL ALL OF test_table WHERE weight == 3.14").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 	}
 
 	#[test]
@@ -3604,11 +3602,11 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "DEL OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
 
 	#[test]
@@ -3618,11 +3616,11 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "DEL OF test_table WHERE id == 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
 
 	#[test]
@@ -3632,12 +3630,12 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "DEL ALL OF test_table LIMIT 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 3,3.14,moge
 4,3.14,huge
 5,3.14,oge
@@ -3652,17 +3650,17 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"moge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
 3,3.14,moge
@@ -3672,7 +3670,7 @@ mod tests {
 
 		do_exec(&mut context, "DEL ALL OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,3.14,hige
 3,3.14,moge
 5,3.14,oge
@@ -3687,14 +3685,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "SET ALL id=10 OF test_table WHERE weight == 3.14").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n10,3.14,hige\n10,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n10,3.14,hige\n10,3.14,hoge\n");
 	}
 
 	#[test]
@@ -3705,14 +3703,14 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "SET ALL id=10, name=\"HOGE\" OF test_table WHERE weight == 1234").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 	}
 
 	#[test]
@@ -3722,7 +3720,7 @@ mod tests {
 		setup_records!(context);
 		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF test_table WHERE weight == 3.14").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n10,3.14,HOGE\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n10,3.14,HOGE\n2,3.14,hoge\n");
 	}
 
 	#[test]
@@ -3732,7 +3730,7 @@ mod tests {
 		setup_records!(context);
 		do_exec(&mut context, "SET id=10, name=\"HOGE\" OF test_table WHERE name == \"hoge\"").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n10,3.14,HOGE\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n10,3.14,HOGE\n");
 	}
 
 	#[test]
@@ -3742,7 +3740,7 @@ mod tests {
 		setup_records!(context);
 		do_exec(&mut context, "SET ALL name=\"HOGE\" OF test_table WHERE weight == 3.14").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,HOGE\n2,3.14,HOGE\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,HOGE\n2,3.14,HOGE\n");
 	}
 
 	#[test]
@@ -3752,7 +3750,7 @@ mod tests {
 		setup_records!(context);
 		do_exec(&mut context, "SET ALL name=\"HOGE\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,HOGE\n2,3.14,HOGE\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,HOGE\n2,3.14,HOGE\n");
 	}
 
 	#[test]
@@ -3762,12 +3760,12 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table LIMIT 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,1.23,hige
 2,1.23,hoge
 3,3.14,moge
@@ -3783,12 +3781,12 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table LIMIT 0").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
 3,3.14,moge
@@ -3805,21 +3803,21 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"moge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,hoge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,hoge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "SET ALL weight = 1.23 OF test_table WHERE name == \"hoge\" LIMIT 2").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 1,3.14,hige
 2,1.23,hoge
 3,3.14,moge
@@ -3834,9 +3832,9 @@ mod tests {
 		let mut context = Context::new();
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
-		match do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE F64 AUTO_INCREMENT") {
+		match do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE FLOAT AUTO_INCREMENT") {
 			Ok(_) => panic!("failed"),
 			Err(_) => {},
 		}
@@ -3848,12 +3846,12 @@ mod tests {
 		let mut context = Context::new();
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
-		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE I64 AUTO_INCREMENT PRIMARY_KEY").unwrap();
+		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE INT AUTO_INCREMENT PRIMARY_KEY").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64 PRIMARY_KEY AUTO_INCREMENT,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT PRIMARY_KEY AUTO_INCREMENT,weight: FLOAT,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
 3,3.14,moge
@@ -3870,19 +3868,19 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 
 		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN name TYPE CHAR[10]").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[10]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[10]
 1,3.14,hige
 2,3.14,hoge
 ");
@@ -3896,18 +3894,18 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 
 		match do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN name TYPE CHAR[2]") {
 			Ok(_) => panic!("failed"),
-			Err(e) => {},
+			Err(_) => {},
 		}
 	}
 
@@ -3919,18 +3917,18 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 
-		match do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN weight TYPE I64") {
+		match do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN weight TYPE INT") {
 			Ok(_) => panic!("failed"),
-			Err(e) => {},
+			Err(_) => {},
 		}
 	}
 
@@ -3942,19 +3940,19 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 
-		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE F64").unwrap();
+		do_exec(&mut context, "ALTER TABLE test_table ALTER COLUMN id TYPE FLOAT").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: F64,weight: F64,name: CHAR[128]
+		assert!(s == "id: FLOAT,weight: FLOAT,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
 ");
@@ -3966,10 +3964,10 @@ mod tests {
 		let mut context = Context::new();
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
-		do_exec(&mut context, "ALTER TABLE test_table ADD COLUMN uge I64").unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		do_exec(&mut context, "ALTER TABLE test_table ADD COLUMN uge INT").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128],uge: I64\n1,3.14,hige,0\n2,3.14,hoge,0\n3,3.14,moge,0\n4,3.14,huge,0\n5,3.14,oge,0\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128],uge: INT\n1,3.14,hige,0\n2,3.14,hoge,0\n3,3.14,moge,0\n4,3.14,huge,0\n5,3.14,oge,0\n");
 	}
 
 	#[test]
@@ -3978,10 +3976,10 @@ mod tests {
 		let mut context = Context::new();
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
-		do_exec(&mut context, "ALTER TABLE test_table ADD COLUMN uge I64 DEFAULT 100").unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		do_exec(&mut context, "ALTER TABLE test_table ADD COLUMN uge INT DEFAULT 100").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128],uge: I64 DEFAULT 100\n1,3.14,hige,100\n2,3.14,hoge,100\n3,3.14,moge,100\n4,3.14,huge,100\n5,3.14,oge,100\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128],uge: INT DEFAULT 100\n1,3.14,hige,100\n2,3.14,hoge,100\n3,3.14,moge,100\n4,3.14,huge,100\n5,3.14,oge,100\n");
 	}
 
 	#[test]
@@ -3990,7 +3988,7 @@ mod tests {
 		let mut context = Context::new();
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id < 3").unwrap();
 		let s = test_get_records_to_string(&mut context);
@@ -4003,7 +4001,7 @@ mod tests {
 		let mut context = Context::new();
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id <= 3").unwrap();
 		let s = test_get_records_to_string(&mut context);
@@ -4016,7 +4014,7 @@ mod tests {
 		let mut context = Context::new();
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id > 2").unwrap();
 		let s = test_get_records_to_string(&mut context);
@@ -4029,7 +4027,7 @@ mod tests {
 		let mut context = Context::new();
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL id,weight OF test_table WHERE id >= 3").unwrap();
 		let s = test_get_records_to_string(&mut context);
@@ -4043,7 +4041,7 @@ mod tests {
 
 		setup_records_3!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
+		assert!(s == "id: INT AUTO_INCREMENT,weight: FLOAT,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table").unwrap();
@@ -4058,7 +4056,7 @@ mod tests {
 
 		setup_records_3!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
+		assert!(s == "id: INT AUTO_INCREMENT,weight: FLOAT,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table WHERE is_login == true").unwrap();
@@ -4073,7 +4071,7 @@ mod tests {
 
 		setup_records_3!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
+		assert!(s == "id: INT AUTO_INCREMENT,weight: FLOAT,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table WHERE is_login == false").unwrap();
@@ -4088,7 +4086,7 @@ mod tests {
 
 		setup_records_3!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64 AUTO_INCREMENT,weight: F64,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
+		assert!(s == "id: INT AUTO_INCREMENT,weight: FLOAT,is_login: BOOL,name: CHAR[128]\n1,60.2,true,hige\n2,60.2,false,hoge\n");
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL * OF test_table WHERE is_login != true").unwrap();
@@ -4103,12 +4101,12 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "ALTER TABLE test_table DROP COLUMN id").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "weight: F64,name: CHAR[128]\n3.14,hige\n3.14,hoge\n3.14,moge\n3.14,huge\n3.14,oge\n");
+		assert!(s == "weight: FLOAT,name: CHAR[128]\n3.14,hige\n3.14,hoge\n3.14,moge\n3.14,huge\n3.14,oge\n");
 	}
 
 	#[test]
@@ -4118,12 +4116,12 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "ALTER TABLE test_table DROP COLUMN weight").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,name: CHAR[128]\n1,hige\n2,hoge\n3,moge\n4,huge\n5,oge\n");
+		assert!(s == "id: INT,name: CHAR[128]\n1,hige\n2,hoge\n3,moge\n4,huge\n5,oge\n");
 	}
 
 	#[test]
@@ -4133,12 +4131,12 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "ALTER TABLE test_table DROP COLUMN name").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64\n1,3.14\n2,3.14\n3,3.14\n4,3.14\n5,3.14\n");
+		assert!(s == "id: INT,weight: FLOAT\n1,3.14\n2,3.14\n3,3.14\n4,3.14\n5,3.14\n");
 	}
 
 	#[test]
@@ -4148,7 +4146,7 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		match do_exec(&mut context, "ALTER TABLE test_table DROP COLUMN nothing") {
 			Ok(_) => panic!("failed"),
@@ -4163,12 +4161,12 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "ALTER TABLE test_table RENAME COLUMN id TO user_id").unwrap();
 
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "user_id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "user_id: INT,weight: FLOAT,name: CHAR[128]
 1,3.14,hige
 2,3.14,hoge
 3,3.14,moge
@@ -4184,7 +4182,7 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "ALTER TABLE test_table RENAME TO new_table").unwrap();
 		assert!(Path::new("test_env/test_db/tables/new_table.csv").exists());
@@ -4198,7 +4196,7 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		match do_exec(&mut context, "ALTER TABLE nothing RENAME TO new_table") {
 			Ok(_) => panic!("failed"),
@@ -4213,7 +4211,7 @@ mod tests {
 
 		setup_records_2!(context);
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		match do_exec(&mut context, "ALTER TABLE test_table RENAME TO test_table") {
 			Ok(_) => panic!("failed"),
@@ -4229,10 +4227,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1 + 1, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2 - 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2 - 1 + 1, weight = 3.14, name = \"moge\" OF test_table").unwrap();
@@ -4240,7 +4238,7 @@ mod tests {
 		do_exec(&mut context, "ADD id = 4 - (2 - 1), weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 4 - 2 - 1, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 2,3.14,hige
 1,3.14,hoge
 2,3.14,moge
@@ -4258,10 +4256,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 2 * 2, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2 * 2 / 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3 / 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
@@ -4271,7 +4269,7 @@ mod tests {
 		do_exec(&mut context, "ADD id = 4 % 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2 * 3 % 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 4,3.14,hige
 2,3.14,hoge
 1,3.14,moge
@@ -4291,10 +4289,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1 + 2 * 3, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2 * 3 + 2, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 1 + 4 / 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
@@ -4303,7 +4301,7 @@ mod tests {
 		do_exec(&mut context, "ADD id = 1 + 2 - 1 * 3 / 2, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3 - 2 + 1, weight = 3.14, name = \"oge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]
 7,3.14,hige
 8,3.14,hoge
 3,3.14,moge
@@ -4341,10 +4339,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
@@ -4366,10 +4364,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
@@ -4391,10 +4389,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
@@ -4418,10 +4416,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
@@ -4448,10 +4446,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
@@ -4475,10 +4473,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
@@ -4505,10 +4503,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
@@ -4535,10 +4533,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
@@ -4565,10 +4563,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
@@ -4590,10 +4588,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
@@ -4616,10 +4614,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
@@ -4641,10 +4639,10 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		do_exec(&mut context, "USE test_db").unwrap();
-		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		assert!(path.exists());
 		let s = fs::read_to_string(&path).unwrap();
-		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
 		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"bbb\" OF test_table").unwrap();

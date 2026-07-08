@@ -283,8 +283,8 @@ impl ColumnDefinitionNode {
 
 #[derive(Debug, Clone)]
 pub struct ValueNode {
-	pub i64_value: Option<Box<I64ValueNode>>,
-	pub f64_value: Option<Box<F64ValueNode>>,
+	pub int_value: Option<Box<IntValueNode>>,
+	pub float_value: Option<Box<FloatValueNode>>,
 	pub bool_value: Option<Box<BoolValueNode>>,
 	pub string: Option<Box<StringNode>>,
 }
@@ -292,8 +292,8 @@ pub struct ValueNode {
 impl ValueNode {
 	pub fn new() -> Self {
 		Self {
-			i64_value: None,
-			f64_value: None,
+			int_value: None,
+			float_value: None,
 			bool_value: None,
 			string: None,
 		}
@@ -304,8 +304,8 @@ impl ValueNode {
 pub enum ColumnTypeNode {
 	PrimaryKey,
 	AutoIncrement,
-	I64,
-	F64,
+	Int,
+	Float,
 	Bool,
 	Char(usize),
 	Default(Box<ValueNode>),
@@ -616,8 +616,8 @@ pub enum MulDivOpNode {
 
 #[derive(Debug, Clone)]
 pub struct OperandNode {
-	pub i64_value: Option<Box<I64ValueNode>>,
-	pub f64_value: Option<Box<F64ValueNode>>,
+	pub int_value: Option<Box<IntValueNode>>,
+	pub float_value: Option<Box<FloatValueNode>>,
 	pub bool_value: Option<Box<BoolValueNode>>,
 	pub string: Option<Box<StringNode>>,
 	pub ident: Option<Box<IdentNode>>,
@@ -628,8 +628,8 @@ pub struct OperandNode {
 impl OperandNode {
 	pub fn new() -> Self {
 		Self {
-			i64_value: None,
-			f64_value: None,
+			int_value: None,
+			float_value: None,
 			bool_value: None,
 			string: None,
 			ident: None,
@@ -640,11 +640,11 @@ impl OperandNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct I64ValueNode {
-	pub value: i64,
+pub struct IntValueNode {
+	pub value: i128,
 }
 
-impl I64ValueNode {
+impl IntValueNode {
 	pub fn new() -> Self {
 		Self {
 			value: 0,
@@ -653,11 +653,11 @@ impl I64ValueNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct F64ValueNode {
+pub struct FloatValueNode {
 	pub value: f64,
 }
 
-impl F64ValueNode {
+impl FloatValueNode {
 	pub fn new() -> Self {
 		Self {
 			value: 0.0,
@@ -1217,8 +1217,8 @@ pub fn parse_create_table(tok_strm: &mut TokenStream) -> Result<Option<Box<Creat
 fn check_first_column_type(column_type: &Option<ColumnTypeNode>) -> Result<(), Error> {
 	if let Some(column_type) = column_type {
 		match column_type {
-			ColumnTypeNode::I64 |
-			ColumnTypeNode::F64 |
+			ColumnTypeNode::Int |
+			ColumnTypeNode::Float |
 			ColumnTypeNode::Bool |
 			ColumnTypeNode::Char(_) => {
 				// pass
@@ -1278,10 +1278,10 @@ pub fn parse_column_type(tok_strm: &mut TokenStream) -> Result<Option<ColumnType
 		return Ok(Some(ColumnTypeNode::PrimaryKey));		
 	} else if tok.kind == TokenKind::AutoIncrement {
 		return Ok(Some(ColumnTypeNode::AutoIncrement));		
-	} else if tok.kind == TokenKind::TypeI64 {
-		return Ok(Some(ColumnTypeNode::I64));		
-	} else if tok.kind == TokenKind::TypeF64 {
-		return Ok(Some(ColumnTypeNode::F64));		
+	} else if tok.kind == TokenKind::IntType {
+		return Ok(Some(ColumnTypeNode::Int));		
+	} else if tok.kind == TokenKind::FloatType {
+		return Ok(Some(ColumnTypeNode::Float));		
 	} else if tok.kind == TokenKind::Bool {
 		return Ok(Some(ColumnTypeNode::Bool));		
 	} else if tok.kind == TokenKind::Char {
@@ -1290,8 +1290,8 @@ pub fn parse_column_type(tok_strm: &mut TokenStream) -> Result<Option<ColumnType
 			return err_parse!("missing [ in char of column type");
 		}
 
-		let i64_value = parse_i64_value(tok_strm)?;
-		if i64_value.is_none() {
+		let int_value = parse_int_value(tok_strm)?;
+		if int_value.is_none() {
 			return err_parse!("missing number of char in column type");
 		}
 
@@ -1300,7 +1300,7 @@ pub fn parse_column_type(tok_strm: &mut TokenStream) -> Result<Option<ColumnType
 			return err_parse!("missing ] in char of column type");
 		}		
 
-		let value = i64_value.unwrap().value as usize;
+		let value = int_value.unwrap().value as usize;
 		return Ok(Some(ColumnTypeNode::Char(value)))
 	} else if tok.kind == TokenKind::Default {
 		let value = parse_value(tok_strm)?;
@@ -1318,13 +1318,13 @@ pub fn parse_column_type(tok_strm: &mut TokenStream) -> Result<Option<ColumnType
 pub fn parse_value(tok_strm: &mut TokenStream) -> Result<Option<Box<ValueNode>>, Error> {
 	let mut n = ValueNode::new();
 
-	n.i64_value = parse_i64_value(tok_strm)?;
-	if n.i64_value.is_some() {
+	n.int_value = parse_int_value(tok_strm)?;
+	if n.int_value.is_some() {
 		return Ok(Some(Box::new(n)));
 	}
 
-	n.f64_value = parse_f64_value(tok_strm)?;
-	if n.f64_value.is_some() {
+	n.float_value = parse_float_value(tok_strm)?;
+	if n.float_value.is_some() {
 		return Ok(Some(Box::new(n)));
 	}
 
@@ -2059,13 +2059,13 @@ pub fn parse_operand(tok_strm: &mut TokenStream) -> Result<Option<Box<OperandNod
 	} else {
 		tok_strm.prev();
 
-		n.i64_value = parse_i64_value(tok_strm)?;
-		if n.i64_value.is_some() {
+		n.int_value = parse_int_value(tok_strm)?;
+		if n.int_value.is_some() {
 			return Ok(Some(Box::new(n)));
 		}
 
-		n.f64_value = parse_f64_value(tok_strm)?;
-		if n.f64_value.is_some() {
+		n.float_value = parse_float_value(tok_strm)?;
+		if n.float_value.is_some() {
 			return Ok(Some(Box::new(n)));
 		}
 
@@ -2115,38 +2115,38 @@ pub fn parse_bool_value(tok_strm: &mut TokenStream) -> Result<Option<Box<BoolVal
 	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_i64_value(tok_strm: &mut TokenStream) -> Result<Option<Box<I64ValueNode>>, Error> {
-	let mut n = I64ValueNode::new();
+pub fn parse_int_value(tok_strm: &mut TokenStream) -> Result<Option<Box<IntValueNode>>, Error> {
+	let mut n = IntValueNode::new();
 
 	if tok_strm.is_end() {
 		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
-	if tok.kind != TokenKind::Int {
+	if tok.kind != TokenKind::IntValue {
 		tok_strm.prev();
 		return Ok(None);
 	}
 
-	n.value = tok.i64_value.unwrap();
+	n.value = tok.int_value.unwrap();
 
 	Ok(Some(Box::new(n)))
 }
 
-pub fn parse_f64_value(tok_strm: &mut TokenStream) -> Result<Option<Box<F64ValueNode>>, Error> {
-	let mut n = F64ValueNode::new();
+pub fn parse_float_value(tok_strm: &mut TokenStream) -> Result<Option<Box<FloatValueNode>>, Error> {
+	let mut n = FloatValueNode::new();
 
 	if tok_strm.is_end() {
 		return Ok(None);
 	}
 
 	let tok = tok_strm.get()?;
-	if tok.kind != TokenKind::Float {
+	if tok.kind != TokenKind::FloatValue {
 		tok_strm.prev();
 		return Ok(None);
 	}
 
-	n.value = tok.f64_value.unwrap();
+	n.value = tok.float_value.unwrap();
 
 	Ok(Some(Box::new(n)))
 }
@@ -2223,13 +2223,13 @@ mod tests {
 
 	#[test]
 	fn test_create_table_stmt_0() {
-		assert!(do_parse("CREATE TABLE mytab (id: I64);") == true);
+		assert!(do_parse("CREATE TABLE mytab (id: INT);") == true);
 	}
 
 	#[test]
 	fn test_create_table_stmt_0a() {
 		assert!(do_parse("
-create table mytab (id: i64 auto_increment)
+create table mytab (id: int auto_increment)
 ") == true);
 	}
 
@@ -2237,8 +2237,8 @@ create table mytab (id: i64 auto_increment)
 	fn test_create_table_stmt_1() {
 		assert!(do_parse("
 CREATE TABLE mytab (
-	id: I64 PRIMARY_KEY AUTO_INCREMENT,
-	weight: F64,
+	id: INT PRIMARY_KEY AUTO_INCREMENT,
+	weight: FLOAT,
 	name: CHAR[128],
 );
 ") == true);

@@ -26,8 +26,8 @@ Create table (create CSV file).
 
 ```
 CREATE TABLE my_table (
-	id: I64 PRIMARY_KEY AUTO_INCREMENT,
-	weight: F64,
+	id: INT PRIMARY_KEY AUTO_INCREMENT,
+	weight: FLOAT,
 	name: CHAR[100],
 );
 ```
@@ -85,7 +85,7 @@ ALTER TABLE my_table REANME TO new_table;
 Change column type.
 
 ```
-ALTER TABLE my_table ALTER COLUMN id TYPE I64 AUTO_INCREMENT;
+ALTER TABLE my_table ALTER COLUMN id TYPE INT AUTO_INCREMENT;
 ```
 
 ## GET (get CSV records)

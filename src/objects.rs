@@ -3,8 +3,8 @@ use crate::error::{Error, make_error, err_parse, err_runtime};
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeaderType {
 	pub ident: String,
-	pub is_i64: bool,
-	pub is_f64: bool,
+	pub is_int: bool,
+	pub is_float: bool,
 	pub is_bool: bool,
 	pub is_char: bool,
 	pub char_size: usize,
@@ -18,8 +18,8 @@ impl HeaderType {
 	pub fn new() -> Self {
 		Self {
 			ident: String::new(),
-			is_i64: false,
-			is_f64: false,
+			is_int: false,
+			is_float: false,
 			is_bool: false,
 			is_char: false,
 			char_size: 0,
@@ -36,10 +36,10 @@ impl HeaderType {
 		s.push_str(self.ident.as_str());
 		s.push_str(": ");
 
-		if self.is_i64 {
-			s.push_str("I64");
-		} else if self.is_f64 {
-			s.push_str("F64");
+		if self.is_int {
+			s.push_str("INT");
+		} else if self.is_float {
+			s.push_str("FLOAT");
 		} else if self.is_bool {
 			s.push_str("BOOL");
 		} else if self.is_char {
@@ -72,9 +72,9 @@ impl HeaderType {
 				return err_runtime!("missing default value");
 			}
 		} else {
-			if self.is_i64 {
+			if self.is_int {
 				return Ok(String::from("0"));
-			} else if self.is_f64 {
+			} else if self.is_float {
 				return Ok(String::from("0.0"));
 			} else if self.is_bool {
 				return Ok(String::from("false"));
@@ -86,13 +86,13 @@ impl HeaderType {
 	}
 
 	pub fn parse_str(&self, s: &str) -> Result<Object, Error> {
-		if self.is_i64 {
-			let n = match s.parse::<i64>() {
+		if self.is_int {
+			let n = match s.parse::<i128>() {
 				Ok(v) => v,
 				Err(e) => return err_parse!("failed to parse as i64. {}", e),
 			};
-			return Ok(Object::from_i64(n));
-		} else if self.is_f64 {
+			return Ok(Object::from_int(n));
+		} else if self.is_float {
 			if self.is_auto_increment {
 				return err_parse!("cannot auto increment f64");
 			}
@@ -100,7 +100,7 @@ impl HeaderType {
 				Ok(v) => v,
 				Err(e) => return err_parse!("failed to parse as f64. {}", e),
 			};
-			return Ok(Object::from_f64(n));
+			return Ok(Object::from_float(n));
 		} else if self.is_bool {
 			if self.is_auto_increment {
 				return err_parse!("cannot auto increment bool");
@@ -128,8 +128,8 @@ impl HeaderType {
 pub enum ObjectKind {
 	Nil,
 	Bool,
-	I64,
-	F64,
+	Int,
+	Float,
 	String,
 	Ident,
 	Star,
@@ -139,8 +139,8 @@ pub enum ObjectKind {
 pub struct Object {
 	pub kind: ObjectKind,
 	pub bool_value: bool,
-	pub i64_value: i64,
-	pub f64_value: f64,
+	pub int_value: i128,
+	pub float_value: f64,
 	pub string: String,
 	pub ident: String,
 }
@@ -150,8 +150,8 @@ impl Object {
 		Self {
 			kind: ObjectKind::Nil,
 			bool_value: false,
-			i64_value: 0,
-			f64_value: 0.0,
+			int_value: 0,
+			float_value: 0.0,
 			string: String::new(),
 			ident: String::new(),
 		}
@@ -168,8 +168,8 @@ impl Object {
 		match self.kind {
 			ObjectKind::Nil => { String::from("nil") }
 			ObjectKind::Bool => { format!("{}", self.bool_value) }
-			ObjectKind::I64 => { format!("{}", self.i64_value) }
-			ObjectKind::F64 => { format!("{}", self.f64_value) }
+			ObjectKind::Int => { format!("{}", self.int_value) }
+			ObjectKind::Float => { format!("{}", self.float_value) }
 			ObjectKind::String => { self.string.clone() }
 			ObjectKind::Ident => { self.ident.clone() }
 			ObjectKind::Star => { String::from("*") }
@@ -187,8 +187,8 @@ impl Object {
 		Self {
 			kind: ObjectKind::Ident,
 			bool_value: false,
-			i64_value: 0,
-			f64_value: 0.0,
+			int_value: 0,
+			float_value: 0.0,
 			string: String::new(),
 			ident: String::from(ident),
 		}		
@@ -198,8 +198,8 @@ impl Object {
 		Self {
 			kind: ObjectKind::Star,
 			bool_value: false,
-			i64_value: 0,
-			f64_value: 0.0,
+			int_value: 0,
+			float_value: 0.0,
 			string: String::new(),
 			ident: String::new(),
 		}		
@@ -209,30 +209,30 @@ impl Object {
 		Self {
 			kind: ObjectKind::Bool,
 			bool_value: b,
-			i64_value: 0,
-			f64_value: 0.0,
+			int_value: 0,
+			float_value: 0.0,
 			string: String::new(),
 			ident: String::new(),
 		}		
 	}
 
-	pub fn from_i64(n: i64) -> Self {
+	pub fn from_int(n: i128) -> Self {
 		Self {
-			kind: ObjectKind::I64,
+			kind: ObjectKind::Int,
 			bool_value: false,
-			i64_value: n,
-			f64_value: 0.0,
+			int_value: n,
+			float_value: 0.0,
 			string: String::new(),
 			ident: String::new(),
 		}		
 	}
 
-	pub fn from_f64(n: f64) -> Self {
+	pub fn from_float(n: f64) -> Self {
 		Self {
-			kind: ObjectKind::F64,
+			kind: ObjectKind::Float,
 			bool_value: false,
-			i64_value: 0,
-			f64_value: n,
+			int_value: 0,
+			float_value: n,
 			string: String::new(),
 			ident: String::new(),
 		}		
@@ -242,8 +242,8 @@ impl Object {
 		Self {
 			kind: ObjectKind::String,
 			bool_value: false,
-			i64_value: 0,
-			f64_value: 0.0,
+			int_value: 0,
+			float_value: 0.0,
 			string: s,
 			ident: String::new(),
 		}		

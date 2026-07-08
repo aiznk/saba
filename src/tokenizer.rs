@@ -24,10 +24,10 @@ pub enum TokenKind {
 	Drop, // DROP
 	Table, // TABLE
 	Tables, // TABLES
-	Int, // value of int
-	Float, // value of float
-	TypeI64, // type of int
-	TypeF64, // type of float
+	IntValue, // value of int
+	IntType, // type of int
+	FloatValue, // value of float
+	FloatType, // type of float
 	Bool, // BOOL
 	True, // true, TRUE
 	False, // false, FALSE
@@ -72,8 +72,8 @@ pub enum TokenKind {
 pub struct Token {
 	pub kind: TokenKind,
 	pub text: Option<String>,
-	pub i64_value: Option<i64>,
-	pub f64_value: Option<f64>,
+	pub int_value: Option<i128>,
+	pub float_value: Option<f64>,
 }
 
 impl Token {
@@ -82,8 +82,8 @@ impl Token {
 		Self {
 			kind: TokenKind::Nil,
 			text: None,
-			i64_value: None,
-			f64_value: None,
+			int_value: None,
+			float_value: None,
 		}
 	}
 
@@ -91,26 +91,26 @@ impl Token {
 		Self {
 			kind,
 			text,
-			i64_value: None,
-			f64_value: None,
+			int_value: None,
+			float_value: None,
 		}
 	}
 
-	pub fn from_int(n: i64) -> Self {
+	pub fn from_int(n: i128) -> Self {
 		Self {
-			kind: TokenKind::Int,
+			kind: TokenKind::IntValue,
 			text: None,
-			i64_value: Some(n),
-			f64_value: None,
+			int_value: Some(n),
+			float_value: None,
 		}
 	}
 
 	pub fn from_float(n: f64) -> Self {
 		Self {
-			kind: TokenKind::Float,
+			kind: TokenKind::FloatValue,
 			text: None,
-			i64_value: None,
-			f64_value: Some(n),
+			int_value: None,
+			float_value: Some(n),
 		}
 	}
 }
@@ -209,7 +209,7 @@ fn read_number(i: &mut usize, chars: &Vec<char>) -> Token {
 		let n = text.parse::<f64>().unwrap();
 		Token::from_float(n)
 	} else {
-		let n = text.parse::<i64>().unwrap();
+		let n = text.parse::<i128>().unwrap();
 		Token::from_int(n)
 	}
 }
@@ -335,12 +335,12 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'a' && c3 == 's' && c4 == 'c' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Asc, None));
 			i += 3;
-		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'i' && c3 == '6' && c4 == '4' && (c5 == ' ' || c5 == ',' || c5 == ')' || c5 == ';') {
-			ret.push(Token::from(TokenKind::TypeI64, None));
+		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'i' && c3 == 'n' && c4 == 't' && (c5 == ' ' || c5 == ',' || c5 == ')' || c5 == ';') {
+			ret.push(Token::from(TokenKind::IntType, None));
 			i += 3;
-		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'f' && c3 == '6' && c4 == '4' && (c5 == ' ' || c5 == ',' || c5 == ')' || c5 == ';') {
-			ret.push(Token::from(TokenKind::TypeF64, None));
-			i += 3;
+		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'f' && c3 == 'l' && c4 == 'o' && c5 == 'a' && c6 == 't' && (c7 == ' ' || c7 == ',' || c7 == ')' || c7 == ';') {
+			ret.push(Token::from(TokenKind::FloatType, None));
+			i += 5;
 		} else if c1 == 'u' && c2 == 's' && c3 == 'e' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Use, None));
 			i += 3;

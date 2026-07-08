@@ -167,9 +167,9 @@ create_database ::= 'CREATE' 'DATABASE' ident
 column_definition ::= ident ':' { column_type }+
 column_type ::= 'PRIMARY_KEY' | 
 			 'AUTO_INCREMENT' |
-             'I64' |
-             'F64' |
-             'CHAR' '[' i64_value ']' |
+             'INT' |
+             'FLOAT' |
+             'CHAR' '[' int_value ']' |
              'DEFAULT' value
 get_stmt ::= 'GET' 'ALL'? (expr_list) 'OF' table:ident where? limit? order_by?
 set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' table:ident where? limit?
@@ -193,9 +193,9 @@ add_sub_expr ::= mul_div_expr { add_sub_op mul_div_expr }*
 add_sub_op ::= ('+' | '-')
 mul_div_expr ::= operand { mul_div_op operand }*
 mul_div_op ::= ('*' | '/' | '%')
-operand ::= (i64_value | f64_value | string | ident | '*') | '(' expr ')'
-value ::= i64_value | f64_value | string
-i64_value ::= ('+' | '-')? [0-9]+
-f64_value ::= ('+' | '-')? [0-9]* '.' [0-9]+
+operand ::= (int_value | float_value | string | ident | '*') | '(' expr ')'
+value ::= int_value | float_value | string
+int_value ::= ('+' | '-')? [0-9]+
+float_value ::= ('+' | '-')? [0-9]* '.' [0-9]+
 string ::= '"' .* '"'
 ident ::= [a-zA-Z_] [a-zA-Z0-9_]*

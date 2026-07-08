@@ -25,7 +25,7 @@ pub struct Context {
 	pub unmatched_record: StringRecord,
 
 	pub test_get_records: Option<Vec<StringRecord>>,
-	pub limit_counter: i64,
+	pub limit_counter: i128,
 	pub filtered: bool,
 	pub matched: bool,
 
