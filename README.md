@@ -124,3 +124,19 @@ DEL ALL OF my_table WHERE id < 5;
 SET weight = 100.2 OF my_table WHERE id == 2;
 SET ALL name = "Taro" OF my_table;
 ```
+
+## Functions
+
+### COUNT
+
+```
+GET ALL COUNT(*) OF my_table;
+GET ALL COUNT(*) OF my_table LIMIT 3;
+```
+
+### SUM
+
+```
+GET ALL SUM(id) OF my_table;
+GET ALL SUM(id) OF my_table LIMIT 3;
+```
