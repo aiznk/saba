@@ -99,7 +99,7 @@ fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Erro
 
 		context.is_cli = is_cli;
 
-		let index = context.csv_header_idents.iter().position(|s| *s == obj.ident);
+		let index = context.csv_headers_idents.iter().position(|s| *s == obj.ident);
 		if index.is_none() {
 			return err_exec!("not found '{}' ident in sort", obj.ident);
 		}
@@ -152,7 +152,7 @@ fn exec_desc_table(context: &mut Context, node: &planner::DescTableNode) -> Resu
 
 pub fn gen_default_record(headers: &StringRecord) -> Result<Vec<String>, Error> {
 	let mut v: Vec<String> = vec![];
-	let types = parse_csv_headers_as_types(headers)?;
+	let types = parse_csv_headerss_as_types(headers)?;
 
 	for i in 0..types.len() {
 		let typ = &types[i];
@@ -162,7 +162,7 @@ pub fn gen_default_record(headers: &StringRecord) -> Result<Vec<String>, Error> 
 	Ok(v)
 }
 
-fn csv_header_to_idents(headers: &StringRecord) -> Vec<String> {
+fn csv_headers_to_idents(headers: &StringRecord) -> Vec<String> {
 	let mut header_idents: Vec<String> = vec![];
 	for header in headers.iter() {
 		if let Some((left, _right)) = header.split_once(":") {
@@ -173,7 +173,7 @@ fn csv_header_to_idents(headers: &StringRecord) -> Vec<String> {
 }
 
 pub fn find_header_position(headers: &StringRecord, col_name: &str) -> Result<Option<usize>, Error> {
-	let header_idents = csv_header_to_idents(headers);
+	let header_idents = csv_headers_to_idents(headers);
 
 	if let Some(index) = header_idents.iter().position(|s| *s == col_name) {
 		return Ok(Some(index));
@@ -239,7 +239,7 @@ fn gen_auto_increment_id(context: &mut Context, table_name: &String, typ: &Heade
 }
 
 fn set_auto_increment_ids(context: &mut Context, table_name: &String, headers: &StringRecord, row: &mut Vec<String>) -> Result<(), Error> {
-	let types = parse_csv_headers_as_types(headers)?;
+	let types = parse_csv_headerss_as_types(headers)?;
 
 	for (i, typ) in types.iter().enumerate() {
 		if !typ.is_auto_increment {
@@ -255,7 +255,7 @@ fn set_auto_increment_ids(context: &mut Context, table_name: &String, headers: &
 	Ok(())	
 }
 
-fn parse_csv_headers_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>, Error> {
+fn parse_csv_headerss_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>, Error> {
 	let mut v: Vec<HeaderType> = vec![];
 
 	for header in headers.iter() {
@@ -321,7 +321,7 @@ fn parse_csv_headers_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>,
 }
 
 fn check_invalid_append_record(record: &Vec<String>, headers: &StringRecord) -> Result<(), Error> {
-	let types = parse_csv_headers_as_types(headers)?;
+	let types = parse_csv_headerss_as_types(headers)?;
 	
 	if types.len() != record.len() {
 		return err_exec!("invalid record length");
@@ -584,7 +584,7 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 		// pass
 	} else {
 		let ident = arg.to_string();
-		let header_idents = parse_header_idents(&context.csv_header)?;
+		let header_idents = parse_header_idents(&context.csv_headers)?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -599,6 +599,52 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 	return Ok(Object::from_i64(context.count_counter as i64));
 }
 
+fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
+	let record;
+	if context.filtered {
+		if context.matched {
+			record = &context.matched_record;
+		} else {
+			return Ok(Object::from_f64(context.sum_value));
+		}
+	} else {
+		record = &context.scan_record;
+	}
+
+	if args.len() != 1 {
+		return err_exec!("invalid args length in count function");
+	}
+	let arg = &args[0];
+
+	if arg.kind == ObjectKind::Star {
+		return err_exec!("can't use star in sum function");
+	} else {
+		let ident = arg.to_string();
+		let types = parse_csv_headerss_as_types(&context.csv_headers)?;
+		let header_idents = parse_header_idents(&context.csv_headers)?;
+		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
+			return err_exec!("invalid column '{}'", ident);
+		};
+		if index >= record.len() {
+			return err_exec!("index out of range in count function");
+		}
+		let typ = &types[index];
+		let field = &record[index];
+		let obj = typ.parse_str(field)?;
+		match obj.kind {
+			ObjectKind::I64 => {
+				context.sum_value += obj.i64_value as f64;
+			}
+			ObjectKind::F64 => {
+				context.sum_value += obj.f64_value as f64;
+			}
+			_ => { return err_exec!("invalid value type in count function"); }
+		}
+	}
+
+	return Ok(Object::from_f64(context.sum_value));
+}
+
 fn call_func(context: &mut Context, func_name: &Object, args: &Vec<Object>) -> Result<Object, Error> {
 	if func_name.kind != ObjectKind::Ident {
 		return err_exec!("function name was not ident");
@@ -606,9 +652,8 @@ fn call_func(context: &mut Context, func_name: &Object, args: &Vec<Object>) -> R
 	let func_name = func_name.ident.to_lowercase();
 
 	match func_name.as_str() {
-		"count" => {
-			return call_count(context, args);
-		}
+		"count" => { return call_count(context, args); }
+		"sum" => { return call_sum(context, args); }
 		&_ => {},
 	}
 
@@ -878,8 +923,8 @@ pub fn parse_column_by_head(head: &str, col: &str) -> Result<Object, Error> {
 }
 
 pub fn refer_ident(context: &mut Context, ident: &String) -> Result<Object, Error> {
-	if let Some(index) = context.csv_header_idents.iter().position(|s| *s == *ident) {
-		let head = &context.csv_header[index];
+	if let Some(index) = context.csv_headers_idents.iter().position(|s| *s == *ident) {
+		let head = &context.csv_headers[index];
 		let col = &context.scan_record[index];
 		let o = parse_column_by_head(head, col)?;
 		Ok(o)
@@ -1705,7 +1750,7 @@ fn select_record(context: &mut Context, expr_list: &parser::ExprListNode) -> Res
 	}
 
 	for obj in objs.iter() {
-		if let Some(index) = context.csv_header_idents.iter().position(|s| {
+		if let Some(index) = context.csv_headers_idents.iter().position(|s| {
 				return *s == *obj.to_string();
 			}) {
 			let col = &row[index];
@@ -1751,7 +1796,7 @@ fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Res
 	let mut dst: Vec<String> = vec![];
 
 	for obj in objs.iter() {
-		if let Some(index) = context.csv_header_idents.iter().position(|s| {
+		if let Some(index) = context.csv_headers_idents.iter().position(|s| {
 				return *s == *obj.to_string();
 			}) {
 			let col = &row[index];
@@ -1767,16 +1812,6 @@ fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Res
 	context.selected_csv_columns = dst;
 
 	Ok(())
-}
-
-fn objects_to_string_record(objs: &Vec<Object>) -> StringRecord {
-	let mut record = StringRecord::new();
-
-	for obj in objs.iter() {
-		record.push_field(obj.to_string().as_str());
-	}
-
-	record
 }
 
 pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode) -> Result<(), Error> {
@@ -1940,13 +1975,13 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode
 
 		// read header
 		if let Some(reader) = context.table_csv_reader.as_mut() {
-			context.csv_header = match reader.headers() {
+			context.csv_headers = match reader.headers() {
 				Ok(v) => v.clone(),
 				Err(e) => return err_exec!("failed to read header of CSV file. {}", e),
 			};
 		}
 
-		parse_csv_header_idents(context)?;
+		parse_csv_headers_idents(context)?;
 	}	
 	if let Some(reader) = context.table_csv_reader.as_mut() {
 		match reader.read_record(&mut context.scan_record) {
@@ -1967,13 +2002,13 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode
 	}
 }
 
-pub fn parse_csv_header_idents(context: &mut Context) -> Result<(), Error> {
-	context.csv_header_idents.clear();
+pub fn parse_csv_headers_idents(context: &mut Context) -> Result<(), Error> {
+	context.csv_headers_idents.clear();
 
-	for col in context.csv_header.iter() {
+	for col in context.csv_headers.iter() {
 		if let Some((left, _right)) = col.split_once(':') {
 			let val = left.trim().to_string();
-			context.csv_header_idents.push(val);
+			context.csv_headers_idents.push(val);
 		}
 	}
 
@@ -2166,7 +2201,7 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNod
 }
 
 pub fn replace_columns_by_objs(context: &mut Context, cols: &StringRecord, update_expr_list_objs: &Vec<Object>) -> Result<Vec<String>, Error> {
-	let idents = &context.csv_header_idents;
+	let idents = &context.csv_headers_idents;
 	let mut row: Vec<String> = vec![];
 
 	for col in cols {
@@ -2482,7 +2517,7 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 		let org_path = context.gen_table_file_path(&table_name)?;
 		let tmp_path = context.gen_tmp_table_file_path(&table_name)?;
 		let mut headers = read_table_headers(context, &table_name)?;
-		let types = parse_csv_headers_as_types(&headers)?;
+		let types = parse_csv_headerss_as_types(&headers)?;
 		let mut writer = match Writer::from_path(&tmp_path) {
 			Ok(v) => v,
 			Err(e) => return err_exec!("failed to open CSV writer: {}", e),
@@ -2521,7 +2556,7 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 		} else if let Some(column_rename) = &node.column_rename {
 			exec_column_rename(context, column_rename, &mut writer)?;
 		} else if let Some(column_alter_type) = &node.column_alter_type {
-			let types = parse_csv_headers_as_types(&headers)?;
+			let types = parse_csv_headerss_as_types(&headers)?;
 			match exec_column_alter_type(context, &types, column_alter_type, &mut writer) {
 				Ok(_) => {},
 				Err(e) => {
@@ -4296,6 +4331,56 @@ mod tests {
 		let mut context = Context::new();
 		remove_file(&path);
 		do_exec(&mut context, "SHOW DATABASES").unwrap();
+	}
+
+	#[test]
+	fn test_sum_func() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL SUM(id) OF test_table").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "15");
+	}
+
+	#[test]
+	fn test_sum_func_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: I64, weight: F64, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: I64,weight: F64,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"hige\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"moge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"hoge\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"oge\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL SUM(id) OF test_table LIMIT 3").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "8");
 	}
 
 	#[test]

@@ -963,7 +963,7 @@ fn needs_aggregate_func_expr(node: &Box<parser::FuncExprNode>) -> Result<bool, E
 	if let Some(ident) = &node.ident {
 		let func_name = unwrap_ident_object(ident)?.to_string().to_lowercase();
 		match func_name.as_str() {
-			"count" => return Ok(true),
+			"count" | "sum" => return Ok(true),
 			&_ => return Ok(false),
 		}
 	}

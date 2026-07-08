@@ -1,6 +1,5 @@
 #[derive(Debug)]
 pub enum Error {
-    Tokenize(String),
     Parse(String),
     Exec(String),
     Runtime(String),
@@ -9,7 +8,6 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::Tokenize(s) => write!(f, "failed to tokenize. {}", s),
             Error::Parse(s) => write!(f, "failed to parse. {}", s),
             Error::Exec(s) => write!(f, "failed to execute. {}", s),
             Error::Runtime(s) => write!(f, "failed on runtime. {}", s),

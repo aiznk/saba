@@ -10,8 +10,8 @@ pub struct Context {
 	pub root_dir_path: PathBuf,
 	pub using_db_name: String,
 	pub table_csv_reader: Option<Reader<File>>,
-	pub csv_header: StringRecord,
-	pub csv_header_idents: Vec<String>,
+	pub csv_headers: StringRecord,
+	pub csv_headers_idents: Vec<String>,
 	pub scan_record: StringRecord,
 	pub selected_csv_columns: Vec<String>,
 	pub vars: HashMap<String, Box<Object>>,
@@ -28,7 +28,10 @@ pub struct Context {
 	pub limit_counter: i64,
 	pub filtered: bool,
 	pub matched: bool,
+
+	// functions
 	pub count_counter: usize,
+	pub sum_value: f64,
 }
 
 impl Context {
@@ -37,8 +40,8 @@ impl Context {
 			root_dir_path: PathBuf::new(),
 			using_db_name: String::new(),
 			table_csv_reader: None,
-			csv_header: StringRecord::new(),
-			csv_header_idents: vec![],
+			csv_headers: StringRecord::new(),
+			csv_headers_idents: vec![],
 			scan_record: StringRecord::new(),
 			selected_csv_columns: vec![],
 			vars: HashMap::new(),
@@ -51,13 +54,14 @@ impl Context {
 			filtered: false,
 			matched: false,
 			count_counter: 0,
+			sum_value: 0.0,
 		}
 	}
 
 	pub fn clear(&mut self) {
 		self.table_csv_reader = None;
-		self.csv_header.clear();
-		self.csv_header_idents.clear();
+		self.csv_headers.clear();
+		self.csv_headers_idents.clear();
 		self.scan_record.clear();
 		self.selected_csv_columns.clear();
 		self.vars.clear();
