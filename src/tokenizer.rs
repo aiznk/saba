@@ -238,6 +238,18 @@ pub fn show_tokens(tokens: &Vec<Token>) {
 	}
 }
 
+fn parse_char(c: char) -> Option<Token> {
+	match c {
+		'(' => Some(Token::from(TokenKind::LParen, None)),
+		')' => Some(Token::from(TokenKind::RParen, None)),
+		'=' => Some(Token::from(TokenKind::Assign, None)),
+		',' => Some(Token::from(TokenKind::Comma, None)),
+		':' => Some(Token::from(TokenKind::Colon, None)),
+		';' => Some(Token::from(TokenKind::Semicolon, None)),
+		_ => None,
+	}
+}
+
 pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 	let mut s = string.clone();
 	s = s.replace("\n", " ");
@@ -335,12 +347,6 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'a' && c3 == 's' && c4 == 'c' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Asc, None));
 			i += 3;
-		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'i' && c3 == 'n' && c4 == 't' && (c5 == ' ' || c5 == ',' || c5 == ')' || c5 == ';') {
-			ret.push(Token::from(TokenKind::IntType, None));
-			i += 3;
-		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'f' && c3 == 'l' && c4 == 'o' && c5 == 'a' && c6 == 't' && (c7 == ' ' || c7 == ',' || c7 == ')' || c7 == ';') {
-			ret.push(Token::from(TokenKind::FloatType, None));
-			i += 5;
 		} else if c1 == 'u' && c2 == 's' && c3 == 'e' && c4 == ' ' {
 			ret.push(Token::from(TokenKind::Use, None));
 			i += 3;
@@ -362,16 +368,40 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == 's' && c2 == 'h' && c3 == 'o' && c4 == 'w' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Show, None));
 			i += 3;
+		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'i' && c3 == 'n' && c4 == 't' && (c5 == ' ' || c5 == ',' || c5 == ')' || c5 == ';') {
+			if let Some(tok) = parse_char(c1) {
+				ret.push(tok);
+			}
+			ret.push(Token::from(TokenKind::IntType, None));
+			i += 3;
+		} else if (c1 == ' ' || c1 == '(' || c1 == ':') && c2 == 'f' && c3 == 'l' && c4 == 'o' && c5 == 'a' && c6 == 't' && (c7 == ' ' || c7 == ',' || c7 == ')' || c7 == ';') {
+			if let Some(tok) = parse_char(c1) {
+				ret.push(tok);
+			}
+			ret.push(Token::from(TokenKind::FloatType, None));
+			i += 5;
 		} else if (c1 == ' ' || c1 == ':' || c1 == '(') && c2 == 'c' && c3 == 'h' && c4 == 'a' && c5 == 'r' && (c6 == ' ' || c6 == '[') {
+			if let Some(tok) = parse_char(c1) {
+				ret.push(tok);
+			}
 			ret.push(Token::from(TokenKind::Char, None));
 			i += 4;
 		} else if (c1 == ' ' || c1 == ':' || c1 == '(') && c2 == 'b' && c3 == 'o' && c4 == 'o' && c5 == 'l' && (c6 == ' ' || c6 == ';' || c6 == ')' || c6 == ',') {
+			if let Some(tok) = parse_char(c1) {
+				ret.push(tok);
+			}
 			ret.push(Token::from(TokenKind::Bool, None));
 			i += 4;
 		} else if (c1 == ' ' || c1 == '=') && c2 == 't' && c3 == 'r' && c4 == 'u' && c5 == 'e' && (c6 == ' ' || c6 == ';' || c6 == ')' || c6 == ',') {
+			if let Some(tok) = parse_char(c1) {
+				ret.push(tok);
+			}
 			ret.push(Token::from(TokenKind::True, None));
 			i += 4;
 		} else if (c1 == ' ' || c1 == '=') && c2 == 'f' && c3 == 'a' && c4 == 'l' && c5 == 's' && c6 == 'e' && (c7 == ' ' || c7 == ';' || c7 == ',' || c7 == ')') {
+			if let Some(tok) = parse_char(c1) {
+				ret.push(tok);
+			}
 			ret.push(Token::from(TokenKind::False, None));
 			i += 5;
 		} else if c1 == ' ' && c2 == 'o' && c3 == 'r' && c4 == ' ' {
@@ -424,10 +454,16 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 			i += 8;
 		} else if (c1 == ' ' || c1 == '(' || c1 == ',' || c1 == ':') && c2 == 'p' && c3 == 'r' && c4 == 'i' && c5 == 'm' && c6 == 'a' && c7 == 'r' && c8 == 'y' && c9 == '_' && c10 == 'k' && c11 == 'e' && c12 == 'y' && (c13 == ' ' || c13 == ',' || c13 == ')' || c13 == ';') {
 			// primary_key
+			if let Some(tok) = parse_char(c1) {
+				ret.push(tok);
+			}
 			ret.push(Token::from(TokenKind::PrimaryKey, None));
 			i += 11;
 		} else if (c1 == ' ' || c1 == '(' || c1 == ',' || c1 == ':') && c2 == 'a' && c3 == 'u' && c4 == 't' && c5 == 'o' && c6 == '_' && c7 == 'i' && c8 == 'n' && c9 == 'c' && c10 == 'r' && c11 == 'e' && c12 == 'm' && c13 == 'e' && c14 == 'n' && c15 == 't' && (c16 == ' ' || c16 == ',' || c16 == ')' || c16 == ';') {
 			// auto_increment
+			if let Some(tok) = parse_char(c1) {
+				ret.push(tok);
+			}
 			ret.push(Token::from(TokenKind::AutoIncrement, None));
 			i += 14;
 		} else if c1 == ' ' && c2 == 't' && c3 == 'o' && c4 == ' ' {

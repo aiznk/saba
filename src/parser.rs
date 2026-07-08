@@ -2245,6 +2245,17 @@ CREATE TABLE mytab (
 	}
 
 	#[test]
+	fn test_create_table_stmt_2() {
+		assert!(do_parse("
+create table mytab (
+	id:int primary_key auto_increment,
+	weight:float,
+	name:char[128],
+);
+") == true);
+	}
+
+	#[test]
 	fn test_get_stmt_0() {
 		assert!(do_parse("GET id OF mytab WHERE age == 123") == true);
 	}

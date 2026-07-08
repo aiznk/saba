@@ -2026,6 +2026,10 @@ pub fn parse_header_idents(headers: &StringRecord) -> Result<Vec<String>, Error>
 	Ok(v)
 }
 
+fn is_db_dir(path: &Path) -> bool {
+	path.join("id").exists() && path.join("tables").exists()
+}
+
 pub fn exec_dir_delete_all(context: &mut Context, node: &planner::DirDeleteAllNode) -> Result<(), Error> {
 	let db_name = node.db_name.clone().unwrap();
 	if db_name == context.using_db_name {
@@ -2038,14 +2042,24 @@ pub fn exec_dir_delete_all(context: &mut Context, node: &planner::DirDeleteAllNo
 	if path.as_os_str().is_empty() {
 		return err_exec!("invalid path in dir delete all");
 	}
+	
 	if node.if_exists {
 		if path.exists() {
+			if !is_db_dir(&path) {
+				return err_exec!("does not database directory");
+			}
 			match fs::remove_dir_all(&path) {
 				Ok(_) => {},
 				Err(e) => return err_exec!("failed to remove directory. {}", e),
 			}
 		}
 	} else {
+		if !path.exists() {
+			return err_exec!("does not exists database directory");
+		}
+		if !is_db_dir(&path) {
+			return err_exec!("does not database directory");
+		}
 		match fs::remove_dir_all(&path) {
 			Ok(_) => {},
 			Err(e) => return err_exec!("failed to remove directory. {}", e),
