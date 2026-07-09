@@ -19,13 +19,13 @@ $ cargo run my_env
 Create database (create directory).
 
 ```
-CREATE DATABASE my_db;
+CREATE DATABASE mydb;
 ```
 
 Create table (create CSV file).
 
 ```
-CREATE TABLE my_table (
+CREATE TABLE mytable (
 	id: INT PRIMARY_KEY AUTO_INCREMENT,
 	weight: FLOAT,
 	name: CHAR[100],
@@ -37,13 +37,13 @@ CREATE TABLE my_table (
 Drop database (remove directory).
 
 ```
-DROP DATABASE my_db;
+DROP DATABASE mydb;
 ```
 
 Drop table (remove CSV file).
 
 ```
-DROP TABLE my_table;
+DROP TABLE mytable;
 ```
 
 ## USE
@@ -51,7 +51,7 @@ DROP TABLE my_table;
 Select current using database.
 
 ```
-USE my_db
+USE mydb
 ```
 
 ## DESC
@@ -59,7 +59,7 @@ USE my_db
 Show table info.
 
 ```
-DESC my_table;
+DESC mytable;
 ```
 
 ## ALTER (change table)
@@ -67,62 +67,62 @@ DESC my_table;
 Add column into table.
 
 ```
-ALTER TABLE my_table ADD COLUMN name CHAR[100];
+ALTER TABLE mytable ADD COLUMN name CHAR[100];
 ```
 
 Drop column from table.
 
 ```
-ALTER TABLE my_table DROP COLUMN name;
+ALTER TABLE mytable DROP COLUMN name;
 ```
 
 Rename table name.
 
 ```
-ALTER TABLE my_table REANME TO new_table;
+ALTER TABLE mytable REANME TO new_table;
 ```
 
 Change column type.
 
 ```
-ALTER TABLE my_table ALTER COLUMN id TYPE INT AUTO_INCREMENT;
+ALTER TABLE mytable ALTER COLUMN id TYPE INT AUTO_INCREMENT;
 ```
 
 ## GET (get CSV records)
 
 ```
-GET id, weight, name OF my_table;
-GET id, weight, name OF my_table WHERE id == 2;
-GET ALL id, weight, name OF my_table WHERE id < 5;
-GET ALL * OF my_table WHERE id < 5 ORDER BY id;
+GET id, weight, name OF mytable;
+GET id, weight, name OF mytable WHERE id == 2;
+GET ALL id, weight, name OF mytable WHERE id < 5;
+GET ALL * OF mytable WHERE id < 5 ORDER BY id;
 ```
 
 ## ADD (add CSV record)
 
 ```
-ADD id = 1, weight = 60.3, name = "hige" OF my_table;
+ADD id = 1, weight = 60.3, name = "hige" OF mytable;
 ```
 
 SQL like statement.
 
 ```
-ADD OF my_table (id, weight, name) VALUES (1, 1.23, "hige"), (2, 2.23, "hoge");
-ADD OF my_table VALUES (1, 1.23, "hige"), (2, 2.23, "hoge");
+ADD OF mytable (id, weight, name) VALUES (1, 1.23, "hige"), (2, 2.23, "hoge");
+ADD OF mytable VALUES (1, 1.23, "hige"), (2, 2.23, "hoge");
 ```
 
 ## DEL (delete CSV records)
 
 ```
-DEL OF my_table WHERE id == 2;
-DEL ALL OF my_table;
-DEL ALL OF my_table WHERE id < 5;
+DEL OF mytable WHERE id == 2;
+DEL ALL OF mytable;
+DEL ALL OF mytable WHERE id < 5;
 ```
 
 ## SET (update CSV records)
 
 ```
-SET weight = 100.2 OF my_table WHERE id == 2;
-SET ALL name = "Taro" OF my_table;
+SET weight = 100.2 OF mytable WHERE id == 2;
+SET ALL name = "Taro" OF mytable;
 ```
 
 ## Functions
@@ -130,13 +130,24 @@ SET ALL name = "Taro" OF my_table;
 ### COUNT
 
 ```
-GET ALL COUNT(*) OF my_table;
-GET ALL COUNT(*) OF my_table LIMIT 3;
+GET ALL COUNT(*) OF mytable;
 ```
 
 ### SUM
 
 ```
-GET ALL SUM(id) OF my_table;
-GET ALL SUM(id) OF my_table LIMIT 3;
+GET ALL SUM(id) OF mytable;
+```
+
+### AVG
+
+```
+GET ALL AVG(id) OF mytable;
+```
+
+### MIN, MAX
+
+```
+GET ALL MIN(id) OF mytable;
+GET ALL MAX(id) OF mytable;
 ```
