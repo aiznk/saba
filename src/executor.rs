@@ -700,6 +700,98 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 	return Ok(Object::from_float(context.sum_value));
 }
 
+fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
+	let record;
+	if context.filtered {
+		if context.matched {
+			record = &context.matched_record;
+		} else {
+			return Ok(Object::from_float(context.max_value));
+		}
+	} else {
+		record = &context.scan_record;
+	}
+
+	if args.len() != 1 {
+		return err_exec!("invalid args length in max function");
+	}
+	let arg = &args[0];
+
+	if arg.kind == ObjectKind::Star {
+		return err_exec!("can't use star in max function");
+	} else {
+		let ident = arg.to_string();
+		let types = parse_csv_headers_as_types(&context.csv_headers)?;
+		let header_idents = parse_header_idents(&context.csv_headers)?;
+		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
+			return err_exec!("invalid column '{}'", ident);
+		};
+		if index >= record.len() {
+			return err_exec!("index out of range in max function");
+		}
+		let typ = &types[index];
+		let field = &record[index];
+		let obj = typ.parse_str(field)?;
+		match obj.kind {
+			ObjectKind::Int => {
+				context.max_value = context.max_value.max(obj.int_value as f64);
+			}
+			ObjectKind::Float => {
+				context.max_value = context.max_value.max(obj.float_value);
+			}
+			_ => { return err_exec!("invalid value type in max function"); }
+		}
+	}
+
+	return Ok(Object::from_float(context.max_value));
+}
+
+fn call_min(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
+	let record;
+	if context.filtered {
+		if context.matched {
+			record = &context.matched_record;
+		} else {
+			return Ok(Object::from_float(context.min_value));
+		}
+	} else {
+		record = &context.scan_record;
+	}
+
+	if args.len() != 1 {
+		return err_exec!("invalid args length in min function");
+	}
+	let arg = &args[0];
+
+	if arg.kind == ObjectKind::Star {
+		return err_exec!("can't use star in min function");
+	} else {
+		let ident = arg.to_string();
+		let types = parse_csv_headers_as_types(&context.csv_headers)?;
+		let header_idents = parse_header_idents(&context.csv_headers)?;
+		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
+			return err_exec!("invalid column '{}'", ident);
+		};
+		if index >= record.len() {
+			return err_exec!("index out of range in min function");
+		}
+		let typ = &types[index];
+		let field = &record[index];
+		let obj = typ.parse_str(field)?;
+		match obj.kind {
+			ObjectKind::Int => {
+				context.min_value = context.min_value.min(obj.int_value as f64);
+			}
+			ObjectKind::Float => {
+				context.min_value = context.min_value.min(obj.float_value);
+			}
+			_ => { return err_exec!("invalid value type in min function"); }
+		}
+	}
+
+	return Ok(Object::from_float(context.min_value));
+}
+
 fn call_func(context: &mut Context, func_name: &Object, args: &Vec<Object>) -> Result<Object, Error> {
 	if func_name.kind != ObjectKind::Ident {
 		return err_exec!("function name was not ident");
@@ -710,6 +802,8 @@ fn call_func(context: &mut Context, func_name: &Object, args: &Vec<Object>) -> R
 		"count" => { return call_count(context, args); }
 		"sum" => { return call_sum(context, args); }
 		"avg" => { return call_avg(context, args); }
+		"min" => { return call_min(context, args); }
+		"max" => { return call_max(context, args); }
 		&_ => {},
 	}
 
@@ -4780,5 +4874,105 @@ mod tests {
 		println!("avg_counter[{}]", context.avg_counter);
 		assert!(context.selected_csv_columns.len() == 1);
 		assert!(context.selected_csv_columns[0] == "2");
+	}
+
+	#[test]
+	fn test_min_func_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL MIN(id) OF test_table").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "1");
+	}
+
+	#[test]
+	fn test_min_func_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL MIN(id) OF test_table WHERE name == \"aaa\"").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "1");
+	}
+
+	#[test]
+	fn test_max_func_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL MAX(id) OF test_table").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "5");
+	}
+
+	#[test]
+	fn test_max_func_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL MAX(id) OF test_table WHERE name == \"aaa\"").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "3");
 	}
 }

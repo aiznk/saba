@@ -34,6 +34,8 @@ pub struct Context {
 	pub sum_value: f64,
 	pub avg_sum_value: f64,
 	pub avg_counter: usize,
+	pub min_value: f64,
+	pub max_value: f64,
 }
 
 impl Context {
@@ -59,6 +61,8 @@ impl Context {
 			sum_value: 0.0,
 			avg_sum_value: 0.0,
 			avg_counter: 0,
+			min_value: f64::MAX,
+			max_value: 0.0,
 		}
 	}
 
@@ -82,6 +86,8 @@ impl Context {
 		self.sum_value = 0.0;
 		self.avg_sum_value = 0.0;
 		self.avg_counter = 0;
+		self.min_value = f64::MAX;
+		self.max_value = 0.0;
 	}
 
 	pub fn gen_db_dir_path(&self, db_name: &str) -> Result<PathBuf, Error> {

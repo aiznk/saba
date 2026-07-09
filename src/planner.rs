@@ -1,4 +1,4 @@
-use crate::parser::{FuncExprNode, QueryNode};
+use crate::parser::{QueryNode};
 use crate::parser;
 use crate::error::{Error, make_error, err_planning};
 use crate::tokenizer::{TokenKind};
@@ -963,7 +963,8 @@ fn needs_aggregate_func_expr(node: &Box<parser::FuncExprNode>) -> Result<bool, E
 	if let Some(ident) = &node.ident {
 		let func_name = unwrap_ident_object(ident)?.to_string().to_lowercase();
 		match func_name.as_str() {
-			"count" | "sum" | "avg" => return Ok(true),
+			"count" | "sum" | "avg" | "min" | "max"
+				=> return Ok(true),
 			&_ => return Ok(false),
 		}
 	}
