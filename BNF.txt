@@ -147,6 +147,12 @@
 	   - Filter (WHERE id > 100)
        - CsvScan (read mytab)
 
+## FOR
+
+> for $i in (0..3)
+> 	add weight = float($i), name = "hoge" of mytab;
+> endfor;
+
 ## BNF
 
 query ::= { stmt ';' }*

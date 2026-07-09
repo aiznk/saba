@@ -32,6 +32,8 @@ pub struct Context {
 	// functions
 	pub count_counter: usize,
 	pub sum_value: f64,
+	pub avg_sum_value: f64,
+	pub avg_counter: usize,
 }
 
 impl Context {
@@ -55,6 +57,8 @@ impl Context {
 			matched: false,
 			count_counter: 0,
 			sum_value: 0.0,
+			avg_sum_value: 0.0,
+			avg_counter: 0,
 		}
 	}
 
@@ -76,6 +80,8 @@ impl Context {
 		self.matched = false;
 		self.count_counter = 0;
 		self.sum_value = 0.0;
+		self.avg_sum_value = 0.0;
+		self.avg_counter = 0;
 	}
 
 	pub fn gen_db_dir_path(&self, db_name: &str) -> Result<PathBuf, Error> {

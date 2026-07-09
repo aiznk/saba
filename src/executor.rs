@@ -152,7 +152,7 @@ fn exec_desc_table(context: &mut Context, node: &planner::DescTableNode) -> Resu
 
 pub fn gen_default_record(headers: &StringRecord) -> Result<Vec<String>, Error> {
 	let mut v: Vec<String> = vec![];
-	let types = parse_csv_headerss_as_types(headers)?;
+	let types = parse_csv_headers_as_types(headers)?;
 
 	for i in 0..types.len() {
 		let typ = &types[i];
@@ -239,7 +239,7 @@ fn gen_auto_increment_id(context: &mut Context, table_name: &String, typ: &Heade
 }
 
 fn set_auto_increment_ids(context: &mut Context, table_name: &String, headers: &StringRecord, row: &mut Vec<String>) -> Result<(), Error> {
-	let types = parse_csv_headerss_as_types(headers)?;
+	let types = parse_csv_headers_as_types(headers)?;
 
 	for (i, typ) in types.iter().enumerate() {
 		if !typ.is_auto_increment {
@@ -255,7 +255,7 @@ fn set_auto_increment_ids(context: &mut Context, table_name: &String, headers: &
 	Ok(())	
 }
 
-fn parse_csv_headerss_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>, Error> {
+fn parse_csv_headers_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>, Error> {
 	let mut v: Vec<HeaderType> = vec![];
 
 	for header in headers.iter() {
@@ -321,7 +321,7 @@ fn parse_csv_headerss_as_types(headers: &StringRecord) -> Result<Vec<HeaderType>
 }
 
 fn check_invalid_append_record(record: &Vec<String>, headers: &StringRecord) -> Result<(), Error> {
-	let types = parse_csv_headerss_as_types(headers)?;
+	let types = parse_csv_headers_as_types(headers)?;
 	
 	if types.len() != record.len() {
 		return err_exec!("invalid record length");
@@ -599,6 +599,61 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 	return Ok(Object::from_int(context.count_counter as i128));
 }
 
+fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
+
+	let record;
+	if context.filtered {
+		if context.matched {
+			record = &context.matched_record;
+			context.avg_counter += 1;
+		} else {
+			if context.avg_counter == 0 {
+				return Ok(Object::from_float(context.avg_sum_value));
+			}
+			return Ok(Object::from_float(context.avg_sum_value / context.avg_counter as f64));
+		}
+	} else {
+		record = &context.scan_record;
+		context.avg_counter += 1;
+	}
+
+	if args.len() != 1 {
+		return err_exec!("invalid args length in avg function");
+	}
+	let arg = &args[0];
+
+	if arg.kind == ObjectKind::Star {
+		return err_exec!("can't use star in avg function");
+	} else {
+		let ident = arg.to_string();
+		let types = parse_csv_headers_as_types(&context.csv_headers)?;
+		let header_idents = parse_header_idents(&context.csv_headers)?;
+		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
+			return err_exec!("invalid column '{}'", ident);
+		};
+		if index >= record.len() {
+			return err_exec!("index out of range in avg function");
+		}
+		let typ = &types[index];
+		let field = &record[index];
+		let obj = typ.parse_str(field)?;
+		match obj.kind {
+			ObjectKind::Int => {
+				context.avg_sum_value += obj.int_value as f64;
+			}
+			ObjectKind::Float => {
+				context.avg_sum_value += obj.float_value;
+			}
+			_ => { return err_exec!("invalid value type in avg function"); }
+		}
+	}
+
+	if context.avg_counter == 0 {
+		return Ok(Object::from_float(context.avg_sum_value));
+	}
+	return Ok(Object::from_float(context.avg_sum_value / context.avg_counter as f64));
+}
+
 fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
 	if context.filtered {
@@ -612,7 +667,7 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 	}
 
 	if args.len() != 1 {
-		return err_exec!("invalid args length in count function");
+		return err_exec!("invalid args length in sum function");
 	}
 	let arg = &args[0];
 
@@ -620,13 +675,13 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		return err_exec!("can't use star in sum function");
 	} else {
 		let ident = arg.to_string();
-		let types = parse_csv_headerss_as_types(&context.csv_headers)?;
+		let types = parse_csv_headers_as_types(&context.csv_headers)?;
 		let header_idents = parse_header_idents(&context.csv_headers)?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
 		if index >= record.len() {
-			return err_exec!("index out of range in count function");
+			return err_exec!("index out of range in sum function");
 		}
 		let typ = &types[index];
 		let field = &record[index];
@@ -638,7 +693,7 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 			ObjectKind::Float => {
 				context.sum_value += obj.float_value as f64;
 			}
-			_ => { return err_exec!("invalid value type in count function"); }
+			_ => { return err_exec!("invalid value type in sum function"); }
 		}
 	}
 
@@ -654,6 +709,7 @@ fn call_func(context: &mut Context, func_name: &Object, args: &Vec<Object>) -> R
 	match func_name.as_str() {
 		"count" => { return call_count(context, args); }
 		"sum" => { return call_sum(context, args); }
+		"avg" => { return call_avg(context, args); }
 		&_ => {},
 	}
 
@@ -2529,7 +2585,7 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 		let org_path = context.gen_table_file_path(&table_name)?;
 		let tmp_path = context.gen_tmp_table_file_path(&table_name)?;
 		let mut headers = read_table_headers(context, &table_name)?;
-		let types = parse_csv_headerss_as_types(&headers)?;
+		let types = parse_csv_headers_as_types(&headers)?;
 		let mut writer = match Writer::from_path(&tmp_path) {
 			Ok(v) => v,
 			Err(e) => return err_exec!("failed to open CSV writer: {}", e),
@@ -2568,7 +2624,7 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 		} else if let Some(column_rename) = &node.column_rename {
 			exec_column_rename(context, column_rename, &mut writer)?;
 		} else if let Some(column_alter_type) = &node.column_alter_type {
-			let types = parse_csv_headerss_as_types(&headers)?;
+			let types = parse_csv_headers_as_types(&headers)?;
 			match exec_column_alter_type(context, &types, column_alter_type, &mut writer) {
 				Ok(_) => {},
 				Err(e) => {
@@ -4668,5 +4724,61 @@ mod tests {
 
 		assert!(context.selected_csv_columns.len() == 1);
 		assert!(context.selected_csv_columns[0] == "1");
+	}
+
+	#[test]
+	fn test_avg_func_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"zzz\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"xxx\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"ccc\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL AVG(id) OF test_table").unwrap();
+
+		println!("[{}]", context.selected_csv_columns[0]);
+		println!("avg_sum_value[{}]", context.avg_sum_value);
+		println!("avg_counter[{}]", context.avg_counter);
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "3");
+	}
+
+	#[test]
+	fn test_avg_func_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL AVG(id) OF test_table WHERE name == \"aaa\"").unwrap();
+
+		println!("[{}]", context.selected_csv_columns[0]);
+		println!("avg_sum_value[{}]", context.avg_sum_value);
+		println!("avg_counter[{}]", context.avg_counter);
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "2");
 	}
 }
