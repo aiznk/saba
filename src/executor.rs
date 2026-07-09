@@ -584,7 +584,7 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 		// pass
 	} else {
 		let ident = arg.to_string();
-		let header_idents = parse_header_idents(&context.csv_headers)?;
+		let header_idents = &context.csv_headers_idents;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -626,8 +626,8 @@ fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		return err_exec!("can't use star in avg function");
 	} else {
 		let ident = arg.to_string();
-		let types = parse_csv_headers_as_types(&context.csv_headers)?;
-		let header_idents = parse_header_idents(&context.csv_headers)?;
+		let types = &context.csv_header_types;
+		let header_idents = &context.csv_headers_idents;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -675,8 +675,8 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		return err_exec!("can't use star in sum function");
 	} else {
 		let ident = arg.to_string();
-		let types = parse_csv_headers_as_types(&context.csv_headers)?;
-		let header_idents = parse_header_idents(&context.csv_headers)?;
+		let types = &context.csv_header_types;
+		let header_idents = &context.csv_headers_idents;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -721,8 +721,8 @@ fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		return err_exec!("can't use star in max function");
 	} else {
 		let ident = arg.to_string();
-		let types = parse_csv_headers_as_types(&context.csv_headers)?;
-		let header_idents = parse_header_idents(&context.csv_headers)?;
+		let types = &context.csv_header_types;
+		let header_idents = &context.csv_headers_idents;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -767,8 +767,8 @@ fn call_min(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		return err_exec!("can't use star in min function");
 	} else {
 		let ident = arg.to_string();
-		let types = parse_csv_headers_as_types(&context.csv_headers)?;
-		let header_idents = parse_header_idents(&context.csv_headers)?;
+		let types = &context.csv_header_types;
+		let header_idents = &context.csv_headers_idents;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -2127,6 +2127,8 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode
 				Ok(v) => v.clone(),
 				Err(e) => return err_exec!("failed to read header of CSV file. {}", e),
 			};
+			context.csv_header_types = parse_csv_headers_as_types(&context.csv_headers)?;
+			context.csv_headers_idents = parse_header_idents(&context.csv_headers)?;
 		}
 
 		parse_csv_headers_idents(context)?;
