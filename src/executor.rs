@@ -49,6 +49,8 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		exec_csv_file_rewrite(context, &csv_file_rewrite)?;
 	} else if let Some(csv_file_rename) = &node.csv_file_rename {
 		exec_csv_file_rename(context, &csv_file_rename)?;
+	} else {
+		return err_exec!("invalid state: exec plan");
 	}
 
 	Ok(())
@@ -88,12 +90,17 @@ fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Erro
 		project.limit = None;
 
 		while exec_project(context, &project)? {
+			if context.skip {
+				continue;
+			}
 			if context.filtered {
 				if context.matched {
 					records.push(context.matched_record.clone());
+					print_record("matched", &context.matched_record);
 				}
 			} else {
 				records.push(context.scan_record.clone());
+				print_record("scan", &context.matched_record);
 			}
 		}
 
@@ -5228,5 +5235,33 @@ mod tests {
 
 		assert!(context.selected_csv_columns.len() == 1);
 		assert!(context.selected_csv_columns[0] == "5");
+	}
+
+	#[test]
+	fn test_distinct_order_by() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 1.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 2.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 1.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL DISTINCT name OF test_table ORDER BY name DESC").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "4,2,bbb
+1,1,aaa
+");
 	}
 }

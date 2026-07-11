@@ -1026,7 +1026,6 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 
 		filter.csv_file_scan = Some(Box::new(csv_file_scan));
 		distinct.enable = node.distinct;
-		println!("distinct.enable[{}]", distinct.enable);
 		distinct.filter = Some(Box::new(filter));
 		aggregate.distinct = Some(Box::new(distinct));
 		aggregate.all = node.all;
@@ -1066,6 +1065,8 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 				sort.is_asc = order_by.is_asc;
 				sort.all = node.all;
 				plan.sort = Some(Box::new(sort));
+			} else {
+				return err_planning!("invalid state: plan get stmt");
 			}
 		} else {
 			filter.csv_file_scan = Some(Box::new(csv_file_scan));
