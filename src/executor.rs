@@ -565,7 +565,6 @@ pub fn exec_ass_expr(context: &mut Context, node: &parser::AssExprNode) -> Resul
 
 fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	println!("call_count: context.skip[{}] counter[{}]", context.skip, context.count_counter);
 	if context.skip {
 		return Ok(Object::from_int(context.count_counter as i128));
 	}
@@ -605,7 +604,6 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 
 fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	println!("call_avg: skip[{}]", context.skip);
 	if context.skip {
 		if context.avg_counter == 0 {
 			return Ok(Object::from_float(context.avg_sum_value));
@@ -823,7 +821,7 @@ fn call_func(context: &mut Context, func_name: &Object, args: &Vec<Object>) -> R
 		"avg" => { return call_avg(context, args); }
 		"min" => { return call_min(context, args); }
 		"max" => { return call_max(context, args); }
-		&_ => {},
+		&_ => return err_exec!("unknown function name '{}'", func_name),
 	}
 
 	Ok(Object::new())
