@@ -96,11 +96,9 @@ fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Erro
 			if context.filtered {
 				if context.matched {
 					records.push(context.matched_record.clone());
-					print_record("matched", &context.matched_record);
 				}
 			} else {
 				records.push(context.scan_record.clone());
-				print_record("scan", &context.matched_record);
 			}
 		}
 
