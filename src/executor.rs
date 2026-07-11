@@ -11,7 +11,7 @@ use std::io::{Write};
 use csv::{Reader, Writer, StringRecord};
 use regex::Regex;
 
-const DEBUG: bool = true;
+const DEBUG: bool = false;
 
 pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Error> {
 	for plan in node.plans.iter() {
