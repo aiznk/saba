@@ -80,6 +80,23 @@ impl CsvFileRewriteNode {
 }
 
 #[derive(Clone, Debug)]
+pub struct DistinctNode {
+	pub enable: bool,
+	pub filter: Option<Box<FilterNode>>,
+	pub expr_list: Option<Box<parser::ExprListNode>>,
+}
+
+impl DistinctNode {
+	pub fn new() -> Self {
+		Self {
+			enable: false,
+			filter: None,
+			expr_list: None,
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
 pub struct SortNode {
 	pub expr: Option<Box<parser::ExprNode>>,
 	pub project: Option<Box<ProjectNode>>,
@@ -317,7 +334,7 @@ impl CsvFileAppendNode {
 
 #[derive(Clone, Debug)]
 pub struct AggregateNode {
-	pub filter: Option<Box<FilterNode>>,
+	pub distinct: Option<Box<DistinctNode>>,
 	pub limit: Option<Box<parser::LimitNode>>,
 	pub all: bool,
 	pub expr_list: Option<Box<parser::ExprListNode>>,
@@ -326,7 +343,7 @@ pub struct AggregateNode {
 impl AggregateNode {
 	pub fn new() -> Self {
 		Self {
-			filter: None,
+			distinct: None,
 			limit: None,
 			all: false,
 			expr_list: None,
@@ -337,7 +354,7 @@ impl AggregateNode {
 #[derive(Clone, Debug)]
 pub struct ProjectNode {
 	pub method: TokenKind,
-	pub filter: Option<Box<FilterNode>>,
+	pub distinct: Option<Box<DistinctNode>>,
 	pub limit: Option<Box<parser::LimitNode>>,
 	pub all: bool,
 	pub expr_list: Option<Box<parser::ExprListNode>>,
@@ -347,7 +364,7 @@ impl ProjectNode {
 	pub fn new() -> Self {
 		Self {
 			method: TokenKind::Nil,
-			filter: None,
+			distinct: None,
 			limit: None,
 			all: false,
 			expr_list: None,
@@ -493,6 +510,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		let mut n = CsvFileRewriteNode::new();
 		let mut column_add = ColumnAddNode::new();
 		let mut project = ProjectNode::new();
+		let mut distinct = DistinctNode::new();
 		let mut filter = FilterNode::new();
 		let mut csv_file_scan = CsvFileScanNode::new();
 
@@ -528,7 +546,8 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		column_add.column_definition_string = Some(new_type);
 
 		filter.csv_file_scan = Some(Box::new(csv_file_scan));
-		project.filter = Some(Box::new(filter));
+		distinct.filter = Some(Box::new(filter));
+		project.distinct = Some(Box::new(distinct));
 		column_add.project = Some(Box::new(project));
 		n.column_add = Some(Box::new(column_add));
 		plan.csv_file_rewrite = Some(Box::new(n));
@@ -537,6 +556,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		let mut n = CsvFileRewriteNode::new();
 		let mut column_drop = ColumnDropNode::new();
 		let mut project = ProjectNode::new();
+		let mut distinct = DistinctNode::new();
 		let mut filter = FilterNode::new();
 		let mut csv_file_scan = CsvFileScanNode::new();
 
@@ -557,7 +577,8 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		}
 
 		filter.csv_file_scan = Some(Box::new(csv_file_scan));
-		project.filter = Some(Box::new(filter));
+		distinct.filter = Some(Box::new(filter));
+		project.distinct = Some(Box::new(distinct));
 		column_drop.project = Some(Box::new(project));
 		n.column_drop = Some(Box::new(column_drop));
 		plan.csv_file_rewrite = Some(Box::new(n));
@@ -566,6 +587,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		let mut n = CsvFileRewriteNode::new();
 		let mut column_rename = ColumnRenameNode::new();
 		let mut project = ProjectNode::new();
+		let mut distinct = DistinctNode::new();
 		let mut filter = FilterNode::new();
 		let mut csv_file_scan = CsvFileScanNode::new();
 
@@ -590,7 +612,8 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		}
 
 		filter.csv_file_scan = Some(Box::new(csv_file_scan));
-		project.filter = Some(Box::new(filter));
+		distinct.filter = Some(Box::new(filter));
+		project.distinct = Some(Box::new(distinct));
 		column_rename.project = Some(Box::new(project));
 		n.column_rename = Some(Box::new(column_rename));
 		plan.csv_file_rewrite = Some(Box::new(n));
@@ -615,6 +638,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		let mut rewrite = CsvFileRewriteNode::new();
 		let mut column_alter_type = ColumnAlterTypeNode::new();
 		let mut project = ProjectNode::new();
+		let mut distinct = DistinctNode::new();
 		let mut filter = FilterNode::new();
 		let mut csv_file_scan = CsvFileScanNode::new();
 
@@ -637,7 +661,8 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		column_alter_type.column_types = alter_column_type.column_types.clone();
 
 		filter.csv_file_scan = Some(Box::new(csv_file_scan));
-		project.filter = Some(Box::new(filter));
+		distinct.filter = Some(Box::new(filter));
+		project.distinct = Some(Box::new(distinct));
 		column_alter_type.project = Some(Box::new(project));
 		rewrite.column_alter_type = Some(Box::new(column_alter_type));
 		plan.csv_file_rewrite = Some(Box::new(rewrite));
@@ -852,6 +877,7 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 	let mut rewrite = CsvFileRewriteNode::new();
 	let mut row_delete = RowDeleteNode::new();
 	let mut project = ProjectNode::new();
+	let mut distinct = DistinctNode::new();
 	let mut filter = FilterNode::new();
 	let mut csv_file_scan = CsvFileScanNode::new();
 
@@ -875,7 +901,8 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 		project.limit = Some(limit.clone());
 	}
 
-	project.filter = Some(Box::new(filter));
+	distinct.filter = Some(Box::new(filter));
+	project.distinct = Some(Box::new(distinct));
 	row_delete.project = Some(Box::new(project));
 	rewrite.row_delete = Some(Box::new(row_delete));
 	plan.csv_file_rewrite = Some(Box::new(rewrite));
@@ -887,6 +914,7 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 	let mut rewrite = CsvFileRewriteNode::new();
 	let mut row_update = RowUpdateNode::new();
 	let mut project = ProjectNode::new();
+	let mut distinct = DistinctNode::new();
 	let mut filter = FilterNode::new();
 	let mut csv_file_scan = CsvFileScanNode::new();
 
@@ -917,7 +945,8 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 	}
 
 	filter.csv_file_scan = Some(Box::new(csv_file_scan));
-	project.filter = Some(Box::new(filter));
+	distinct.filter = Some(Box::new(filter));
+	project.distinct = Some(Box::new(distinct));
 	row_update.all = node.all;
 	row_update.project = Some(Box::new(project));	
 	rewrite.row_update = Some(Box::new(row_update));
@@ -973,6 +1002,7 @@ fn needs_aggregate_func_expr(node: &Box<parser::FuncExprNode>) -> Result<bool, E
 
 pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
 	let mut filter = FilterNode::new();
+	let mut distinct = DistinctNode::new();
 	let mut csv_file_scan = CsvFileScanNode::new();
 	let mut sort = SortNode::new();
 
@@ -981,6 +1011,7 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 		aggregate.all = node.all;
 		if let Some(expr_list) = &node.expr_list {
 			aggregate.expr_list = Some(expr_list.clone());
+			distinct.expr_list = Some(expr_list.clone());
 		}		
 		if let Some(table) = &node.table {
 			csv_file_scan.table_name = unwrap_ident_object(&table)?.to_string();
@@ -994,7 +1025,10 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 		}
 
 		filter.csv_file_scan = Some(Box::new(csv_file_scan));
-		aggregate.filter = Some(Box::new(filter));
+		distinct.enable = node.distinct;
+		println!("distinct.enable[{}]", distinct.enable);
+		distinct.filter = Some(Box::new(filter));
+		aggregate.distinct = Some(Box::new(distinct));
 		aggregate.all = node.all;
 		plan.aggregate = Some(Box::new(aggregate));		
 
@@ -1004,6 +1038,7 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 
 		if let Some(expr_list) = &node.expr_list {
 			project.expr_list = Some(expr_list.clone());
+			distinct.expr_list = Some(expr_list.clone());
 		}
 
 		if let Some(table) = &node.table {
@@ -1022,7 +1057,9 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 		if let Some(order_by) = &node.order_by {
 			if let Some(expr) = &order_by.expr {
 				filter.csv_file_scan = Some(Box::new(csv_file_scan));
-				project.filter = Some(Box::new(filter));
+				distinct.enable = node.distinct;
+				distinct.filter = Some(Box::new(filter));
+				project.distinct = Some(Box::new(distinct));
 				project.all = true; // always true
 				sort.expr = Some(expr.clone());	
 				sort.project = Some(Box::new(project));
@@ -1032,7 +1069,9 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 			}
 		} else {
 			filter.csv_file_scan = Some(Box::new(csv_file_scan));
-			project.filter = Some(Box::new(filter));
+			distinct.enable = node.distinct;
+			distinct.filter = Some(Box::new(filter));
+			project.distinct = Some(Box::new(distinct));
 			project.all = node.all;
 			plan.project = Some(Box::new(project));		
 		}

@@ -7,6 +7,7 @@ pub enum TokenKind {
 	String, // "str"
 	Create, // CREATE
 	Rename, // RENAME
+	Distinct, // DISTINCT
 	To, // TO
 	Order, // ORDER
 	By, // BY
@@ -449,6 +450,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'd' && c3 == 'e' && c4 == 'f' && c5 == 'a' && c6 == 'u' && c7 == 'l' && c8 == 't' && c9 == ' ' {
 			ret.push(Token::from(TokenKind::Default, None));
 			i += 7;
+		} else if c1 == ' ' && c2 == 'd' && c3 == 'i' && c4 == 's' && c5 == 't' && c6 == 'i' && c7 == 'n' && c8 == 'c' && c9 == 't' && c10 == ' ' {
+			ret.push(Token::from(TokenKind::Distinct, None));
+			i += 8;
 		} else if c1 == ' ' && c2 == 'd' && c3 == 'a' && c4 == 't' && c5 == 'a' && c6 == 'b' && c7 == 'a' && c8 == 's' && c9 == 'e' && c10 == ' ' {
 			ret.push(Token::from(TokenKind::Database, None));
 			i += 8;

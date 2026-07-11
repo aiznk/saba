@@ -17,6 +17,9 @@ pub struct Context {
 	pub selected_csv_columns: Vec<String>,
 	pub vars: HashMap<String, Box<Object>>,
 	pub counter_selected: usize,
+	pub distinct_map: HashMap<String, bool>,
+	pub skip: bool,
+	pub cache_distinct_objs: Option<Vec<Object>>,
 
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
@@ -52,6 +55,9 @@ impl Context {
 			selected_csv_columns: vec![],
 			vars: HashMap::new(),
 			counter_selected: 0,
+			distinct_map: HashMap::new(),
+			skip: false,
+			cache_distinct_objs: None,
 			is_cli: false,
 			matched_record: StringRecord::new(),
 			unmatched_record: StringRecord::new(),
@@ -76,6 +82,9 @@ impl Context {
 		self.selected_csv_columns.clear();
 		self.vars.clear();
 		self.counter_selected = 0;
+		self.distinct_map.clear();
+		self.skip = false;
+		self.cache_distinct_objs = None;
 		self.matched_record.clear();
 		self.unmatched_record.clear();
 		if let Some(test_get_records) = self.test_get_records.as_mut() {

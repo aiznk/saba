@@ -11,7 +11,7 @@ use std::io::{Write};
 use csv::{Reader, Writer, StringRecord};
 use regex::Regex;
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Error> {
 	for plan in node.plans.iter() {
@@ -565,6 +565,10 @@ pub fn exec_ass_expr(context: &mut Context, node: &parser::AssExprNode) -> Resul
 
 fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
+	println!("call_count: context.skip[{}] counter[{}]", context.skip, context.count_counter);
+	if context.skip {
+		return Ok(Object::from_int(context.count_counter as i128));
+	}
 	if context.filtered {
 		if context.matched {
 			record = &context.matched_record;
@@ -600,8 +604,14 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 }
 
 fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
-
 	let record;
+	println!("call_avg: skip[{}]", context.skip);
+	if context.skip {
+		if context.avg_counter == 0 {
+			return Ok(Object::from_float(context.avg_sum_value));
+		}
+		return Ok(Object::from_float(context.avg_sum_value / context.avg_counter as f64));
+	}
 	if context.filtered {
 		if context.matched {
 			record = &context.matched_record;
@@ -656,6 +666,9 @@ fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 
 fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
+	if context.skip {
+		return Ok(Object::from_float(context.sum_value));
+	}
 	if context.filtered {
 		if context.matched {
 			record = &context.matched_record;
@@ -702,6 +715,9 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 
 fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
+	if context.skip {
+		return Ok(Object::from_float(context.max_value));
+	}
 	if context.filtered {
 		if context.matched {
 			record = &context.matched_record;
@@ -748,6 +764,9 @@ fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 
 fn call_min(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
+	if context.skip {
+		return Ok(Object::from_float(context.min_value));
+	}
 	if context.filtered {
 		if context.matched {
 			record = &context.matched_record;
@@ -1874,46 +1893,6 @@ fn print_record(head: &str, row: &StringRecord) {
 	println!("");
 }
 
-fn select_record(context: &mut Context, expr_list: &parser::ExprListNode) -> Result<StringRecord, Error> {
-	let row;
-	let mut record = StringRecord::new();
-
-	if context.filtered {
-		row = context.matched_record.clone();
-	} else {
-		row = context.scan_record.clone();
-	}
-	if row.len() == 0 {
-		return Ok(record);
-	}
-
-	let objs = exec_expr_list(context, expr_list)?;
-
-	if objs.len() == 1 &&
-	   objs[0].kind == ObjectKind::Star {
-	   	for col in row.iter() {
-	   		record.push_field(col.to_string().as_str());
-	   	}
-	   	return Ok(record);
-	}
-
-	for obj in objs.iter() {
-		if let Some(index) = context.csv_headers_idents.iter().position(|s| {
-				return *s == *obj.to_string();
-			}) {
-			let col = &row[index];
-			record.push_field(col.to_string().as_str());
-		} else {
-			if obj.kind == ObjectKind::Ident {
-				return err_exec!("invalid column: {}", obj.to_string());
-			}
-			record.push_field(obj.to_string().as_str());
-		}
-	}
-
-	Ok(record)
-}
-
 fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
 	let row;
 
@@ -1962,6 +1941,89 @@ fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Res
 	Ok(())
 }
 
+fn get_indices(idents: &Vec<String>, objs: &Vec<Object>) -> Result<Vec<usize>, Error> {
+	let mut indices = vec![];
+
+	if objs.len() == 1 && objs[0].kind == ObjectKind::Star {
+		for i in 0..idents.len() {
+			indices.push(i);
+		}
+	} else {
+		for obj in objs.iter() {
+			let Some(index) = idents.iter().position(|s| *s == obj.to_string()) else {
+				continue;
+			};
+			indices.push(index);
+		}
+	}
+
+	Ok(indices)
+}
+
+fn collect_by_indices(row: &StringRecord, indices: &Vec<usize>) -> Result<Vec<String>, Error> {
+	let mut dst = vec![];
+
+	for index in indices.iter() {
+		if *index > row.len() {
+			return err_exec!("index out of range in collect");
+		}
+		dst.push(row[*index].to_string());
+	}	
+
+	Ok(dst)
+}
+
+fn vec_string_to_hashed_value_string(row: &Vec<String>) -> String {
+	let mut s = String::new();
+
+	for col in row.iter() {
+		s.push_str(col);
+		s.push_str(",");
+	}
+
+	s.pop();
+
+	return s;
+}
+
+fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<StringRecord, Error> {
+	let row;
+	let mut record = StringRecord::new();
+
+	if context.filtered {
+		row = context.matched_record.clone();
+	} else {
+		row = context.scan_record.clone();
+	}
+	if row.len() == 0 {
+		return Ok(record);
+	}
+
+	if objs.len() == 1 &&
+	   objs[0].kind == ObjectKind::Star {
+	   	for col in row.iter() {
+	   		record.push_field(col.to_string().as_str());
+	   	}
+	   	return Ok(record);
+	}
+
+	for obj in objs.iter() {
+		if let Some(index) = context.csv_headers_idents.iter().position(|s| {
+				return *s == *obj.to_string();
+			}) {
+			let col = &row[index];
+			record.push_field(col.to_string().as_str());
+		} else {
+			if obj.kind == ObjectKind::Ident {
+				return err_exec!("invalid column: {}", obj.to_string());
+			}
+			record.push_field(obj.to_string().as_str());
+		}
+	}
+
+	Ok(record)
+}
+
 pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode) -> Result<(), Error> {
 	let mut limit_value = None;
 
@@ -1969,14 +2031,15 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode)
 		limit_value = gen_limit_value(context, limit)?;
 	}
 
-	if let Some(filter) = &aggregate.filter {
+	if let Some(distinct) = &aggregate.distinct {
 		let mut record = StringRecord::new();
 
-		while exec_filter(context, filter)? {
+		while exec_distinct(context, distinct)? {
 			if DEBUG {
 				print_record("scan_record", &context.scan_record);
 				println!("filtered {}", context.filtered);
 				println!("matched {}", context.matched);
+				println!("skip {}", context.skip);
 			}
 			if context.filtered {
 				if context.matched {
@@ -1985,8 +2048,13 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode)
 							break;
 						}
 					}
-					if let Some(expr_list) = &aggregate.expr_list {
-						record = select_record(context, expr_list)?;
+					let objs = context.cache_distinct_objs.clone();
+					if let Some(objs) = objs {
+						record = select_record(context, &objs)?;
+						context.cache_distinct_objs = None;
+					} else if let Some(expr_list) = &aggregate.expr_list {
+						let objs = exec_expr_list(context, expr_list)?;
+						record = select_record(context, &objs)?;
 					}
 					context.limit_counter += 1;
 				}
@@ -1996,8 +2064,13 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode)
 						break;
 					}
 				}
-				if let Some(expr_list) = &aggregate.expr_list {
-					record = select_record(context, expr_list)?;
+				let objs = context.cache_distinct_objs.clone();
+				if let Some(objs) = objs {
+					record = select_record(context, &objs)?;
+					context.cache_distinct_objs = None;
+				} else if let Some(expr_list) = &aggregate.expr_list {
+					let objs = exec_expr_list(context, expr_list)?;
+					record = select_record(context, &objs)?;
 				}
 				context.limit_counter += 1;
 			}
@@ -2015,6 +2088,48 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode)
 	return err_exec!("invalid state: aggregate");
 }
 
+pub fn exec_distinct(context: &mut Context, distinct: &planner::DistinctNode) -> Result<bool, Error> {
+	if let Some(filter) = &distinct.filter {
+		let result = exec_filter(context, filter)?;
+		if !result {
+			return Ok(result);
+		}
+
+		if distinct.enable {
+			context.skip = false;
+
+			if let Some(expr_list) = &distinct.expr_list {
+				let objs = exec_expr_list(context, expr_list)?;
+				let mut row = StringRecord::new();
+				if context.filtered {
+					if context.matched {
+						row = context.matched_record.clone();
+					}
+				} else {
+					row = context.scan_record.clone();
+				}
+				if row.len() > 0 {
+					let indices = get_indices(&context.csv_headers_idents, &objs)?;
+					let row = collect_by_indices(&row, &indices)?;
+					let key = vec_string_to_hashed_value_string(&row);
+					if context.distinct_map.contains_key(&key) {
+						context.skip = true;
+					} else {
+						context.distinct_map.insert(key.clone(), true);
+					}
+				}
+				context.cache_distinct_objs = Some(objs);
+			} else {
+				return err_exec!("invalid state: distinct");
+			}
+		}
+	} else {
+		return err_exec!("invalid state: distinct (2)");
+	}
+
+	Ok(true)
+}
+
 pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Result<bool, Error> {
 	let mut limit_value = None;
 
@@ -2022,8 +2137,8 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 		limit_value = gen_limit_value(context, limit)?;
 	}
 
-	if let Some(filter) = &project.filter {
-		let result = exec_filter(context, filter)?;
+	if let Some(distinct) = &project.distinct {
+		let result = exec_distinct(context, distinct)?;
 		if !result {
 			return Ok(result);
 		}
@@ -2031,6 +2146,10 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 			print_record("scan_record", &context.scan_record);
 			println!("filtered {}", context.filtered);
 			println!("matched {}", context.matched);
+			println!("skip {}", context.skip);
+		}
+		if context.skip {
+			return Ok(true);
 		}
 		if context.filtered {
 			if context.matched {
@@ -4976,5 +5095,140 @@ mod tests {
 
 		assert!(context.selected_csv_columns.len() == 1);
 		assert!(context.selected_csv_columns[0] == "3");
+	}
+
+	#[test]
+	fn test_distinct_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 3.14, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 3.14, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL DISTINCT name OF test_table").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "1,3.14,aaa
+4,3.14,bbb
+");
+	}
+
+	#[test]
+	fn test_distinct_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 1.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 2.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 1.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL DISTINCT weight, name OF test_table").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "1,1,aaa
+2,2,aaa
+4,2,bbb
+");
+	}
+
+	#[test]
+	fn test_distinct_2() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 1.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 2.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 1.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL DISTINCT * OF test_table").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		assert!(s == "1,1,aaa
+2,2,aaa
+3,1,aaa
+4,2,bbb
+5,2,bbb
+");
+	}
+
+	#[test]
+	fn test_distinct_count_0() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 1.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 2.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 1.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL DISTINCT COUNT(name) OF test_table").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "5");
+	}
+
+	#[test]
+	fn test_distinct_count_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+		remove_file(&path);
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "CREATE TABLE test_table (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		assert!(path.exists());
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n");
+		do_exec(&mut context, "ADD id = 1, weight = 1.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 2.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 1.0, name = \"aaa\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL DISTINCT COUNT(id) OF test_table").unwrap();
+
+		assert!(context.selected_csv_columns.len() == 1);
+		assert!(context.selected_csv_columns[0] == "5");
 	}
 }

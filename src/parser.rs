@@ -314,6 +314,7 @@ pub enum ColumnTypeNode {
 #[derive(Debug, Clone)]
 pub struct GetStmtNode {
 	pub all: bool,
+	pub distinct: bool,
 	pub expr_list: Option<Box<ExprListNode>>,
 	pub table: Option<Box<IdentNode>>,
 	pub where_clause: Option<Box<WhereClauseNode>>,
@@ -325,6 +326,7 @@ impl GetStmtNode {
 	pub fn new() -> Self {
 		Self {
 			all: false,
+			distinct: false,
 			expr_list: None,
 			table: None,
 			where_clause: None,
@@ -1361,6 +1363,13 @@ pub fn parse_get_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<GetStmtNo
 		tok_strm.prev();
 	}
 
+	let tok = tok_strm.get()?;
+	if tok.kind == TokenKind::Distinct {
+		n.distinct = true;
+	} else {
+		tok_strm.prev();
+	}	
+
 	n.expr_list = parse_expr_list(tok_strm)?;
 	if n.expr_list.is_none() {
 		return err_parse!("failed to parse expr list in get stmt");
@@ -2357,5 +2366,11 @@ create table mytab (
 	#[test]
 	fn test_func_expr_1() {
 		assert!(do_parse("GET ALL COUNT(id, weight) OF test_table") == true);
+	}
+
+	#[test]
+	fn test_distinct() {
+		assert!(do_parse("GET ALL DISTINCT id OF test_table") == true);
+		assert!(do_parse("GET ALL DISTINCT id, weight OF test_table") == true);
 	}
 }
