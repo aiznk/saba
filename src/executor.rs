@@ -1941,7 +1941,24 @@ fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Res
 	let mut dst: Vec<String> = vec![];
 
 	for obj in objs.iter() {
-		if let Some(index) = context.get_table_header_idents(context.current_table_name.clone().as_str())?.iter().position(|s| {
+		let header_idents = if let Some(parent) = &obj.parent {
+			match parent.kind {
+				ObjectKind::Ident => {
+					let table_name = parent.ident.clone();
+					if context.tables.contains_key(&table_name) {
+						let idents = context.get_table_header_idents(&table_name)?;
+						idents
+					} else {
+						return err_exec!("not found table ident '{}'", table_name);
+					}
+				}
+				_ => return err_exec!("invalid parent object"),
+			}
+		} else {
+			let idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
+			idents
+		};
+		if let Some(index) = header_idents.iter().position(|s| {
 				return *s == *obj.to_string();
 			}) {
 			let col = &row[index];
@@ -4526,6 +4543,23 @@ mod tests {
 			Ok(_) => panic!("failed"),
 			Err(_) => {},
 		}
+	}
+
+	#[test]
+	fn test_dot_chain() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL test_table.id OF test_table").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 	}
 
 	#[test]
