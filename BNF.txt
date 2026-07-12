@@ -189,12 +189,14 @@ column_type ::= 'PRIMARY_KEY' |
              'FLOAT' |
              'CHAR' '[' int_value ']' |
              'DEFAULT' value
-get_stmt ::= 'GET' 'ALL'? 'DISTINCT'? (expr_list) 'OF' table:ident where? limit? order_by?
-set_stmt ::= 'SET' 'ALL'? (expr_list) 'OF' table:ident where? limit?
-add_stmt ::= 'ADD' expr_list? 'OF' table:ident ( paren_idents 'VALUES' paren_values { ',' paren_values }* )?
+get_stmt ::= 'GET' 'ALL'? 'DISTINCT'? (expr_list) of_clause where? limit? order_by?
+set_stmt ::= 'SET' 'ALL'? (expr_list) of_clause where? limit?
+add_stmt ::= 'ADD' expr_list? of_clause ( paren_idents 'VALUES' paren_values { ',' paren_values }* )?
+del_stmt ::= 'DEL' 'ALL'? of_clause where? limit?
+of_clause ::= 'OF' ident join_clause
+join_clause ::= 'INNER' 'JOIN' ident 'ON' expr
 paren_idents ::= '(' ident { ',' ident }* ')'
 paren_values ::= '(' expr_list ')'
-del_stmt ::= 'DEL' 'ALL'? 'OF' table:ident where? limit?
 where ::= 'WHERE' expr
 limit ::= 'LIMIT' expr
 order_by ::= 'ORDER' 'BY' expr

@@ -858,8 +858,10 @@ pub fn plan_add_stmt(node: &Box<parser::AddStmtNode>, plan: &mut PlanNode) -> Re
 		append.expr_list = Some(expr_list.clone());
 	}	
 
-	if let Some(table) = &node.table {
-		append.table_name = unwrap_ident_object(&table)?.to_string();
+	if let Some(of_clause) = &node.of_clause {
+		if let Some(ident) = &of_clause.ident {
+			append.table_name = unwrap_ident_object(&ident)?.to_string();
+		}	
 	}
 
 	if node.expr_list.is_none() {
@@ -887,12 +889,14 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 	project.all = true;
 	row_delete.all = node.all;
 
-	if let Some(table) = &node.table {
-		let ident = unwrap_ident_object(&table)?.to_string();
-		csv_file_scan.table_name = ident.clone();
-		csv_file_scan.all = true; // always true
-		filter.csv_file_scan = Some(Box::new(csv_file_scan));
-		rewrite.table_name = Some(ident.clone());
+	if let Some(of_clause) = &node.of_clause {
+		if let Some(ident) = &of_clause.ident {
+			let ident = unwrap_ident_object(&ident)?.to_string();
+			csv_file_scan.table_name = ident.clone();
+			csv_file_scan.all = true; // always true
+			filter.csv_file_scan = Some(Box::new(csv_file_scan));
+			rewrite.table_name = Some(ident.clone());
+		}	
 	}
 
 	if let Some(where_clause) = &node.where_clause {
@@ -929,13 +933,15 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 		return err_planning!("missing expr list in set stmt");
 	}
 
-	if let Some(table) = &node.table {
-		let table_name = unwrap_ident_object(&table)?.to_string();
-		csv_file_scan.table_name = table_name.clone();
-		csv_file_scan.all = true; // the set stmt always needs all on csv_file_scan
-		rewrite.table_name = Some(table_name);
-	} else {
-		return err_planning!("missing table name in set stmt");
+	if let Some(of_clause) = &node.of_clause {
+		if let Some(ident) = &of_clause.ident {
+			let table_name = unwrap_ident_object(&ident)?.to_string();
+			csv_file_scan.table_name = table_name.clone();
+			csv_file_scan.all = true; // the set stmt always needs all on csv_file_scan
+			rewrite.table_name = Some(table_name);
+		} else {
+			return err_planning!("missing table name in set stmt");
+		}
 	}
 
 	if let Some(where_clause) = &node.where_clause {
@@ -1015,11 +1021,13 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 			aggregate.expr_list = Some(expr_list.clone());
 			distinct.expr_list = Some(expr_list.clone());
 		}		
-		if let Some(table) = &node.table {
-			let table_name = unwrap_ident_object(&table)?.to_string();
-			csv_file_scan.table_name = table_name.clone();
-			csv_file_scan.all = node.all;
-			sort.table_name = table_name;
+		if let Some(of_clause) = &node.of_clause {
+			if let Some(ident) = &of_clause.ident {
+				let table_name = unwrap_ident_object(&ident)?.to_string();
+				csv_file_scan.table_name = table_name.clone();
+				csv_file_scan.all = node.all;
+				sort.table_name = table_name;
+			}
 		}
 		if let Some(where_clause) = &node.where_clause {
 			filter.where_clause = Some((*where_clause).clone());
@@ -1044,11 +1052,13 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 			distinct.expr_list = Some(expr_list.clone());
 		}
 
-		if let Some(table) = &node.table {
-			let table_name = unwrap_ident_object(&table)?.to_string();
-			csv_file_scan.table_name = table_name.clone();
-			csv_file_scan.all = node.all;
-			sort.table_name = table_name;
+		if let Some(of_clause) = &node.of_clause {
+			if let Some(ident) = &of_clause.ident {
+				let table_name = unwrap_ident_object(&ident)?.to_string();
+				csv_file_scan.table_name = table_name.clone();
+				csv_file_scan.all = node.all;
+				sort.table_name = table_name;
+			}
 		}
 
 		if let Some(where_clause) = &node.where_clause {

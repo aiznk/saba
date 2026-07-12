@@ -8,6 +8,9 @@ pub enum TokenKind {
 	Create, // CREATE
 	Rename, // RENAME
 	Distinct, // DISTINCT
+	Inner, // INNER
+	Join, // JOIN
+	On, // ON
 	To, // TO
 	Dot, // '.'
 	Order, // ORDER
@@ -355,6 +358,15 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'n' && c3 == 'o' && c4 == 't' && c5 == ' ' {
 			ret.push(Token::from(TokenKind::Not, None));
 			i += 3;
+		} else if c1 == ' ' && c2 == 'i' && c3 == 'n' && c4 == 'n' && c5 == 'e' && c6 == 'r' && c7 == ' ' {
+			ret.push(Token::from(TokenKind::Inner, None));
+			i += 5;
+		} else if c1 == ' ' && c2 == 'j' && c3 == 'o' && c4 == 'i' && c5 == 'n' && c6 == ' ' {
+			ret.push(Token::from(TokenKind::Join, None));
+			i += 4;
+		} else if c1 == ' ' && c2 == 'o' && c3 == 'n' && c4 == ' ' {
+			ret.push(Token::from(TokenKind::On, None));
+			i += 2;
 		} else if c1 == ' ' && c2 == 'v' && c3 == 'a' && c4 == 'l' && c5 == 'u' && c6 == 'e' && c7 == 's' && c8 == ' ' {
 			ret.push(Token::from(TokenKind::Values, None));
 			i += 6;

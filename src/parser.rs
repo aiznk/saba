@@ -46,6 +46,36 @@ impl StmtNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct JoinClauseNode {
+	pub ident: Option<Box<IdentNode>>,
+	pub expr: Option<Box<ExprNode>>,
+}
+
+impl JoinClauseNode {
+	pub fn new() -> Self {
+		Self {
+			ident: None,
+			expr: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct OfClauseNode {
+	pub ident: Option<Box<IdentNode>>,
+	pub join_clause: Option<Box<JoinClauseNode>>,
+}
+
+impl OfClauseNode {
+	pub fn new() -> Self {
+		Self {
+			ident: None,
+			join_clause: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 pub struct LimitNode {
 	pub expr: Option<Box<ExprNode>>,
 }
@@ -316,7 +346,7 @@ pub struct GetStmtNode {
 	pub all: bool,
 	pub distinct: bool,
 	pub expr_list: Option<Box<ExprListNode>>,
-	pub table: Option<Box<IdentNode>>,
+	pub of_clause: Option<Box<OfClauseNode>>,
 	pub where_clause: Option<Box<WhereClauseNode>>,
 	pub limit: Option<Box<LimitNode>>,
 	pub order_by: Option<Box<OrderByNode>>,
@@ -328,7 +358,7 @@ impl GetStmtNode {
 			all: false,
 			distinct: false,
 			expr_list: None,
-			table: None,
+			of_clause: None,
 			where_clause: None,
 			limit: None,
 			order_by: None,
@@ -355,7 +385,7 @@ impl OrderByNode {
 pub struct SetStmtNode {
 	pub all: bool,
 	pub expr_list: Option<Box<ExprListNode>>,
-	pub table: Option<Box<IdentNode>>,
+	pub of_clause: Option<Box<OfClauseNode>>,
 	pub where_clause: Option<Box<WhereClauseNode>>,
 	pub limit: Option<Box<LimitNode>>,
 }
@@ -365,7 +395,7 @@ impl SetStmtNode {
 		Self {
 			all: false,
 			expr_list: None,
-			table: None,
+			of_clause: None,
 			where_clause: None,
 			limit: None,
 		}
@@ -375,7 +405,7 @@ impl SetStmtNode {
 #[derive(Debug, Clone)]
 pub struct AddStmtNode {
 	pub expr_list: Option<Box<ExprListNode>>,
-	pub table: Option<Box<IdentNode>>,
+	pub of_clause: Option<Box<OfClauseNode>>,
 	pub paren_idents: Option<Box<ParenIdentsNode>>,
 	pub paren_values_list: Vec<Box<ParenValuesNode>>,
 }
@@ -384,7 +414,7 @@ impl AddStmtNode {
 	pub fn new() -> Self {
 		Self {
 			expr_list: None,
-			table: None,
+			of_clause: None,
 			paren_idents: None,
 			paren_values_list: vec![],
 		}
@@ -420,7 +450,7 @@ impl ParenValuesNode {
 #[derive(Debug, Clone)]
 pub struct DelStmtNode {
 	pub all: bool,
-	pub table: Option<Box<IdentNode>>,
+	pub of_clause: Option<Box<OfClauseNode>>,
 	pub where_clause: Option<Box<WhereClauseNode>>,
 	pub limit: Option<Box<LimitNode>>,
 }
@@ -429,7 +459,7 @@ impl DelStmtNode {
 	pub fn new() -> Self {
 		Self {
 			all: false,
-			table: None,
+			of_clause: None,
 			where_clause: None,
 			limit: None,
 		}
@@ -1388,19 +1418,73 @@ pub fn parse_get_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<GetStmtNo
 		return err_parse!("failed to parse expr list in get stmt");
 	}
 
-	let tok = tok_strm.get()?;
-	if tok.kind != TokenKind::Of {
-		return err_parse!("missing 'OF' in get stmt");
-	}
-
-	n.table = parse_ident(tok_strm)?;
-	if n.table.is_none() {
-		return err_parse!("missing table name in get stmt");
+	n.of_clause = parse_of_clause(tok_strm)?;
+	if n.of_clause.is_none() {
+		return err_parse!("failed to parse of clause in get stmt");
 	}
 
 	n.where_clause = parse_where_clause(tok_strm)?;
 	n.order_by = parse_order_by(tok_strm)?;
 	n.limit = parse_limit(tok_strm)?;
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_of_clause(tok_strm: &mut TokenStream) -> Result<Option<Box<OfClauseNode>>, Error> {
+	let mut n = OfClauseNode::new();
+
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Of {
+		tok_strm.prev();
+		return Ok(None);
+	}
+
+	n.ident = parse_ident(tok_strm)?;
+	if n.ident.is_none() {
+		return err_parse!("missing table name in of clause");
+	}
+
+	n.join_clause = parse_join_clause(tok_strm)?;
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_join_clause(tok_strm: &mut TokenStream) -> Result<Option<Box<JoinClauseNode>>, Error> {
+	let mut n = JoinClauseNode::new();
+
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Inner {
+		tok_strm.prev();
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::Join {
+		tok_strm.prev();
+		return Ok(None);
+	}
+
+	n.ident = parse_ident(tok_strm)?;
+	if n.ident.is_none() {
+		return err_parse!("missing table name in join clause");
+	}
+
+	let tok = tok_strm.get()?;
+	if tok.kind != TokenKind::On {
+		return err_parse!("missing 'ON' in join clause");
+	}
+
+	n.expr = parse_expr(tok_strm)?;
+	if n.expr.is_none() {
+		return err_parse!("missing expr in join clause");
+	}
 
 	Ok(Some(Box::new(n)))
 }
@@ -1469,21 +1553,14 @@ pub fn parse_set_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<SetStmtNo
 		tok_strm.prev();
 	}
 
-	let expr_list = parse_expr_list(tok_strm)?;
-	if expr_list.is_none() {
+	n.expr_list = parse_expr_list(tok_strm)?;
+	if n.expr_list.is_none() {
 		return err_parse!("failed to parse expr list in set stmt");
 	}
 
-	n.expr_list = expr_list;
-
-	let tok = tok_strm.get()?;
-	if tok.kind != TokenKind::Of {
-		return err_parse!("missing 'OF' in set stmt");
-	}
-
-	n.table = parse_ident(tok_strm)?;
-	if n.table.is_none() {
-		return err_parse!("missing table name in set stmt");
+	n.of_clause = parse_of_clause(tok_strm)?;
+	if n.of_clause.is_none() {
+		return err_parse!("failed to parse of clause in get stmt");
 	}
 
 	n.where_clause = parse_where_clause(tok_strm)?;
@@ -1510,14 +1587,9 @@ pub fn parse_add_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<AddStmtNo
 		// pass
 	}
 
-	let tok = tok_strm.get()?;
-	if tok.kind != TokenKind::Of {
-		return err_parse!("missing 'OF' in add stmt");
-	}
-
-	n.table = parse_ident(tok_strm)?;
-	if n.table.is_none() {
-		return err_parse!("missing table name in add stmt");
+	n.of_clause = parse_of_clause(tok_strm)?;
+	if n.of_clause.is_none() {
+		return err_parse!("failed to parse of clause in get stmt");
 	}
 
 	if n.expr_list.is_none() {
@@ -1658,14 +1730,9 @@ pub fn parse_del_stmt(tok_strm: &mut TokenStream) -> Result<Option<Box<DelStmtNo
 		tok_strm.prev();
 	}
 
-	let tok = tok_strm.get()?;
-	if tok.kind != TokenKind::Of {
-		return err_parse!("missing 'OF' in get stmt");
-	}
-
-	n.table = parse_ident(tok_strm)?;
-	if n.table.is_none() {
-		return err_parse!("missing table name in del stmt");
+	n.of_clause = parse_of_clause(tok_strm)?;
+	if n.of_clause.is_none() {
+		return err_parse!("failed to parse of clause in get stmt");
 	}
 
 	n.where_clause = parse_where_clause(tok_strm)?;
@@ -2420,5 +2487,13 @@ create table mytab (
 	#[test]
 	fn test_dot() {
 		assert!(do_parse("GET ALL test_table.id OF test_table") == true);
+	}
+
+	#[test]
+	fn test_join() {
+		assert!(do_parse("GET ALL id OF test_table INNER JOIN table_2 ON test_table.id == table_2.id") == true);
+		assert!(do_parse("GET ALL id OF test_table JOIN table_2 ON test_table.id == table_2.id") == true);
+		assert!(do_parse("GET ALL id OF test_table JOIN table_2 ON") == false);
+		assert!(do_parse("GET ALL id OF test_table JOIN table_2") == false);
 	}
 }
