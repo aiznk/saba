@@ -3,7 +3,7 @@ use crate::parser::{self, ParenIdentsNode};
 use crate::planner;
 use crate::tokenizer::{TokenKind};
 use crate::context::{Context};
-use crate::objects::{Object, ObjectKind, HeaderType};
+use crate::objects::{Object, ObjectKind, HeaderType, Table};
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::fs::{OpenOptions};
@@ -69,6 +69,9 @@ fn string_record_to_vev_string(record: &StringRecord) -> Vec<String> {
 fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Error> {
 	let mut obj = Object::new();
 
+	context.current_table_name = sort.table_name.clone();
+	assert!(context.current_table_name.len() > 0);
+
 	if let Some(expr) = &sort.expr {
 		obj = exec_expr(context, expr)?;
 		if obj.kind != ObjectKind::Ident {
@@ -104,7 +107,7 @@ fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Erro
 
 		context.is_cli = is_cli;
 
-		let index = context.csv_headers_idents.iter().position(|s| *s == obj.ident);
+		let index = context.get_table_header_idents(&sort.table_name)?.iter().position(|s| *s == obj.ident);
 		if index.is_none() {
 			return err_exec!("not found '{}' ident in sort", obj.ident);
 		}
@@ -575,12 +578,12 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 	}
 	if context.filtered {
 		if context.matched {
-			record = &context.matched_record;
+			record = context.matched_record.clone();
 		} else {
 			return Ok(Object::from_int(context.count_counter as i128));
 		}
 	} else {
-		record = &context.scan_record;
+		record = context.scan_record.clone();
 	}
 
 	if args.len() != 1 {
@@ -592,7 +595,7 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 		// pass
 	} else {
 		let ident = arg.to_string();
-		let header_idents = &context.csv_headers_idents;
+		let header_idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -617,7 +620,7 @@ fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 	}
 	if context.filtered {
 		if context.matched {
-			record = &context.matched_record;
+			record = context.matched_record.clone();
 			context.avg_counter += 1;
 		} else {
 			if context.avg_counter == 0 {
@@ -626,7 +629,7 @@ fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 			return Ok(Object::from_float(context.avg_sum_value / context.avg_counter as f64));
 		}
 	} else {
-		record = &context.scan_record;
+		record = context.scan_record.clone();
 		context.avg_counter += 1;
 	}
 
@@ -639,8 +642,8 @@ fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		return err_exec!("can't use star in avg function");
 	} else {
 		let ident = arg.to_string();
-		let types = &context.csv_header_types;
-		let header_idents = &context.csv_headers_idents;
+		let types = context.get_table_header_types(context.current_table_name.clone().as_str())?;
+		let header_idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -674,12 +677,12 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 	}
 	if context.filtered {
 		if context.matched {
-			record = &context.matched_record;
+			record = context.matched_record.clone();
 		} else {
 			return Ok(Object::from_float(context.sum_value));
 		}
 	} else {
-		record = &context.scan_record;
+		record = context.scan_record.clone();
 	}
 
 	if args.len() != 1 {
@@ -691,8 +694,8 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		return err_exec!("can't use star in sum function");
 	} else {
 		let ident = arg.to_string();
-		let types = &context.csv_header_types;
-		let header_idents = &context.csv_headers_idents;
+		let types = context.get_table_header_types(context.current_table_name.clone().as_str())?;
+		let header_idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -723,12 +726,12 @@ fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 	}
 	if context.filtered {
 		if context.matched {
-			record = &context.matched_record;
+			record = context.matched_record.clone();
 		} else {
 			return Ok(Object::from_float(context.max_value));
 		}
 	} else {
-		record = &context.scan_record;
+		record = context.scan_record.clone();
 	}
 
 	if args.len() != 1 {
@@ -740,8 +743,8 @@ fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		return err_exec!("can't use star in max function");
 	} else {
 		let ident = arg.to_string();
-		let types = &context.csv_header_types;
-		let header_idents = &context.csv_headers_idents;
+		let types = context.get_table_header_types(context.current_table_name.clone().as_str())?;
+		let header_idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -772,12 +775,12 @@ fn call_min(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 	}
 	if context.filtered {
 		if context.matched {
-			record = &context.matched_record;
+			record = context.matched_record.clone();
 		} else {
 			return Ok(Object::from_float(context.min_value));
 		}
 	} else {
-		record = &context.scan_record;
+		record = context.scan_record.clone();
 	}
 
 	if args.len() != 1 {
@@ -789,8 +792,8 @@ fn call_min(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		return err_exec!("can't use star in min function");
 	} else {
 		let ident = arg.to_string();
-		let types = &context.csv_header_types;
-		let header_idents = &context.csv_headers_idents;
+		let types = context.get_table_header_types(context.current_table_name.clone().as_str())?;
+		let header_idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
 			return err_exec!("invalid column '{}'", ident);
 		};
@@ -828,8 +831,6 @@ fn call_func(context: &mut Context, func_name: &Object, args: &Vec<Object>) -> R
 		"max" => { return call_max(context, args); }
 		&_ => return err_exec!("unknown function name '{}'", func_name),
 	}
-
-	Ok(Object::new())
 }
 
 pub fn exec_func_expr(context: &mut Context, node: &parser::FuncExprNode) -> Result<Object, Error> {
@@ -1037,8 +1038,8 @@ pub fn exec_mul_div_expr(context: &mut Context, node: &parser::MulDivExprNode) -
 	let mut b;
 	let mut c;
 
-	if let parser::MulDivExprItemNode::Left(operand) = &node.nodes[0] {
-		a = exec_operand(context, &*operand)?;	
+	if let parser::MulDivExprItemNode::Left(dot_chain) = &node.nodes[0] {
+		a = exec_dot_chain(context, &*dot_chain)?;	
 	} else {
 		return err_exec!("impossible");
 	}
@@ -1049,8 +1050,8 @@ pub fn exec_mul_div_expr(context: &mut Context, node: &parser::MulDivExprNode) -
 		let op = &node.nodes[i];
 		let rhs = &node.nodes[i+1];
 
-		if let parser::MulDivExprItemNode::Right(operand) = rhs {
-			b = exec_operand(context, &*operand)?;
+		if let parser::MulDivExprItemNode::Right(dot_chain) = rhs {
+			b = exec_dot_chain(context, &*dot_chain)?;
 		} else {
 			return err_exec!("impossible");
 		}
@@ -1064,6 +1065,18 @@ pub fn exec_mul_div_expr(context: &mut Context, node: &parser::MulDivExprNode) -
 	}
 
 	Ok(c)
+}
+
+pub fn exec_dot_chain(context: &mut Context, node: &parser::DotChainNode) -> Result<Object, Error> {
+	let mut o = exec_operand(context, &node.nodes[0])?;
+
+	for i in 1..node.nodes.len() {
+		let mut child = exec_operand(context, &node.nodes[i])?;
+		child.parent = Some(Box::new(o));
+		o = child;
+	}
+
+	Ok(o)
 }
 
 pub fn parse_column_by_head(head: &str, col: &str) -> Result<Object, Error> {
@@ -1095,10 +1108,12 @@ pub fn parse_column_by_head(head: &str, col: &str) -> Result<Object, Error> {
 }
 
 pub fn refer_ident(context: &mut Context, ident: &String) -> Result<Object, Error> {
-	if let Some(index) = context.csv_headers_idents.iter().position(|s| *s == *ident) {
-		let head = &context.csv_headers[index];
+	let table_name = context.current_table_name.clone();
+
+	if let Some(index) = context.get_table_header_idents(table_name.as_str())?.iter().position(|s| *s == *ident) {
+		let head = context.get_table_headers(table_name.as_str())?[index].to_string();
 		let col = &context.scan_record[index];
-		let o = parse_column_by_head(head, col)?;
+		let o = parse_column_by_head(&head, col)?;
 		Ok(o)
 	} else {
 		err_exec!("not found ident in CSV header")
@@ -1926,7 +1941,7 @@ fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Res
 	let mut dst: Vec<String> = vec![];
 
 	for obj in objs.iter() {
-		if let Some(index) = context.csv_headers_idents.iter().position(|s| {
+		if let Some(index) = context.get_table_header_idents(context.current_table_name.clone().as_str())?.iter().position(|s| {
 				return *s == *obj.to_string();
 			}) {
 			let col = &row[index];
@@ -2011,7 +2026,7 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<StringReco
 	}
 
 	for obj in objs.iter() {
-		if let Some(index) = context.csv_headers_idents.iter().position(|s| {
+		if let Some(index) = context.get_table_header_idents(context.current_table_name.clone().as_str())?.iter().position(|s| {
 				return *s == *obj.to_string();
 			}) {
 			let col = &row[index];
@@ -2078,7 +2093,7 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode)
 				context.limit_counter += 1;
 			}
 			if !aggregate.all {
-				context.table_csv_reader = None;
+				context.do_read_record = false;
 				break;
 			}
 		}
@@ -2112,7 +2127,8 @@ pub fn exec_distinct(context: &mut Context, distinct: &planner::DistinctNode) ->
 					row = context.scan_record.clone();
 				}
 				if row.len() > 0 {
-					let indices = get_indices(&context.csv_headers_idents, &objs)?;
+					let idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
+					let indices = get_indices(&idents, &objs)?;
 					let row = collect_by_indices(&row, &indices)?;
 					let key = vec_string_to_hashed_value_string(&row);
 					if context.distinct_map.contains_key(&key) {
@@ -2193,7 +2209,7 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 			if DEBUG {
 				println!("all[{}] counter_selected[{}]", project.all, context.counter_selected);
 			}
-			context.table_csv_reader = None;
+			context.do_read_record = false;
 			return Ok(false);
 		}
 		return Ok(result);
@@ -2234,57 +2250,61 @@ pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<
 }
 
 pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode) -> Result<bool, Error> {
-	if context.table_csv_reader.is_none() {
+	let mut reader_is_none: bool = true;
+
+	if context.tables.contains_key(&node.table_name) {
+		let table = context.tables.get(&node.table_name).unwrap();
+		reader_is_none = table.csv_reader.is_none();
+	} else {
+		let mut table = Box::new(Table::from(node.table_name.clone()));
+		table.name = node.table_name.clone();
+		context.tables.insert(node.table_name.clone(), table);
+	}
+
+	if reader_is_none {
+		context.current_table_name = node.table_name.clone();
+
 		let path = context.gen_table_file_path(&node.table_name)?;
-		let reader = match Reader::from_path(&path) {
+		let mut reader = match Reader::from_path(&path) {
 			Ok(v) => v,
 			Err(e) => return err_exec!("failed to create csv reader. {}", e),
 		};
 
-		context.table_csv_reader = Some(reader);
-
 		// read header
-		if let Some(reader) = context.table_csv_reader.as_mut() {
-			context.csv_headers = match reader.headers() {
-				Ok(v) => v.clone(),
-				Err(e) => return err_exec!("failed to read header of CSV file. {}", e),
-			};
-			context.csv_header_types = parse_csv_headers_as_types(&context.csv_headers)?;
-			context.csv_headers_idents = parse_header_idents(&context.csv_headers)?;
+		let headers = match reader.headers() {
+			Ok(v) => v.clone(),
+			Err(e) => return err_exec!("failed to read header of CSV file. {}", e),
+		};
+		let header_types = parse_csv_headers_as_types(&headers)?;
+		let header_idents = parse_header_idents(&headers)?;
+		if let Some(table) = context.tables.get_mut(&node.table_name) {
+			table.csv_reader = Some(reader);
+			table.headers = headers;
+			table.header_types = header_types;
+			table.header_idents = header_idents;
 		}
-
-		parse_csv_headers_idents(context)?;
 	}	
-	if let Some(reader) = context.table_csv_reader.as_mut() {
-		match reader.read_record(&mut context.scan_record) {
-			Ok(_) => {
-				if context.scan_record.len() == 0 {
-					context.table_csv_reader = None;
+	if let Some(table) = context.tables.get_mut(&node.table_name) {
+		if let Some(reader) = table.csv_reader.as_mut() {
+			match reader.read_record(&mut context.scan_record) {
+				Ok(_) => {
+					if context.scan_record.len() == 0 {
+						table.csv_reader = None;
+						return Ok(false);
+					}
+					return Ok(true);
+				}
+				Err(_) => {
+					table.csv_reader = None;
 					return Ok(false);
 				}
-				return Ok(true);
-			}
-			Err(_) => {
-				context.table_csv_reader = None;
-				return Ok(false);
-			}
-		};
-	} else {
-		return err_exec!("reader is none");
-	}
-}
-
-pub fn parse_csv_headers_idents(context: &mut Context) -> Result<(), Error> {
-	context.csv_headers_idents.clear();
-
-	for col in context.csv_headers.iter() {
-		if let Some((left, _right)) = col.split_once(':') {
-			let val = left.trim().to_string();
-			context.csv_headers_idents.push(val);
+			};
+		} else {
+			return err_exec!("reader is none");
 		}
+	} else {
+		return err_exec!("impossible");
 	}
-
-	Ok(())
 }
 
 pub fn parse_header_idents(headers: &StringRecord) -> Result<Vec<String>, Error> {
@@ -2487,7 +2507,7 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNod
 }
 
 pub fn replace_columns_by_objs(context: &mut Context, cols: &StringRecord, update_expr_list_objs: &Vec<Object>) -> Result<Vec<String>, Error> {
-	let idents = &context.csv_headers_idents;
+	let idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 	let mut row: Vec<String> = vec![];
 
 	for col in cols {
@@ -2800,6 +2820,7 @@ pub fn alter_headers_column_type(context: &mut Context, types: &Vec<HeaderType>,
 
 pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewriteNode) -> Result<(), Error> {
 	if let Some(table_name) = &node.table_name {
+		context.current_table_name = table_name.clone();
 		let org_path = context.gen_table_file_path(&table_name)?;
 		let tmp_path = context.gen_tmp_table_file_path(&table_name)?;
 		let mut headers = read_table_headers(context, &table_name)?;

@@ -1,5 +1,5 @@
 use crate::error::{make_error, err_runtime, Error};
-use crate::objects::{Object, HeaderType};
+use crate::objects::{Object, HeaderType, Table};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use csv::{Reader, StringRecord};
@@ -9,10 +9,7 @@ use std::collections::HashMap;
 pub struct Context {
 	pub root_dir_path: PathBuf,
 	pub using_db_name: String,
-	pub table_csv_reader: Option<Reader<File>>,
-	pub csv_headers: StringRecord,
-	pub csv_headers_idents: Vec<String>,
-	pub csv_header_types: Vec<HeaderType>,
+	pub current_table_name: String,
 	pub scan_record: StringRecord,
 	pub selected_csv_columns: Vec<String>,
 	pub vars: HashMap<String, Box<Object>>,
@@ -20,6 +17,8 @@ pub struct Context {
 	pub distinct_map: HashMap<String, bool>,
 	pub skip: bool,
 	pub cache_distinct_objs: Option<Vec<Object>>,
+	pub tables: HashMap<String, Box<Table>>,
+	pub do_read_record: bool,
 
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
@@ -47,10 +46,7 @@ impl Context {
 		Self {
 			root_dir_path: PathBuf::new(),
 			using_db_name: String::new(),
-			table_csv_reader: None,
-			csv_headers: StringRecord::new(),
-			csv_headers_idents: vec![],
-			csv_header_types: vec![],
+			current_table_name: String::new(),
 			scan_record: StringRecord::new(),
 			selected_csv_columns: vec![],
 			vars: HashMap::new(),
@@ -58,6 +54,8 @@ impl Context {
 			distinct_map: HashMap::new(),
 			skip: false,
 			cache_distinct_objs: None,
+			tables: HashMap::new(),
+			do_read_record: false,
 			is_cli: false,
 			matched_record: StringRecord::new(),
 			unmatched_record: StringRecord::new(),
@@ -75,9 +73,7 @@ impl Context {
 	}
 
 	pub fn clear(&mut self) {
-		self.table_csv_reader = None;
-		self.csv_headers.clear();
-		self.csv_headers_idents.clear();
+		self.current_table_name.clear();
 		self.scan_record.clear();
 		self.selected_csv_columns.clear();
 		self.vars.clear();
@@ -85,6 +81,8 @@ impl Context {
 		self.distinct_map.clear();
 		self.skip = false;
 		self.cache_distinct_objs = None;
+		self.tables.clear();
+		self.do_read_record = false;
 		self.matched_record.clear();
 		self.unmatched_record.clear();
 		if let Some(test_get_records) = self.test_get_records.as_mut() {
@@ -99,6 +97,48 @@ impl Context {
 		self.avg_counter = 0;
 		self.min_value = f64::MAX;
 		self.max_value = 0.0;
+	}
+
+	pub fn get_table_headers(&mut self, table_name: &str) -> Result<StringRecord, Error> {
+		if let Some(table) = self.tables.get(table_name) {
+			Ok(table.headers.clone())
+		} else {
+			err_runtime!("not found table '{}'", table_name)
+		}
+	}
+
+	pub fn get_table_header_idents(&mut self, table_name: &str) -> Result<Vec<String>, Error> {
+		if let Some(table) = self.tables.get(table_name) {
+			Ok(table.header_idents.clone())
+		} else {
+			err_runtime!("not found table '{}' (2)", table_name)
+		}
+	}
+
+	pub fn get_table_header_types(&mut self, table_name: &str) -> Result<Vec<HeaderType>, Error> {
+		if let Some(table) = self.tables.get(table_name) {
+			Ok(table.header_types.clone())
+		} else {
+			err_runtime!("not found table '{}' (3)", table_name)
+		}
+	}
+
+	pub fn set_table_header_types(&mut self, table_name: &str, header_types: &Vec<HeaderType>) -> Result<(), Error> {
+		if let Some(table) = self.tables.get_mut(table_name) {
+			table.header_types = header_types.clone();
+			Ok(())
+		} else {
+			err_runtime!("not found table '{}' (4)", table_name)
+		}
+	}
+
+	pub fn set_table_header_idents(&mut self, table_name: &str, header_idents: &Vec<String>) -> Result<(), Error> {
+		if let Some(table) = self.tables.get_mut(table_name) {
+			table.header_idents = header_idents.clone();
+			Ok(())
+		} else {
+			err_runtime!("not found table '{} (5)'", table_name)
+		}
 	}
 
 	pub fn gen_db_dir_path(&self, db_name: &str) -> Result<PathBuf, Error> {

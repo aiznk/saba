@@ -98,6 +98,7 @@ impl DistinctNode {
 
 #[derive(Clone, Debug)]
 pub struct SortNode {
+	pub table_name: String,
 	pub expr: Option<Box<parser::ExprNode>>,
 	pub project: Option<Box<ProjectNode>>,
 	pub is_asc: bool,
@@ -107,6 +108,7 @@ pub struct SortNode {
 impl SortNode {
 	pub fn new() -> Self {
 		Self {
+			table_name: String::new(),
 			expr: None,
 			project: None,
 			is_asc: true,
@@ -1014,8 +1016,10 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 			distinct.expr_list = Some(expr_list.clone());
 		}		
 		if let Some(table) = &node.table {
-			csv_file_scan.table_name = unwrap_ident_object(&table)?.to_string();
+			let table_name = unwrap_ident_object(&table)?.to_string();
+			csv_file_scan.table_name = table_name.clone();
 			csv_file_scan.all = node.all;
+			sort.table_name = table_name;
 		}
 		if let Some(where_clause) = &node.where_clause {
 			filter.where_clause = Some((*where_clause).clone());
@@ -1041,8 +1045,10 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 		}
 
 		if let Some(table) = &node.table {
-			csv_file_scan.table_name = unwrap_ident_object(&table)?.to_string();
+			let table_name = unwrap_ident_object(&table)?.to_string();
+			csv_file_scan.table_name = table_name.clone();
 			csv_file_scan.all = node.all;
+			sort.table_name = table_name;
 		}
 
 		if let Some(where_clause) = &node.where_clause {

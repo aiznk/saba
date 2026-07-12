@@ -9,6 +9,7 @@ pub enum TokenKind {
 	Rename, // RENAME
 	Distinct, // DISTINCT
 	To, // TO
+	Dot, // '.'
 	Order, // ORDER
 	By, // BY
 	Desc, // DESC
@@ -488,6 +489,8 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == '>' && c2 == '=' {
 			ret.push(Token::from(TokenKind::GtEq, None));
 			i += 1;
+		} else if c1 == '.' {
+			ret.push(Token::from(TokenKind::Dot, None));
 		} else if c1 == '<' {
 			ret.push(Token::from(TokenKind::Lt, None));
 		} else if c1 == '>' {

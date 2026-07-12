@@ -90,7 +90,7 @@
 
 	Project (select columns)
 	- Filter (WHERE id == 123)
-	 - CsvScan (read mytab)
+	 - CsvFileScan (read mytab)
 
 > GET ALL id OF mytab WHERE id == 123;
 
@@ -98,7 +98,7 @@
 
 	Project (select columns)
 	- Filter (WHERE id == 123)
-	 - CsvScan (read mytab)
+	 - CsvFileScan (read mytab)
 
 > GET ALL COUNT(*) OF mytab WHERE id == 123;
 
@@ -106,7 +106,7 @@
 	- Project
 	 - Distinct
 	  - Filter (WHERE id == 123)
-	   - CsvScan (read mytab)
+	   - CsvFileScan (read mytab)
 
 > GET ALL id OF mytab ORDER BY age; 
 	
@@ -114,7 +114,7 @@
 	- Project
 	 - Distinct
 	  - Filter
-	   - CsvScan
+	   - CsvFileScan
 
 ### DISTINCT
 
@@ -145,7 +145,7 @@
 	 - RowUpdate
 	  - Project
 	   - Filter (WHERE id > 123)
-	   - CsvScan (mytab)
+	   - CsvFileScan (mytab)
 
 ## DEL
 
@@ -157,7 +157,7 @@
 	 - RowDelete
 	  - Project 
 	   - Filter (WHERE id > 100)
-       - CsvScan (read mytab)
+       - CsvFileScan (read mytab)
 
 ## FOR
 
@@ -209,8 +209,9 @@ compare_expr ::= add_sub_expr { compare_op add_sub_expr }*
 compare_op ::= ('==' | '!=')
 add_sub_expr ::= mul_div_expr { add_sub_op mul_div_expr }*
 add_sub_op ::= ('+' | '-')
-mul_div_expr ::= operand { mul_div_op operand }*
+mul_div_expr ::= dot_chain { mul_div_op dot_chain }*
 mul_div_op ::= ('*' | '/' | '%')
+dot_chain ::= operand { '.' operand }*
 operand ::= (int_value | float_value | string | ident | '*') | '(' expr ')'
 value ::= int_value | float_value | string
 int_value ::= ('+' | '-')? [0-9]+

@@ -584,6 +584,19 @@ impl AddSubExprNode {
 }
 
 #[derive(Debug, Clone)]
+pub struct DotChainNode {
+	pub nodes: Vec<Box<OperandNode>>,
+}
+
+impl DotChainNode {
+	pub fn new() -> Self {
+		Self {
+			nodes: vec![],
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 pub enum AddSubOpNode {
 	Add, // +
 	Sub, // -
@@ -591,9 +604,9 @@ pub enum AddSubOpNode {
 
 #[derive(Debug, Clone)]
 pub enum MulDivExprItemNode {
-	Left(Box<OperandNode>),
+	Left(Box<DotChainNode>),
 	Op(MulDivOpNode),
-	Right(Box<OperandNode>),
+	Right(Box<DotChainNode>),
 }
 
 #[derive(Debug, Clone)]
@@ -2007,7 +2020,7 @@ pub fn parse_add_sub_op(tok_strm: &mut TokenStream) -> Result<Option<AddSubOpNod
 pub fn parse_mul_div_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<MulDivExprNode>>, Error> {
 	let mut n = MulDivExprNode::new();
 
-	let left = parse_operand(tok_strm)?;
+	let left = parse_dot_chain(tok_strm)?;
 	if left.is_none() {
 		return Ok(None);
 	}
@@ -2020,11 +2033,41 @@ pub fn parse_mul_div_expr(tok_strm: &mut TokenStream) -> Result<Option<Box<MulDi
 		}
 		n.nodes.push(MulDivExprItemNode::Op(op.unwrap()));
 
-		let right = parse_operand(tok_strm)?;
+		let right = parse_dot_chain(tok_strm)?;
 		if right.is_none() {
 			return err_parse!("missing mul div expr in add sub expr");
 		}
 		n.nodes.push(MulDivExprItemNode::Right(right.unwrap()));
+	}
+
+	Ok(Some(Box::new(n)))
+}
+
+pub fn parse_dot_chain(tok_strm: &mut TokenStream) -> Result<Option<Box<DotChainNode>>, Error> {
+	if tok_strm.is_end() {
+		return Ok(None);
+	}
+
+	let mut n = DotChainNode::new();
+
+	let operand = parse_operand(tok_strm)?;
+	if operand.is_none() {
+		return Ok(None);
+	}
+	n.nodes.push(operand.unwrap());
+
+	while !tok_strm.is_end() {
+		let tok = tok_strm.get()?;
+		if tok.kind != TokenKind::Dot {
+			tok_strm.prev();
+			break;
+		}
+		
+		let operand = parse_operand(tok_strm)?;
+		if operand.is_none() {
+			return Ok(None);
+		}
+		n.nodes.push(operand.unwrap());
 	}
 
 	Ok(Some(Box::new(n)))
@@ -2372,5 +2415,10 @@ create table mytab (
 	fn test_distinct() {
 		assert!(do_parse("GET ALL DISTINCT id OF test_table") == true);
 		assert!(do_parse("GET ALL DISTINCT id, weight OF test_table") == true);
+	}
+
+	#[test]
+	fn test_dot() {
+		assert!(do_parse("GET ALL test_table.id OF test_table") == true);
 	}
 }

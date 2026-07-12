@@ -1,4 +1,33 @@
 use crate::error::{Error, make_error, err_parse, err_runtime};
+use std::fs::File;
+use csv::{Reader, StringRecord};
+
+#[derive(Debug)]
+pub struct Table {
+	pub name: String,
+	pub csv_reader: Option<Reader<File>>,
+	pub headers: StringRecord,
+	pub header_types: Vec<HeaderType>,
+	pub header_idents: Vec<String>,
+}
+
+impl Table {
+	pub fn new() -> Self {
+		Self {
+			name: String::new(),
+			csv_reader: None,
+			headers: StringRecord::new(),
+			header_types: vec![],
+			header_idents: vec![],
+		}
+	}
+
+	pub fn from(table_name: String) -> Self {
+		let mut s = Self::new();
+		s.name = table_name;
+		return s;
+	}
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeaderType {
@@ -143,6 +172,7 @@ pub struct Object {
 	pub float_value: f64,
 	pub string: String,
 	pub ident: String,
+	pub parent: Option<Box<Object>>,
 }
 
 impl Object {
@@ -154,6 +184,7 @@ impl Object {
 			float_value: 0.0,
 			string: String::new(),
 			ident: String::new(),
+			parent: None,
 		}
 	}
 
@@ -184,69 +215,44 @@ impl Object {
 	}
 
 	pub fn from_ident(ident: &str) -> Self {
-		Self {
-			kind: ObjectKind::Ident,
-			bool_value: false,
-			int_value: 0,
-			float_value: 0.0,
-			string: String::new(),
-			ident: String::from(ident),
-		}		
+		let mut o = Self::new();
+		o.kind = ObjectKind::Ident;
+		o.ident = String::from(ident);
+		return o;
 	}
 
 	pub fn from_star() -> Self {
-		Self {
-			kind: ObjectKind::Star,
-			bool_value: false,
-			int_value: 0,
-			float_value: 0.0,
-			string: String::new(),
-			ident: String::new(),
-		}		
+		let mut o = Self::new();
+		o.kind = ObjectKind::Star;
+		return o;
 	}
 
 	pub fn from_bool(b: bool) -> Self {
-		Self {
-			kind: ObjectKind::Bool,
-			bool_value: b,
-			int_value: 0,
-			float_value: 0.0,
-			string: String::new(),
-			ident: String::new(),
-		}		
+		let mut o = Self::new();
+		o.kind = ObjectKind::Bool;
+		o.bool_value = b;
+		return o;
 	}
 
 	pub fn from_int(n: i128) -> Self {
-		Self {
-			kind: ObjectKind::Int,
-			bool_value: false,
-			int_value: n,
-			float_value: 0.0,
-			string: String::new(),
-			ident: String::new(),
-		}		
+		let mut o = Self::new();
+		o.kind = ObjectKind::Int;
+		o.int_value = n;
+		return o;
 	}
 
 	pub fn from_float(n: f64) -> Self {
-		Self {
-			kind: ObjectKind::Float,
-			bool_value: false,
-			int_value: 0,
-			float_value: n,
-			string: String::new(),
-			ident: String::new(),
-		}		
+		let mut o = Self::new();
+		o.kind = ObjectKind::Float;
+		o.float_value = n;
+		return o;
 	}
 
 	pub fn from_string(s: String) -> Self {
-		Self {
-			kind: ObjectKind::String,
-			bool_value: false,
-			int_value: 0,
-			float_value: 0.0,
-			string: s,
-			ident: String::new(),
-		}		
+		let mut o = Self::new();
+		o.kind = ObjectKind::String;
+		o.string = s;
+		return o;
 	}
 }
 
