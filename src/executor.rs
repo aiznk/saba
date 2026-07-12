@@ -860,7 +860,7 @@ pub fn or_objects(context: &mut Context, a: &Object, b: &Object) -> Result<Objec
 					Ok(Object::from_bool(n))
 				}
 				ObjectKind::Ident => {
-					let bo = refer_ident(context, &b.ident)?;
+					let bo = refer_ident(context, &b)?;
 					Ok(or_objects(context, a, &bo)?)
 				}
 				_ => return err_exec!("can't compare or"),
@@ -869,12 +869,12 @@ pub fn or_objects(context: &mut Context, a: &Object, b: &Object) -> Result<Objec
 		ObjectKind::Ident => {
 			match b.kind {
 				ObjectKind::Bool => {
-					let ao = refer_ident(context, &a.ident)?;
+					let ao = refer_ident(context, &a)?;
 					Ok(or_objects(context, &ao, b)?)
 				}
 				ObjectKind::Ident => {
-					let ao = refer_ident(context, &a.ident)?;
-					let bo = refer_ident(context, &b.ident)?;
+					let ao = refer_ident(context, &a)?;
+					let bo = refer_ident(context, &b)?;
 					Ok(or_objects(context, &ao, &bo)?)
 				}
 				_ => return err_exec!("can't compare or"),
@@ -893,7 +893,7 @@ pub fn and_objects(context: &mut Context, a: &Object, b: &Object) -> Result<Obje
 					Ok(Object::from_bool(n))
 				}
 				ObjectKind::Ident => {
-					let bo = refer_ident(context, &b.ident)?;
+					let bo = refer_ident(context, &b)?;
 					Ok(or_objects(context, a, &bo)?)
 				}
 				_ => return err_exec!("can't compare or"),
@@ -902,12 +902,12 @@ pub fn and_objects(context: &mut Context, a: &Object, b: &Object) -> Result<Obje
 		ObjectKind::Ident => {
 			match b.kind {
 				ObjectKind::Bool => {
-					let ao = refer_ident(context, &a.ident)?;
+					let ao = refer_ident(context, &a)?;
 					Ok(or_objects(context, &ao, b)?)
 				}
 				ObjectKind::Ident => {
-					let ao = refer_ident(context, &a.ident)?;
-					let bo = refer_ident(context, &b.ident)?;
+					let ao = refer_ident(context, &a)?;
+					let bo = refer_ident(context, &b)?;
 					Ok(or_objects(context, &ao, &bo)?)
 				}
 				_ => return err_exec!("can't compare or"),
@@ -1107,10 +1107,21 @@ pub fn parse_column_by_head(head: &str, col: &str) -> Result<Object, Error> {
 	err_exec!("can't parse column by header info")
 }
 
-pub fn refer_ident(context: &mut Context, ident: &String) -> Result<Object, Error> {
-	let table_name = context.current_table_name.clone();
-
-	if let Some(index) = context.get_table_header_idents(table_name.as_str())?.iter().position(|s| *s == *ident) {
+pub fn refer_ident(context: &mut Context, ident: &Object) -> Result<Object, Error> {
+	let table_name = if let Some(parent) = &ident.parent {
+		match parent.kind {
+			ObjectKind::Ident => {
+				parent.ident.clone()
+			}
+			_ => {
+				return err_exec!("invalid parent object");
+			}
+		}
+	} else {
+		context.current_table_name.clone()
+	};
+	let header_idents = context.get_table_header_idents(table_name.as_str())?;
+	if let Some(index) = header_idents.iter().position(|s| *s == *ident.ident) {
 		let head = context.get_table_headers(table_name.as_str())?[index].to_string();
 		let col = &context.scan_record[index];
 		let o = parse_column_by_head(&head, col)?;
@@ -1171,7 +1182,7 @@ pub fn add_sub_objects(context: &mut Context, lhs: &Object, op: &parser::AddSubO
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							return add_sub_objects(context, &lo, op, rhs);
 						}
 						_ => {
@@ -1219,7 +1230,7 @@ pub fn add_sub_objects(context: &mut Context, lhs: &Object, op: &parser::AddSubO
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							return add_sub_objects(context, &lo, op, rhs);
 						}
 						_ => {
@@ -1272,7 +1283,7 @@ pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivO
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							return mul_div_objects(context, &lo, op, rhs);
 						}
 						_ => {
@@ -1332,7 +1343,7 @@ pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivO
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							return mul_div_objects(context, &lo, op, rhs);
 						}
 						_ => {
@@ -1392,7 +1403,7 @@ pub fn mul_div_objects(context: &mut Context, lhs: &Object, op: &parser::MulDivO
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							return mul_div_objects(context, &lo, op, rhs);
 						}
 						_ => {
@@ -1422,7 +1433,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
 						_ => err_exec!("can't compare i64 and other: a < b"),
@@ -1439,7 +1450,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
 						_ => err_exec!("can't compare f64 and other: a < b"),
@@ -1450,12 +1461,12 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
 						},
 						ObjectKind::Ident => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							let ro = refer_ident(context, &rhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
 						_ => err_exec!("can't compare f64 and other: a < b"),						
@@ -1477,7 +1488,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
 						_ => err_exec!("can't compare i64 and other: a <= b"),
@@ -1494,7 +1505,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
 						_ => err_exec!("can't compare f64 and other: a <= b"),
@@ -1505,12 +1516,12 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
 						},
 						ObjectKind::Ident => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							let ro = refer_ident(context, &rhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
 						_ => err_exec!("can't compare f64 and other: a <= b"),						
@@ -1532,7 +1543,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
 						_ => err_exec!("can't compare i64 and other: a > b"),
@@ -1549,7 +1560,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
 						_ => err_exec!("can't compare f64 and other: a > b"),
@@ -1560,12 +1571,12 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
 						},
 						ObjectKind::Ident => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							let ro = refer_ident(context, &rhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
 						_ => err_exec!("can't compare f64 and other: a > b"),						
@@ -1587,7 +1598,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
 						_ => err_exec!("can't compare i64 and other: a >= b"),
@@ -1604,7 +1615,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						}
 						_ => err_exec!("can't compare f64 and other: a >= b"),
@@ -1615,12 +1626,12 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
 						},
 						ObjectKind::Ident => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							let ro = refer_ident(context, &rhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
 						_ => err_exec!("can't compare f64 and other: a >= b"),						
@@ -1642,7 +1653,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
 						_ => err_exec!("can't compare i64 and other: a == b"),
@@ -1659,7 +1670,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
 						_ => err_exec!("can't compare f64 and other: a == b"),
@@ -1672,7 +1683,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						}
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
 						_ => err_exec!("can't compare string and other: a == b"),
@@ -1685,7 +1696,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						}
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
 						_ => err_exec!("can't compare bool and other: a == b"),
@@ -1697,12 +1708,12 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						ObjectKind::Float |
 						ObjectKind::Bool |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)									
 						},
 						ObjectKind::Ident => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							let ro = refer_ident(context, &rhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
 						_ => err_exec!("can't compare ident and other: a == b"),						
@@ -1724,7 +1735,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
 						_ => err_exec!("can't compare i64 and other: a != b"),
@@ -1741,7 +1752,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						},
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
 						_ => err_exec!("can't compare f64 and other: a != b"),
@@ -1754,7 +1765,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						}
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
 						_ => err_exec!("can't compare string and other: a != b"),
@@ -1767,7 +1778,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							Ok(Object::from_bool(b))
 						}
 						ObjectKind::Ident => {
-							let ro = refer_ident(context, &rhs.ident)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, lhs, op, &ro)?)
 						},
 						_ => err_exec!("can't compare bool and other: a != b"),
@@ -1779,12 +1790,12 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						ObjectKind::Float |
 						ObjectKind::Bool |
 						ObjectKind::String => {
-							let lo = refer_ident(context, &lhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
 							Ok(compare_objects(context, &lo, op, rhs)?)
 						},
 						ObjectKind::Ident => {
-							let lo = refer_ident(context, &lhs.ident)?;
-							let ro = refer_ident(context, &rhs.ident)?;
+							let lo = refer_ident(context, &lhs)?;
+							let ro = refer_ident(context, &rhs)?;
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
 						_ => err_exec!("can't compare ident and other: a != b"),						
@@ -4546,7 +4557,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_dot_chain() {
+	fn test_dot_chain_0() {
 		let path = gen_test_table_path();
 		let mut context = Context::new();
 
@@ -4560,6 +4571,23 @@ mod tests {
 		let s = test_get_records_to_string(&mut context);
 		println!("s[{}]", s);
 		assert!(s == "1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+	}
+
+	#[test]
+	fn test_dot_chain_1() {
+		let path = gen_test_table_path();
+		let mut context = Context::new();
+
+		setup_records_2!(context);
+		let s = fs::read_to_string(&path).unwrap();
+		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL test_table.id OF test_table WHERE test_table.id < 3").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,3.14,hige\n2,3.14,hoge\n");
 	}
 
 	#[test]
