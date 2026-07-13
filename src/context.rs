@@ -10,7 +10,6 @@ pub struct Context {
 	pub root_dir_path: PathBuf,
 	pub using_db_name: String,
 	pub current_table_name: String,
-	pub scan_record: StringRecord,
 	pub selected_csv_columns: Vec<String>,
 	pub vars: HashMap<String, Box<Object>>,
 	pub counter_selected: usize,
@@ -19,6 +18,10 @@ pub struct Context {
 	pub cache_distinct_objs: Option<Vec<Object>>,
 	pub tables: HashMap<String, Box<Table>>,
 	pub do_read_record: bool,
+	pub joined_headers: StringRecord,
+	pub joined_header_types: Vec<HeaderType>,
+	pub joined_header_idents: Vec<String>,
+	pub joined_record: StringRecord,
 
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
@@ -47,7 +50,6 @@ impl Context {
 			root_dir_path: PathBuf::new(),
 			using_db_name: String::new(),
 			current_table_name: String::new(),
-			scan_record: StringRecord::new(),
 			selected_csv_columns: vec![],
 			vars: HashMap::new(),
 			counter_selected: 0,
@@ -56,6 +58,10 @@ impl Context {
 			cache_distinct_objs: None,
 			tables: HashMap::new(),
 			do_read_record: false,
+			joined_headers: StringRecord::new(),
+			joined_header_types: vec![],
+			joined_header_idents: vec![],
+			joined_record: StringRecord::new(),
 			is_cli: false,
 			matched_record: StringRecord::new(),
 			unmatched_record: StringRecord::new(),
@@ -74,7 +80,6 @@ impl Context {
 
 	pub fn clear(&mut self) {
 		self.current_table_name.clear();
-		self.scan_record.clear();
 		self.selected_csv_columns.clear();
 		self.vars.clear();
 		self.counter_selected = 0;
@@ -83,6 +88,10 @@ impl Context {
 		self.cache_distinct_objs = None;
 		self.tables.clear();
 		self.do_read_record = false;
+		self.joined_headers.clear();
+		self.joined_header_types.clear();
+		self.joined_header_idents.clear();
+		self.joined_record.clear();
 		self.matched_record.clear();
 		self.unmatched_record.clear();
 		if let Some(test_get_records) = self.test_get_records.as_mut() {
@@ -99,7 +108,40 @@ impl Context {
 		self.max_value = 0.0;
 	}
 
-	pub fn get_table_headers(&mut self, table_name: &str) -> Result<StringRecord, Error> {
+	pub fn get_current_table_scanned_record(&self) -> Result<StringRecord, Error> {
+		if let Some(table) = self.tables.get(self.current_table_name.as_str()) {
+			Ok(table.scanned_record.clone())
+		} else {
+			err_runtime!("not found table '{}' in get table scanned record", self.current_table_name)
+		}
+	}
+
+	pub fn set_table_scanned_record(&mut self, table_name: &str, scanned_record: StringRecord) -> Result<(), Error> {
+		if let Some(table) = self.tables.get_mut(table_name) {
+			table.scanned_record = scanned_record;
+		} else {
+			return err_runtime!("not found table '{}' in get table scanned record", table_name);
+		}
+		Ok(())
+	}	
+
+	pub fn get_table_scanned_record(&self, table_name: &str) -> Result<StringRecord, Error> {
+		if let Some(table) = self.tables.get(table_name) {
+			Ok(table.scanned_record.clone())
+		} else {
+			err_runtime!("not found table '{}' in get table scanned record", table_name)
+		}
+	}
+
+	pub fn get_current_table_headers(&mut self) -> Result<StringRecord, Error> {
+		if let Some(table) = self.tables.get(self.current_table_name.as_str()) {
+			Ok(table.headers.clone())
+		} else {
+			err_runtime!("not found table '{}' in get current table headers", self.current_table_name)
+		}
+	}
+
+	pub fn get_table_headers(&self, table_name: &str) -> Result<StringRecord, Error> {
 		if let Some(table) = self.tables.get(table_name) {
 			Ok(table.headers.clone())
 		} else {
@@ -107,7 +149,7 @@ impl Context {
 		}
 	}
 
-	pub fn get_table_header_idents(&mut self, table_name: &str) -> Result<Vec<String>, Error> {
+	pub fn get_table_header_idents(&self, table_name: &str) -> Result<Vec<String>, Error> {
 		if let Some(table) = self.tables.get(table_name) {
 			Ok(table.header_idents.clone())
 		} else {
@@ -115,7 +157,7 @@ impl Context {
 		}
 	}
 
-	pub fn get_table_header_types(&mut self, table_name: &str) -> Result<Vec<HeaderType>, Error> {
+	pub fn get_table_header_types(&self, table_name: &str) -> Result<Vec<HeaderType>, Error> {
 		if let Some(table) = self.tables.get(table_name) {
 			Ok(table.header_types.clone())
 		} else {

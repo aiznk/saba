@@ -101,7 +101,7 @@ fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Erro
 					records.push(context.matched_record.clone());
 				}
 			} else {
-				records.push(context.scan_record.clone());
+				records.push(context.get_current_table_scanned_record()?);
 			}
 		}
 
@@ -583,7 +583,7 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 			return Ok(Object::from_int(context.count_counter as i128));
 		}
 	} else {
-		record = context.scan_record.clone();
+		record = context.get_current_table_scanned_record()?;
 	}
 
 	if args.len() != 1 {
@@ -629,7 +629,7 @@ fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 			return Ok(Object::from_float(context.avg_sum_value / context.avg_counter as f64));
 		}
 	} else {
-		record = context.scan_record.clone();
+		record = context.get_current_table_scanned_record()?;
 		context.avg_counter += 1;
 	}
 
@@ -682,7 +682,7 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 			return Ok(Object::from_float(context.sum_value));
 		}
 	} else {
-		record = context.scan_record.clone();
+		record = context.get_current_table_scanned_record()?;
 	}
 
 	if args.len() != 1 {
@@ -731,7 +731,7 @@ fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 			return Ok(Object::from_float(context.max_value));
 		}
 	} else {
-		record = context.scan_record.clone();
+		record = context.get_current_table_scanned_record()?;
 	}
 
 	if args.len() != 1 {
@@ -780,7 +780,7 @@ fn call_min(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 			return Ok(Object::from_float(context.min_value));
 		}
 	} else {
-		record = context.scan_record.clone();
+		record = context.get_current_table_scanned_record()?;
 	}
 
 	if args.len() != 1 {
@@ -1123,8 +1123,8 @@ pub fn refer_ident(context: &mut Context, ident: &Object) -> Result<Object, Erro
 	let header_idents = context.get_table_header_idents(table_name.as_str())?;
 	if let Some(index) = header_idents.iter().position(|s| *s == *ident.ident) {
 		let head = context.get_table_headers(table_name.as_str())?[index].to_string();
-		let col = &context.scan_record[index];
-		let o = parse_column_by_head(&head, col)?;
+		let col = context.get_table_scanned_record(table_name.as_str())?[index].to_string();
+		let o = parse_column_by_head(&head, col.as_str())?;
 		Ok(o)
 	} else {
 		err_exec!("not found ident in CSV header")
@@ -1922,55 +1922,94 @@ fn print_record(head: &str, row: &StringRecord) {
 	println!("");
 }
 
+fn get_header_idents_by_obj(context: &Context, obj: &Object) -> Result<Vec<String>, Error> {
+	if let Some(parent) = &obj.parent {
+		match parent.kind {
+			ObjectKind::Ident => {
+				let table_name = parent.ident.clone();
+				if context.tables.contains_key(&table_name) {
+					let idents = context.get_table_header_idents(&table_name)?;
+					Ok(idents)
+				} else {
+					return err_exec!("not found table ident '{}'", table_name);
+				}
+			}
+			_ => return err_exec!("invalid parent object"),
+		}
+	} else {
+		let idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
+		Ok(idents)
+	}
+} 
+
+fn get_table_record<'a>(context: &'a Context, obj: &'a Object) -> Result<&'a StringRecord, Error> {
+	if let Some(parent) = &obj.parent {
+		match parent.kind {
+			ObjectKind::Ident => {
+				let table_name = parent.ident.clone();
+				if let Some(table) = context.tables.get(&table_name) {
+					Ok(&table.scanned_record)
+				} else {
+					return err_exec!("not found table ident '{}'", table_name);
+				}
+			}
+			_ => return err_exec!("invalid parent object"),
+		}
+	} else {
+		if let Some(table) = context.tables.get(&context.current_table_name) {
+			Ok(&table.scanned_record)
+		} else {
+			return err_exec!("not found table name '{}'", context.current_table_name);
+		}
+	}
+}
+
+fn get_table_name<'a>(context: &'a Context, obj: &'a Object) -> Result<&'a String, Error> {
+	if let Some(parent) = &obj.parent {
+		match parent.kind {
+			ObjectKind::Ident => {
+				Ok(&parent.ident)
+			}
+			_ => return err_exec!("invalid parent object"),
+		}
+	} else {
+		Ok(&context.current_table_name)
+	}
+}
+
 fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
-	let row;
+	let mut dst = vec![];
 
 	context.selected_csv_columns.clear();
-
-	if context.filtered {
-		row = context.matched_record.clone();
-	} else {
-		row = context.scan_record.clone();
-	}
-	if row.len() == 0 {
-		return Ok(());
-	}
 
 	let mut objs: Vec<Object> = vec![];
 	if let Some(expr_list) = &node.expr_list {
 		objs = exec_expr_list(context, expr_list)?;
 	}
 
-	if objs.len() == 1 &&
-	   objs[0].kind == ObjectKind::Star {
+	if objs.len() == 1 && objs[0].kind == ObjectKind::Star {
+	   	let row: &StringRecord = get_table_record(context, &objs[0])?;
 	   	for col in row.iter() {
-	   		context.selected_csv_columns.push(col.to_string());
+	   		dst.push(col.to_string());
 	   	}
+	   	context.selected_csv_columns = dst;
 	   	return Ok(());
 	}
 
-	let mut dst: Vec<String> = vec![];
-
 	for obj in objs.iter() {
-		let header_idents = if let Some(parent) = &obj.parent {
-			match parent.kind {
-				ObjectKind::Ident => {
-					let table_name = parent.ident.clone();
-					if context.tables.contains_key(&table_name) {
-						let idents = context.get_table_header_idents(&table_name)?;
-						idents
-					} else {
-						return err_exec!("not found table ident '{}'", table_name);
-					}
-				}
-				_ => return err_exec!("invalid parent object"),
-			}
-		} else {
-			let idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
-			idents
-		};
+		let table_name = get_table_name(context, &obj)?;
+		let row = get_table_record(context, &obj)?;
+		let header_idents = get_header_idents_by_obj(context, &obj)?;
 		if let Some(index) = header_idents.iter().position(|s| {
-				return *s == *obj.to_string();
+				if let Some(parent) = &obj.parent {
+					let spar = parent.to_string();
+					let rhs = format!("{}.{}", spar, obj.to_string());
+					let lhs = format!("{}.{}", table_name, s);
+					println!("lhs[{}] == rhs[{}]", lhs, rhs);
+					lhs == rhs
+				} else {
+					*s == *obj.to_string()
+				}
 			}) {
 			let col = &row[index];
 			dst.push(col.to_string());
@@ -2039,7 +2078,7 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<StringReco
 	if context.filtered {
 		row = context.matched_record.clone();
 	} else {
-		row = context.scan_record.clone();
+		row = context.get_current_table_scanned_record()?;
 	}
 	if row.len() == 0 {
 		return Ok(record);
@@ -2081,12 +2120,6 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode)
 		let mut record = StringRecord::new();
 
 		while exec_distinct(context, distinct)? {
-			if DEBUG {
-				print_record("scan_record", &context.scan_record);
-				println!("filtered {}", context.filtered);
-				println!("matched {}", context.matched);
-				println!("skip {}", context.skip);
-			}
 			if context.filtered {
 				if context.matched {
 					if let Some(limit_value) = limit_value {
@@ -2152,7 +2185,7 @@ pub fn exec_distinct(context: &mut Context, distinct: &planner::DistinctNode) ->
 						row = context.matched_record.clone();
 					}
 				} else {
-					row = context.scan_record.clone();
+					row = context.joined_record.clone();
 				}
 				if row.len() > 0 {
 					let idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
@@ -2189,12 +2222,6 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 		if !result {
 			return Ok(result);
 		}
-		if DEBUG {
-			print_record("scan_record", &context.scan_record);
-			println!("filtered {}", context.filtered);
-			println!("matched {}", context.matched);
-			println!("skip {}", context.skip);
-		}
 		if context.skip {
 			return Ok(true);
 		}
@@ -2224,8 +2251,9 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 				}
 			}
 			context.limit_counter += 1;
+			let record = context.joined_record.clone();
 			if let Some(test_get_records) = context.test_get_records.as_mut() {
-				test_get_records.push(context.scan_record.clone());
+				test_get_records.push(record);
 			}
 			select_get_columns(context, project)?;
 			if context.is_cli {
@@ -2256,12 +2284,12 @@ pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<
 
 			let o = exec_where_clause(context, where_clause)?;
 			if o.bool_value {
-				context.matched_record = context.scan_record.clone();
+				context.matched_record = context.joined_record.clone();
 				context.unmatched_record.clear();
 				context.matched = true;
 			} else {
 				context.matched_record.clear();
-				context.unmatched_record = context.scan_record.clone();
+				context.unmatched_record = context.joined_record.clone();
 				context.matched = false;
 			}
 			return Ok(result);
@@ -2277,12 +2305,44 @@ pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<
 	return err_exec!("invalid state: filter");
 }
 
+fn merge_string_record(a: &mut StringRecord, b: &StringRecord) {
+	for col in b.iter() {
+		a.push_field(col);
+	}
+}
+
 pub fn exec_joins(context: &mut Context, node: &planner::JoinsNode) -> Result<bool, Error> {
 	if let Some(csv_file_scan) = &node.csv_file_scan {
-		exec_csv_file_scan(context, csv_file_scan)
-	} else {
-		Ok(false)
+		if !exec_csv_file_scan(context, csv_file_scan)? {
+			return Ok(false);
+		}
 	}
+
+	let mut row1 = context.get_current_table_scanned_record()?;
+	let mut headers1 = context.get_current_table_headers()?;
+
+	for item in node.items.iter() {
+		match item {
+			planner::JoinsItemNode::InnerJoin(inner_join) => {
+				if let Some(csv_file_scan) = &inner_join.csv_file_scan {
+					if !exec_csv_file_scan(context, csv_file_scan)? {
+						return Ok(false);
+					}
+					let row2 = context.get_current_table_scanned_record()?;
+					let headers2 = context.get_current_table_headers()?;
+					merge_string_record(&mut row1, &row2);
+					merge_string_record(&mut headers1, &headers2);
+				}
+			}
+		}
+	}
+
+	context.joined_header_types = parse_csv_headers_as_types(&headers1)?;
+	context.joined_header_idents = parse_header_idents(&headers1)?;
+	context.joined_headers = headers1;
+	context.joined_record = row1;
+
+	Ok(true)
 }
 
 pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode) -> Result<bool, Error> {
@@ -2322,11 +2382,14 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode
 	}	
 	if let Some(table) = context.tables.get_mut(&node.table_name) {
 		if let Some(reader) = table.csv_reader.as_mut() {
-			match reader.read_record(&mut context.scan_record) {
+			let mut scanned_record = StringRecord::new();
+			match reader.read_record(&mut scanned_record) {
 				Ok(_) => {
-					if context.scan_record.len() == 0 {
+					if scanned_record.len() == 0 {
 						table.csv_reader = None;
 						return Ok(false);
+					} else {
+						table.scanned_record = scanned_record;
 					}
 					return Ok(true);
 				}
@@ -2488,7 +2551,7 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNod
 						}
 					}
 				} else {
-					writer.write_record(&context.scan_record).unwrap();
+					writer.write_record(&context.get_current_table_scanned_record()?).unwrap();
 				}
 			}
 		} else {
@@ -2517,7 +2580,7 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNod
 								writer.write_record(&context.unmatched_record).unwrap();
 							}
 						} else {
-							writer.write_record(&context.scan_record).unwrap();
+							writer.write_record(&context.get_current_table_scanned_record()?).unwrap();
 						}
 					} else {
 						if count == 0 {
@@ -2529,11 +2592,11 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNod
 								}
 							}
 						} else {
-							writer.write_record(&context.scan_record).unwrap();
+							writer.write_record(&context.get_current_table_scanned_record()?).unwrap();
 						}
 					}
 				} else {
-					writer.write_record(&context.scan_record).unwrap();
+					writer.write_record(&context.get_current_table_scanned_record()?).unwrap();
 				}
 			}			
 		}
@@ -2603,7 +2666,7 @@ pub fn exec_column_alter_type(context: &mut Context, types: &Vec<HeaderType>, no
 
 	if let Some(project) = &node.project {
 		while exec_project(context, &project)? {
-			let row = alter_field_column_type(types, node, &context.scan_record.clone())?;
+			let row = alter_field_column_type(types, node, &context.get_current_table_scanned_record()?)?;
 			writer.write_record(&row).unwrap();
 		}
 	}	
@@ -2614,7 +2677,7 @@ pub fn exec_column_alter_type(context: &mut Context, types: &Vec<HeaderType>, no
 pub fn exec_column_rename(context: &mut Context, node: &planner::ColumnRenameNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 	if let Some(project) = &node.project {
 		while exec_project(context, &project)? {
-			let row = &context.scan_record;
+			let row = &context.get_current_table_scanned_record()?;
 			writer.write_record(row).unwrap();
 		}
 	}
@@ -2640,7 +2703,7 @@ pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, w
 		let drop_index = drop_index.unwrap();
 
 		while exec_project(context, &project)? {
-			let row = &context.scan_record;
+			let row = &context.get_current_table_scanned_record()?;
 			let row = drop_record_column(&row, drop_index)?;
 			writer.write_record(&row).unwrap();
 		}
@@ -2654,7 +2717,7 @@ pub fn exec_column_add(context: &mut Context, node: &planner::ColumnAddNode, wri
 		assert!(def_row.len() > 0);
 
 		while exec_project(context, &project)? {
-			let mut row = context.scan_record.clone();
+			let mut row = context.get_current_table_scanned_record()?;
 			row.push_field(def_row.to_vec().last().unwrap().as_str());
 			writer.write_record(&row).unwrap();
 		}
@@ -2697,7 +2760,7 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 								writer.write_record(&cols).unwrap();
 							}
 						} else {
-							let cols = context.scan_record.clone();
+							let cols = context.get_current_table_scanned_record()?;
 							let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
 							writer.write_record(&cols).unwrap();
 							if let Some(limit_value) = limit_value {
@@ -2707,7 +2770,7 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 							}
 						}
 					} else {
-						let cols = context.scan_record.clone();
+						let cols = context.get_current_table_scanned_record()?;
 						writer.write_record(&cols).unwrap();
 					}
 				}
@@ -2728,12 +2791,12 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 									}
 								}
 							} else {
-								let cols = context.scan_record.clone();
+								let cols = context.get_current_table_scanned_record()?;
 								writer.write_record(&cols).unwrap();
 							}
 						} else {
 							if !writted {
-								let cols = context.scan_record.clone();
+								let cols = context.get_current_table_scanned_record()?;
 								let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
 								writer.write_record(&cols).unwrap();
 								writted = true;
@@ -2743,11 +2806,11 @@ pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNod
 									}
 								}
 							} else {
-								writer.write_record(&context.scan_record).unwrap();
+								writer.write_record(&context.get_current_table_scanned_record()?).unwrap();
 							}
 						}
 					} else {
-						writer.write_record(&context.scan_record).unwrap();
+						writer.write_record(&context.get_current_table_scanned_record()?).unwrap();
 					}
 				}
 			}

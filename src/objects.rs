@@ -9,6 +9,7 @@ pub struct Table {
 	pub headers: StringRecord,
 	pub header_types: Vec<HeaderType>,
 	pub header_idents: Vec<String>,
+	pub scanned_record: StringRecord,
 }
 
 impl Table {
@@ -19,6 +20,7 @@ impl Table {
 			headers: StringRecord::new(),
 			header_types: vec![],
 			header_idents: vec![],
+			scanned_record: StringRecord::new(),
 		}
 	}
 

@@ -376,8 +376,8 @@ impl ProjectNode {
 
 #[derive(Clone, Debug)]
 pub struct InnerJoinNode {
-	csv_file_scan: Option<Box<CsvFileScanNode>>,
-	expr: Option<Box<parser::ExprNode>>,
+	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
+	pub expr: Option<Box<parser::ExprNode>>,
 }
 
 impl InnerJoinNode {
@@ -397,14 +397,14 @@ pub enum JoinsItemNode {
 #[derive(Clone, Debug)]
 pub struct JoinsNode {
 	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
-	pub joins: Vec<Box<JoinsItemNode>>,
+	pub items: Vec<JoinsItemNode>,
 }
 
 impl JoinsNode {
 	pub fn new() -> Self {
 		Self {
 			csv_file_scan: None,
-			joins: vec![],
+			items: vec![],
 		}
 	}
 }
@@ -1055,6 +1055,37 @@ fn needs_aggregate_func_expr(node: &Box<parser::FuncExprNode>) -> Result<bool, E
 	return Ok(false);
 }
 
+macro_rules! solve_join_clauses {
+	($node:ident, $of_clause:ident, $joins:ident) => {
+		for join_clause in $of_clause.join_clauses.iter() {
+			let table_name;
+			let expr;
+			let mut csv_file_scan = CsvFileScanNode::new();
+
+			if let Some(ident) = &join_clause.ident {
+				table_name = unwrap_ident_object(&ident)?.to_string();
+				csv_file_scan.table_name = table_name.clone();
+				csv_file_scan.all = $node.all;
+			} else {
+				return err_planning!("missing ident in join clause");
+			}
+			if let Some(expr_) = &join_clause.expr {
+				expr = expr_.clone();
+			} else {
+				return err_planning!("missing expr in join clause");
+			}
+
+			if join_clause.is_inner {
+				let mut n = InnerJoinNode::new();
+				n.csv_file_scan = Some(Box::new(csv_file_scan));
+				n.expr = Some(expr);
+				let item = JoinsItemNode::InnerJoin(n);
+				$joins.items.push(item);
+			}
+		}
+	}
+}
+
 pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
 	let mut filter = FilterNode::new();
 	let mut joins = JoinsNode::new();
@@ -1076,6 +1107,7 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 				csv_file_scan.all = node.all;
 				sort.table_name = table_name;
 			}
+			solve_join_clauses!(node, of_clause, joins);
 		}
 		if let Some(where_clause) = &node.where_clause {
 			filter.where_clause = Some((*where_clause).clone());
@@ -1108,6 +1140,7 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 				csv_file_scan.all = node.all;
 				sort.table_name = table_name;
 			}
+			solve_join_clauses!(node, of_clause, joins);
 		}
 
 		if let Some(where_clause) = &node.where_clause {
