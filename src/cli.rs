@@ -41,8 +41,8 @@ fn exec_query(opts: Options, query: String, context: &mut Context) -> Result<(),
 	let tokens: Vec<Token> = tokenize(query)?;
 	let mut tok_strm = TokenStream::new(tokens);
 	let node: QueryNode = parse(&mut tok_strm)?;
-	let node: PlansNode = planning(&node)?;
-	exec(context, &node)?;
+	let mut node: PlansNode = planning(&node)?;
+	exec(context, &mut node)?;
 	Ok(())
 }
 

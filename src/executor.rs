@@ -13,26 +13,26 @@ use regex::Regex;
 
 const DEBUG: bool = false;
 
-pub fn exec(context: &mut Context, node: &planner::PlansNode) -> Result<(), Error> {
-	for plan in node.plans.iter() {
+pub fn exec(context: &mut Context, node: &mut planner::PlansNode) -> Result<(), Error> {
+	for plan in node.plans.iter_mut() {
 		context.clear();
-		exec_plan(context, &plan)?
+		exec_plan(context, plan)?
 	}
 	Ok(())
 }
 
-pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), Error> {
+pub fn exec_plan(context: &mut Context, node: &mut planner::PlanNode) -> Result<(), Error> {
 	if let Some(use_db) = &node.use_db {
 		exec_use_db(context, &use_db)?;
 	} else if let Some(desc_table) = &node.desc_table {
 		exec_desc_table(context, &desc_table)?;
-	} else if let Some(sort) = &node.sort {
-		exec_sort(context, &sort)?;
-	} else if let Some(project) = &node.project {
-		while exec_project(context, &project)? {
+	} else if let Some(sort) = node.sort.as_mut() {
+		exec_sort(context, sort)?;
+	} else if let Some(project) = node.project.as_mut() {
+		while exec_project(context, project)? {
 		}
-	} else if let Some(aggregate) = &node.aggregate {
-		exec_aggregate(context, &aggregate)?;
+	} else if let Some(aggregate) = node.aggregate.as_mut() {
+		exec_aggregate(context, aggregate)?;
 	} else if let Some(database_create) = &node.database_create {
 		exec_database_create(context, &database_create)?;
 	} else if let Some(dir_list) = &node.dir_list {
@@ -45,8 +45,8 @@ pub fn exec_plan(context: &mut Context, node: &planner::PlanNode) -> Result<(), 
 		exec_csv_file_create(context, &csv_file_create)?;
 	} else if let Some(csv_file_delete) = &node.csv_file_delete {
 		exec_csv_file_delete(context, &csv_file_delete)?;
-	} else if let Some(csv_file_rewrite) = &node.csv_file_rewrite {
-		exec_csv_file_rewrite(context, &csv_file_rewrite)?;
+	} else if let Some(csv_file_rewrite) = node.csv_file_rewrite.as_mut() {
+		exec_csv_file_rewrite(context, csv_file_rewrite)?;
 	} else if let Some(csv_file_rename) = &node.csv_file_rename {
 		exec_csv_file_rename(context, &csv_file_rename)?;
 	} else {
@@ -66,7 +66,7 @@ fn string_record_to_vev_string(record: &StringRecord) -> Vec<String> {
 	v
 }
 
-fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Error> {
+fn exec_sort(context: &mut Context, sort: &mut planner::SortNode) -> Result<(), Error> {
 	let mut obj = Object::new();
 
 	context.current_table_name = sort.table_name.clone();
@@ -79,7 +79,7 @@ fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Erro
 		}
 	}
 
-	if let Some(project) = &sort.project {
+	if let Some(project) = sort.project.as_mut() {
 		let mut records: Vec<StringRecord> = vec![];
 		let mut limit_value = None;
 		let is_cli = context.is_cli;
@@ -92,7 +92,7 @@ fn exec_sort(context: &mut Context, sort: &planner::SortNode) -> Result<(), Erro
 		let mut project = (*project).clone();
 		project.limit = None;
 
-		while exec_project(context, &project)? {
+		while exec_project(context, &mut project)? {
 			if context.skip {
 				continue;
 			}
@@ -2079,14 +2079,14 @@ fn vec_string_to_hashed_value_string(row: &Vec<String>) -> String {
 	return s;
 }
 
-pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode) -> Result<(), Error> {
+pub fn exec_aggregate(context: &mut Context, aggregate: &mut planner::AggregateNode) -> Result<(), Error> {
 	let mut limit_value = None;
 
 	if let Some(limit) = &aggregate.limit {
 		limit_value = gen_limit_value(context, limit)?;
 	}
 
-	if let Some(distinct) = &aggregate.distinct {
+	if let Some(distinct) = aggregate.distinct.as_mut() {
 		let mut record = StringRecord::new();
 
 		while exec_distinct(context, distinct)? {
@@ -2137,8 +2137,8 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode)
 	return err_exec!("invalid state: aggregate");
 }
 
-pub fn exec_distinct(context: &mut Context, distinct: &planner::DistinctNode) -> Result<bool, Error> {
-	if let Some(filter) = &distinct.filter {
+pub fn exec_distinct(context: &mut Context, distinct: &mut planner::DistinctNode) -> Result<bool, Error> {
+	if let Some(filter) = distinct.filter.as_mut() {
 		let result = exec_filter(context, filter)?;
 		if !result {
 			return Ok(result);
@@ -2188,14 +2188,14 @@ fn vec_string_to_string_record(v: &Vec<String>) -> StringRecord {
 	r
 }
 
-pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Result<bool, Error> {
+pub fn exec_project(context: &mut Context, project: &mut planner::ProjectNode) -> Result<bool, Error> {
 	let mut limit_value = None;
 
 	if let Some(limit) = &project.limit {
 		limit_value = gen_limit_value(context, limit)?;
 	}
 
-	if let Some(distinct) = &project.distinct {
+	if let Some(distinct) = project.distinct.as_mut() {
 		let result = exec_distinct(context, distinct)?;
 		if !result {
 			return Ok(result);
@@ -2262,10 +2262,10 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 	return err_exec!("invalid state: project");
 }
 
-pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<bool, Error> {
+pub fn exec_filter(context: &mut Context, node: &mut planner::FilterNode) -> Result<bool, Error> {
 	if let Some(where_clause) = &node.where_clause {
 		context.filtered = true;
-		if let Some(joins) = &node.joins {
+		if let Some(joins) = node.joins.as_mut() {
 			let result = exec_joins(context, joins)?;
 			if !result {
 				return Ok(result);
@@ -2289,7 +2289,7 @@ pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<
 	} else {
 		context.filtered = false;
 		context.matched = false;
-		if let Some(joins) = &node.joins {
+		if let Some(joins) = node.joins.as_mut() {
 			let result = exec_joins(context, joins)?;
 			return Ok(result);
 		}
@@ -2297,9 +2297,9 @@ pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<
 	return err_exec!("invalid state: filter");
 }
 
-pub fn exec_joins(context: &mut Context, node: &planner::JoinsNode) -> Result<bool, Error> {
+pub fn exec_joins(context: &mut Context, node: &mut planner::JoinsNode) -> Result<bool, Error> {
 	if !context.wait_left_scan {
-		if let Some(csv_file_scan) = &node.csv_file_scan {
+		if let Some(csv_file_scan) = node.csv_file_scan.as_mut() {
 			if !exec_csv_file_scan(context, csv_file_scan)? {
 				return Ok(false);
 			}
@@ -2308,11 +2308,11 @@ pub fn exec_joins(context: &mut Context, node: &planner::JoinsNode) -> Result<bo
 
 	context.joins_enable = node.items.len() != 0;
 	
-	for item in node.items.iter() {
+	for item in node.items.iter_mut() {
 		match item {
 			planner::JoinsItemNode::InnerJoin(inner_join) => {
 				if let Some(expr) = &inner_join.expr {
-					if let Some(csv_file_scan) = &inner_join.csv_file_scan {
+					if let Some(csv_file_scan) = inner_join.csv_file_scan.as_mut() {
 						while exec_csv_file_scan(context, csv_file_scan)? {
 							let obj = exec_expr(context, expr)?;
 							if obj.kind == ObjectKind::Bool && obj.bool_value {
@@ -2334,7 +2334,7 @@ pub fn exec_joins(context: &mut Context, node: &planner::JoinsNode) -> Result<bo
 	Ok(true)
 }
 
-pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode) -> Result<bool, Error> {
+pub fn exec_csv_file_scan(context: &mut Context, node: &mut planner::CsvFileScanNode) -> Result<bool, Error> {
 	let mut reader_is_none: bool = true;
 
 	if context.tables.contains_key(&node.table_name) {
@@ -2502,8 +2502,8 @@ pub fn exec_database_create(context: &mut Context, node: &planner::DatabaseCreat
 	Ok(())
 }
 
-pub fn exec_row_delete(context: &mut Context, row_delete: &planner::RowDeleteNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
-	if let Some(project) = &row_delete.project {
+pub fn exec_row_delete(context: &mut Context, row_delete: &mut planner::RowDeleteNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+	if let Some(project) = row_delete.project.as_mut() {
 		let all = row_delete.all;
 		let mut limit_value = None;
 		let mut limited = false;
@@ -2626,46 +2626,45 @@ fn drop_record_column(row: &StringRecord, index: usize) -> Result<StringRecord, 
 	Ok(dst)
 }
 
-fn alter_field_column_type(types: &Vec<HeaderType>, node: &planner::ColumnAlterTypeNode, row: &StringRecord) -> Result<StringRecord, Error> {
-	if let Some(ident) = &node.ident {
-		let index = types.iter().position(|t| t.ident == *ident);
-		if index.is_none() {
-			return err_exec!("not found '{}' in column types", *ident);
-		}
-		let index = index.unwrap();
-		let val = row[index].to_string();
-		let typ = &types[index];
-		let obj = typ.parse_str(val.as_str())?;
-		let mut dst = StringRecord::new();
-
-		for (i, val) in row.iter().enumerate() {
-			if i == index {
-				dst.push_field(obj.to_string().as_str());
-			} else {
-				dst.push_field(val);
-			}
-		}
-
-		return Ok(dst);
+fn alter_field_column_type(types: &Vec<HeaderType>, ident: &String, row: &StringRecord) -> Result<StringRecord, Error> {
+	let index = types.iter().position(|t| t.ident == *ident);
+	if index.is_none() {
+		return err_exec!("not found '{}' in column types", *ident);
 	}
-	return err_exec!("invalid state: alter field column type");
+	let index = index.unwrap();
+	let val = row[index].to_string();
+	let typ = &types[index];
+	let obj = typ.parse_str(val.as_str())?;
+	let mut dst = StringRecord::new();
+
+	for (i, val) in row.iter().enumerate() {
+		if i == index {
+			dst.push_field(obj.to_string().as_str());
+		} else {
+			dst.push_field(val);
+		}
+	}
+
+	return Ok(dst);
 }
 
-pub fn exec_column_alter_type(context: &mut Context, types: &Vec<HeaderType>, node: &planner::ColumnAlterTypeNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+pub fn exec_column_alter_type(context: &mut Context, types: &Vec<HeaderType>, node: &mut planner::ColumnAlterTypeNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 
-	if let Some(project) = &node.project {
-		while exec_project(context, &project)? {
-			let row = alter_field_column_type(types, node, &context.get_current_table_scanned_record()?)?;
-			writer.write_record(&row).unwrap();
+	if let Some(project) = node.project.as_mut() {
+		while exec_project(context, project)? {
+			if let Some(ident) = &node.ident {
+				let row = alter_field_column_type(types, ident, &context.get_current_table_scanned_record()?)?;
+				writer.write_record(&row).unwrap();
+			}
 		}
 	}	
 
 	Ok(())
 }
 
-pub fn exec_column_rename(context: &mut Context, node: &planner::ColumnRenameNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
-	if let Some(project) = &node.project {
-		while exec_project(context, &project)? {
+pub fn exec_column_rename(context: &mut Context, node: &mut planner::ColumnRenameNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+	if let Some(project) = node.project.as_mut() {
+		while exec_project(context, project)? {
 			let row = &context.get_current_table_scanned_record()?;
 			writer.write_record(row).unwrap();
 		}
@@ -2673,8 +2672,8 @@ pub fn exec_column_rename(context: &mut Context, node: &planner::ColumnRenameNod
 	Ok(())
 }
 
-pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, writer: &mut Writer<fs::File>, types: &Vec<HeaderType>) -> Result<(), Error> {
-	if let Some(project) = &node.project {
+pub fn exec_column_drop(context: &mut Context, node: &mut planner::ColumnDropNode, writer: &mut Writer<fs::File>, types: &Vec<HeaderType>) -> Result<(), Error> {
+	if let Some(project) = node.project.as_mut() {
 		let mut drop_index: Option<usize> = None;
 
 		if let Some(ident) = &node.ident {
@@ -2691,7 +2690,7 @@ pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, w
 		}
 		let drop_index = drop_index.unwrap();
 
-		while exec_project(context, &project)? {
+		while exec_project(context, project)? {
 			let row = &context.	get_current_table_scanned_record()?;
 			let row = drop_record_column(&row, drop_index)?;
 			writer.write_record(&row).unwrap();
@@ -2700,12 +2699,12 @@ pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, w
 	Ok(())
 }
 
-pub fn exec_column_add(context: &mut Context, node: &planner::ColumnAddNode, writer: &mut Writer<fs::File>, headers: &StringRecord) -> Result<(), Error> {
-	if let Some(project) = &node.project {
+pub fn exec_column_add(context: &mut Context, node: &mut planner::ColumnAddNode, writer: &mut Writer<fs::File>, headers: &StringRecord) -> Result<(), Error> {
+	if let Some(project) = node.project.as_mut() {
 		let def_row = gen_default_record(headers)?;
 		assert!(def_row.len() > 0);
 
-		while exec_project(context, &project)? {
+		while exec_project(context, project)? {
 			let mut row = context.get_current_table_scanned_record()?;
 			row.push_field(def_row.to_vec().last().unwrap().as_str());
 			writer.write_record(&row).unwrap();
@@ -2715,8 +2714,8 @@ pub fn exec_column_add(context: &mut Context, node: &planner::ColumnAddNode, wri
 	Ok(())
 }
 
-pub fn exec_row_update(context: &mut Context, row_update: &planner::RowUpdateNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
-	if let Some(project) = &row_update.project {
+pub fn exec_row_update(context: &mut Context, row_update: &mut planner::RowUpdateNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+	if let Some(project) = row_update.project.as_mut() {
 		if let Some(expr_list) = &row_update.expr_list {
 			let update_expr_list_objs = exec_expr_list(context, expr_list)?;
 			let mut limit_value = None;
@@ -2906,7 +2905,7 @@ pub fn alter_headers_column_type(context: &mut Context, types: &Vec<HeaderType>,
 	Ok(headers)
 }
 
-pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewriteNode) -> Result<(), Error> {
+pub fn exec_csv_file_rewrite(context: &mut Context, node: &mut planner::CsvFileRewriteNode) -> Result<(), Error> {
 	if let Some(table_name) = &node.table_name {
 		context.current_table_name = table_name.clone();
 		let org_path = context.gen_table_file_path(&table_name)?;
@@ -2940,17 +2939,17 @@ pub fn exec_csv_file_rewrite(context: &mut Context, node: &planner::CsvFileRewri
 		
 		writer.write_record(&headers).unwrap();
 
-		if let Some(row_delete) = &node.row_delete {
+		if let Some(row_delete) = node.row_delete.as_mut() {
 			exec_row_delete(context, row_delete, &mut writer)?;
-		} else if let Some(row_update) = &node.row_update {
+		} else if let Some(row_update) = node.row_update.as_mut() {
 			exec_row_update(context, row_update, &mut writer)?;
-		} else if let Some(column_add) = &node.column_add {
+		} else if let Some(column_add) = node.column_add.as_mut() {
 			exec_column_add(context, column_add, &mut writer, &headers)?;
-		} else if let Some(column_drop) = &node.column_drop {
+		} else if let Some(column_drop) = node.column_drop.as_mut() {
 			exec_column_drop(context, column_drop, &mut writer, &types)?;
-		} else if let Some(column_rename) = &node.column_rename {
+		} else if let Some(column_rename) = node.column_rename.as_mut() {
 			exec_column_rename(context, column_rename, &mut writer)?;
-		} else if let Some(column_alter_type) = &node.column_alter_type {
+		} else if let Some(column_alter_type) = node.column_alter_type .as_mut() {
 			let types = parse_csv_headers_as_types(&headers)?;
 			match exec_column_alter_type(context, &types, column_alter_type, &mut writer) {
 				Ok(_) => {},
@@ -3055,11 +3054,11 @@ mod tests {
 			Ok(v) => v,
 			Err(e) => return err_parse!("{}", e),
 		};
-		let node: PlansNode = match planning(&node) {
+		let mut node: PlansNode = match planning(&node) {
 			Ok(v) => v,
 			Err(e) => return err_planning!("{}", e),
 		};
-		return exec(context, &node);
+		return exec(context, &mut node);
 	}
 
 	#[test]
