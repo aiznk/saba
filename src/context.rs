@@ -22,6 +22,7 @@ pub struct Context {
 	pub joined_header_types: Vec<HeaderType>,
 	pub joined_header_idents: Vec<String>,
 	pub joined_record: StringRecord,
+	pub join_matched: bool,
 
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
@@ -62,6 +63,7 @@ impl Context {
 			joined_header_types: vec![],
 			joined_header_idents: vec![],
 			joined_record: StringRecord::new(),
+			join_matched: false,
 			is_cli: false,
 			matched_record: StringRecord::new(),
 			unmatched_record: StringRecord::new(),
@@ -92,6 +94,7 @@ impl Context {
 		self.joined_header_types.clear();
 		self.joined_header_idents.clear();
 		self.joined_record.clear();
+		self.join_matched = false;
 		self.matched_record.clear();
 		self.unmatched_record.clear();
 		if let Some(test_get_records) = self.test_get_records.as_mut() {
@@ -106,6 +109,32 @@ impl Context {
 		self.avg_counter = 0;
 		self.min_value = f64::MAX;
 		self.max_value = 0.0;
+	}
+
+	pub fn print_record(&self, record: &StringRecord) {
+		let mut s = String::new();
+
+		for field in record.iter() {
+			s.push_str(field);
+			s.push(',');
+		}
+		s.pop();
+
+		println!("{}", s);
+	}
+
+	pub fn print_tables_scanned_records(&self) {
+		for table in self.tables.values() {
+			print!("{}: ", table.name);
+			self.print_record(&table.scanned_record);
+		}		
+	}
+
+	pub fn clear_tables_scanned_records(&mut self) -> Result<(), Error> {
+		for table in self.tables.values_mut() {
+			table.scanned_record.clear();
+		}
+		Ok(())	
 	}
 
 	pub fn get_current_table_scanned_record(&self) -> Result<StringRecord, Error> {

@@ -81,6 +81,7 @@ impl CsvFileRewriteNode {
 
 #[derive(Clone, Debug)]
 pub struct DistinctNode {
+	pub table_name: String,
 	pub enable: bool,
 	pub filter: Option<Box<FilterNode>>,
 	pub expr_list: Option<Box<parser::ExprListNode>>,
@@ -89,6 +90,7 @@ pub struct DistinctNode {
 impl DistinctNode {
 	pub fn new() -> Self {
 		Self {
+			table_name: String::new(),
 			enable: false,
 			filter: None,
 			expr_list: None,
@@ -560,6 +562,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 			n.table_name = Some(table_name.clone());
 			csv_file_scan.table_name = table_name.clone();
 			csv_file_scan.all = true; // always true
+			distinct.table_name = table_name.clone();
 		} else {
 			return err_planning!("missing table name in plan alter table");
 		}
@@ -607,6 +610,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 			n.table_name = Some(table_name.clone());
 			csv_file_scan.table_name = table_name.clone();
 			csv_file_scan.all = true; // always true
+			distinct.table_name = table_name.clone();
 		} else {
 			return err_planning!("missing table name in plan alter table");
 		}
@@ -640,6 +644,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 			n.table_name = Some(table_name.clone());
 			csv_file_scan.table_name = table_name.clone();
 			csv_file_scan.all = true; // always true
+			distinct.table_name = table_name.clone();
 		} else {
 			return err_planning!("missing table name in plan alter table");
 		}
@@ -693,6 +698,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 			rewrite.table_name = Some(table_name.clone());
 			csv_file_scan.table_name = table_name.clone();
 			csv_file_scan.all = true; // always true
+			distinct.table_name = table_name.clone();
 		} else {
 			return err_planning!("missing table name in plan alter table");
 		}
@@ -941,6 +947,7 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 			joins.csv_file_scan = Some(Box::new(csv_file_scan));
 			filter.joins = Some(Box::new(joins));
 			rewrite.table_name = Some(ident.clone());
+			distinct.table_name = ident.clone();
 		}	
 	}
 
@@ -984,7 +991,8 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 			let table_name = unwrap_ident_object(&ident)?.to_string();
 			csv_file_scan.table_name = table_name.clone();
 			csv_file_scan.all = true; // the set stmt always needs all on csv_file_scan
-			rewrite.table_name = Some(table_name);
+			rewrite.table_name = Some(table_name.clone());
+			distinct.table_name = table_name.clone();
 		} else {
 			return err_planning!("missing table name in set stmt");
 		}
@@ -1105,7 +1113,8 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 				let table_name = unwrap_ident_object(&ident)?.to_string();
 				csv_file_scan.table_name = table_name.clone();
 				csv_file_scan.all = node.all;
-				sort.table_name = table_name;
+				sort.table_name = table_name.clone();
+				distinct.table_name = table_name.clone();
 			}
 			solve_join_clauses!(node, of_clause, joins);
 		}
@@ -1138,7 +1147,8 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 				let table_name = unwrap_ident_object(&ident)?.to_string();
 				csv_file_scan.table_name = table_name.clone();
 				csv_file_scan.all = node.all;
-				sort.table_name = table_name;
+				sort.table_name = table_name.clone();
+				distinct.table_name = table_name.clone();
 			}
 			solve_join_clauses!(node, of_clause, joins);
 		}

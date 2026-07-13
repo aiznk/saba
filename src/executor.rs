@@ -1714,6 +1714,8 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 						ObjectKind::Ident => {
 							let lo = refer_ident(context, &lhs)?;
 							let ro = refer_ident(context, &rhs)?;
+							println!("lhs: {} {}", lhs.to_string(), lo.to_string());
+							println!("rhs: {} {}", rhs.to_string(), ro.to_string());
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
 						_ => err_exec!("can't compare ident and other: a == b"),						
@@ -1978,8 +1980,6 @@ fn get_table_name<'a>(context: &'a Context, obj: &'a Object) -> Result<&'a Strin
 }
 
 fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
-	let mut dst = vec![];
-
 	context.selected_csv_columns.clear();
 
 	let mut objs: Vec<Object> = vec![];
@@ -1987,13 +1987,22 @@ fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Res
 		objs = exec_expr_list(context, expr_list)?;
 	}
 
-	if objs.len() == 1 && objs[0].kind == ObjectKind::Star {
-	   	let row: &StringRecord = get_table_record(context, &objs[0])?;
+	let records = select_record(context, &objs)?;
+	context.selected_csv_columns = string_record_to_vev_string(&records);
+
+	Ok(())
+}
+
+fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<StringRecord, Error> {
+	let mut record = StringRecord::new();
+
+	if objs.len() == 1 &&
+	   objs[0].kind == ObjectKind::Star {
+	   	let row = get_table_record(context, &objs[0])?;
 	   	for col in row.iter() {
-	   		dst.push(col.to_string());
+	   		record.push_field(col.to_string().as_str());
 	   	}
-	   	context.selected_csv_columns = dst;
-	   	return Ok(());
+	   	return Ok(record);
 	}
 
 	for obj in objs.iter() {
@@ -2011,19 +2020,18 @@ fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Res
 					*s == *obj.to_string()
 				}
 			}) {
+			println!("index[{}] row.len[{}]", index, row.len());
 			let col = &row[index];
-			dst.push(col.to_string());
+			record.push_field(col.to_string().as_str());
 		} else {
 			if obj.kind == ObjectKind::Ident {
 				return err_exec!("invalid column: {}", obj.to_string());
 			}
-			dst.push(obj.to_string());
+			record.push_field(obj.to_string().as_str());
 		}
 	}
 
-	context.selected_csv_columns = dst;
-
-	Ok(())
+	Ok(record)
 }
 
 fn get_indices(idents: &Vec<String>, objs: &Vec<Object>) -> Result<Vec<usize>, Error> {
@@ -2069,44 +2077,6 @@ fn vec_string_to_hashed_value_string(row: &Vec<String>) -> String {
 	s.pop();
 
 	return s;
-}
-
-fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<StringRecord, Error> {
-	let row;
-	let mut record = StringRecord::new();
-
-	if context.filtered {
-		row = context.matched_record.clone();
-	} else {
-		row = context.get_current_table_scanned_record()?;
-	}
-	if row.len() == 0 {
-		return Ok(record);
-	}
-
-	if objs.len() == 1 &&
-	   objs[0].kind == ObjectKind::Star {
-	   	for col in row.iter() {
-	   		record.push_field(col.to_string().as_str());
-	   	}
-	   	return Ok(record);
-	}
-
-	for obj in objs.iter() {
-		if let Some(index) = context.get_table_header_idents(context.current_table_name.clone().as_str())?.iter().position(|s| {
-				return *s == *obj.to_string();
-			}) {
-			let col = &row[index];
-			record.push_field(col.to_string().as_str());
-		} else {
-			if obj.kind == ObjectKind::Ident {
-				return err_exec!("invalid column: {}", obj.to_string());
-			}
-			record.push_field(obj.to_string().as_str());
-		}
-	}
-
-	Ok(record)
 }
 
 pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode) -> Result<(), Error> {
@@ -2170,6 +2140,7 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &planner::AggregateNode)
 pub fn exec_distinct(context: &mut Context, distinct: &planner::DistinctNode) -> Result<bool, Error> {
 	if let Some(filter) = &distinct.filter {
 		let result = exec_filter(context, filter)?;
+		println!("result[{}]", result);
 		if !result {
 			return Ok(result);
 		}
@@ -2179,14 +2150,11 @@ pub fn exec_distinct(context: &mut Context, distinct: &planner::DistinctNode) ->
 
 			if let Some(expr_list) = &distinct.expr_list {
 				let objs = exec_expr_list(context, expr_list)?;
-				let mut row = StringRecord::new();
-				if context.filtered {
-					if context.matched {
-						row = context.matched_record.clone();
-					}
+				let row: &StringRecord = if let Some(table) = context.tables.get(&distinct.table_name) {
+					&table.scanned_record
 				} else {
-					row = context.joined_record.clone();
-				}
+					return err_exec!("not found table '{}' in distinct", distinct.table_name);
+				};
 				if row.len() > 0 {
 					let idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 					let indices = get_indices(&idents, &objs)?;
@@ -2251,7 +2219,7 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 				}
 			}
 			context.limit_counter += 1;
-			let record = context.joined_record.clone();
+			let record = context.get_current_table_scanned_record()?;
 			if let Some(test_get_records) = context.test_get_records.as_mut() {
 				test_get_records.push(record);
 			}
@@ -2284,12 +2252,12 @@ pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<
 
 			let o = exec_where_clause(context, where_clause)?;
 			if o.bool_value {
-				context.matched_record = context.joined_record.clone();
+				context.matched_record = context.get_current_table_scanned_record()?;
 				context.unmatched_record.clear();
 				context.matched = true;
 			} else {
 				context.matched_record.clear();
-				context.unmatched_record = context.joined_record.clone();
+				context.unmatched_record = context.get_current_table_scanned_record()?;
 				context.matched = false;
 			}
 			return Ok(result);
@@ -2318,29 +2286,29 @@ pub fn exec_joins(context: &mut Context, node: &planner::JoinsNode) -> Result<bo
 		}
 	}
 
-	let mut row1 = context.get_current_table_scanned_record()?;
-	let mut headers1 = context.get_current_table_headers()?;
-
 	for item in node.items.iter() {
 		match item {
 			planner::JoinsItemNode::InnerJoin(inner_join) => {
-				if let Some(csv_file_scan) = &inner_join.csv_file_scan {
-					if !exec_csv_file_scan(context, csv_file_scan)? {
-						return Ok(false);
+				if let Some(expr) = &inner_join.expr {
+					if let Some(csv_file_scan) = &inner_join.csv_file_scan {
+						while !exec_csv_file_scan(context, csv_file_scan)? {
+							let obj = exec_expr(context, expr)?;
+							if obj.kind == ObjectKind::Bool && obj.bool_value {
+								// pass
+								println!("matched (ON)");
+								context.join_matched = true;
+								break;
+							} else {
+								context.join_matched = false;
+							}
+						}
 					}
-					let row2 = context.get_current_table_scanned_record()?;
-					let headers2 = context.get_current_table_headers()?;
-					merge_string_record(&mut row1, &row2);
-					merge_string_record(&mut headers1, &headers2);
 				}
 			}
 		}
 	}
 
-	context.joined_header_types = parse_csv_headers_as_types(&headers1)?;
-	context.joined_header_idents = parse_header_idents(&headers1)?;
-	context.joined_headers = headers1;
-	context.joined_record = row1;
+	context.print_tables_scanned_records();
 
 	Ok(true)
 }
@@ -2703,7 +2671,7 @@ pub fn exec_column_drop(context: &mut Context, node: &planner::ColumnDropNode, w
 		let drop_index = drop_index.unwrap();
 
 		while exec_project(context, &project)? {
-			let row = &context.get_current_table_scanned_record()?;
+			let row = &context.	get_current_table_scanned_record()?;
 			let row = drop_record_column(&row, drop_index)?;
 			writer.write_record(&row).unwrap();
 		}
@@ -5276,6 +5244,7 @@ mod tests {
 		do_exec(&mut context, "GET ALL DISTINCT name OF test_table").unwrap();
 
 		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
 		assert!(s == "1,3.14,aaa
 4,3.14,bbb
 ");
@@ -5409,6 +5378,37 @@ mod tests {
 
 		context.test_get_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL DISTINCT name OF test_table ORDER BY name DESC").unwrap();
+
+		let s = test_get_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "4,2,bbb
+1,1,aaa
+");
+	}
+
+	#[test]
+	fn test_inner_join_0() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS users").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS products").unwrap();
+		do_exec(&mut context, "CREATE TABLE users (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE products (id: INT, user_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, weight = 1.0, name = \"aaa\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 2, weight = 2.0, name = \"bbb\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 3, weight = 1.0, name = \"ccc\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 4, weight = 2.0, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 5, weight = 2.0, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 1, user_id = 1, name = \"aaa product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 2, user_id = 1, name = \"aaa product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 3, user_id = 2, name = \"bbb product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 4, user_id = 2, name = \"bbb product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 5, user_id = 3, name = \"ccc product 1\" OF products").unwrap();
+
+		context.test_get_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL users.id, products.id OF users INNER JOIN products ON users.id == products.user_id").unwrap();
 
 		let s = test_get_records_to_string(&mut context);
 		println!("s[{}]", s);
