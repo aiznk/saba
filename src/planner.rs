@@ -375,16 +375,51 @@ impl ProjectNode {
 }
 
 #[derive(Clone, Debug)]
+pub struct InnerJoinNode {
+	csv_file_scan: Option<Box<CsvFileScanNode>>,
+	expr: Option<Box<parser::ExprNode>>,
+}
+
+impl InnerJoinNode {
+	pub fn new() -> Self {
+		Self {
+			csv_file_scan: None,
+			expr: None,
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+pub enum JoinsItemNode {
+	InnerJoin(InnerJoinNode),
+}
+
+#[derive(Clone, Debug)]
+pub struct JoinsNode {
+	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
+	pub joins: Vec<Box<JoinsItemNode>>,
+}
+
+impl JoinsNode {
+	pub fn new() -> Self {
+		Self {
+			csv_file_scan: None,
+			joins: vec![],
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
 pub struct FilterNode {
 	pub where_clause: Option<Box<parser::WhereClauseNode>>,
-	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
+	pub joins: Option<Box<JoinsNode>>,
 }
 
 impl FilterNode {
 	pub fn new() -> Self {
 		Self {
 			where_clause: None,
-			csv_file_scan: None,
+			joins: None,
 		}
 	}
 }
@@ -514,6 +549,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		let mut project = ProjectNode::new();
 		let mut distinct = DistinctNode::new();
 		let mut filter = FilterNode::new();
+		let mut joins = JoinsNode::new();
 		let mut csv_file_scan = CsvFileScanNode::new();
 
 		project.method = TokenKind::Alter;
@@ -547,7 +583,8 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		}
 		column_add.column_definition_string = Some(new_type);
 
-		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		joins.csv_file_scan = Some(Box::new(csv_file_scan));
+		filter.joins = Some(Box::new(joins));
 		distinct.filter = Some(Box::new(filter));
 		project.distinct = Some(Box::new(distinct));
 		column_add.project = Some(Box::new(project));
@@ -560,6 +597,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		let mut project = ProjectNode::new();
 		let mut distinct = DistinctNode::new();
 		let mut filter = FilterNode::new();
+		let mut joins = JoinsNode::new();
 		let mut csv_file_scan = CsvFileScanNode::new();
 
 		project.all = true; // always true
@@ -578,7 +616,8 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 			column_drop.ident = Some(ident);
 		}
 
-		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		joins.csv_file_scan = Some(Box::new(csv_file_scan));
+		filter.joins = Some(Box::new(joins));
 		distinct.filter = Some(Box::new(filter));
 		project.distinct = Some(Box::new(distinct));
 		column_drop.project = Some(Box::new(project));
@@ -591,6 +630,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		let mut project = ProjectNode::new();
 		let mut distinct = DistinctNode::new();
 		let mut filter = FilterNode::new();
+		let mut joins = JoinsNode::new();
 		let mut csv_file_scan = CsvFileScanNode::new();
 
 		project.all = true; // always true
@@ -613,7 +653,8 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 			column_rename.to_ident = Some(ident);
 		}
 
-		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		joins.csv_file_scan = Some(Box::new(csv_file_scan));
+		filter.joins = Some(Box::new(joins));
 		distinct.filter = Some(Box::new(filter));
 		project.distinct = Some(Box::new(distinct));
 		column_rename.project = Some(Box::new(project));
@@ -642,6 +683,7 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 		let mut project = ProjectNode::new();
 		let mut distinct = DistinctNode::new();
 		let mut filter = FilterNode::new();
+		let mut joins = JoinsNode::new();
 		let mut csv_file_scan = CsvFileScanNode::new();
 
 		project.all = true; // always true
@@ -662,7 +704,8 @@ pub fn plan_alter_table(node: &Box<parser::AlterTableNode>, plan: &mut PlanNode)
 
 		column_alter_type.column_types = alter_column_type.column_types.clone();
 
-		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		joins.csv_file_scan = Some(Box::new(csv_file_scan));
+		filter.joins = Some(Box::new(joins));
 		distinct.filter = Some(Box::new(filter));
 		project.distinct = Some(Box::new(distinct));
 		column_alter_type.project = Some(Box::new(project));
@@ -884,6 +927,7 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 	let mut distinct = DistinctNode::new();
 	let mut filter = FilterNode::new();
 	let mut csv_file_scan = CsvFileScanNode::new();
+	let mut joins = JoinsNode::new();
 
 	project.method = TokenKind::Del;
 	project.all = true;
@@ -894,7 +938,8 @@ pub fn plan_del_stmt(node: &Box<parser::DelStmtNode>, plan: &mut PlanNode) -> Re
 			let ident = unwrap_ident_object(&ident)?.to_string();
 			csv_file_scan.table_name = ident.clone();
 			csv_file_scan.all = true; // always true
-			filter.csv_file_scan = Some(Box::new(csv_file_scan));
+			joins.csv_file_scan = Some(Box::new(csv_file_scan));
+			filter.joins = Some(Box::new(joins));
 			rewrite.table_name = Some(ident.clone());
 		}	
 	}
@@ -922,6 +967,7 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 	let mut project = ProjectNode::new();
 	let mut distinct = DistinctNode::new();
 	let mut filter = FilterNode::new();
+	let mut joins = JoinsNode::new();
 	let mut csv_file_scan = CsvFileScanNode::new();
 
 	project.method = TokenKind::Set;
@@ -952,7 +998,8 @@ pub fn plan_set_stmt(node: &Box<parser::SetStmtNode>, plan: &mut PlanNode) -> Re
 		project.limit = Some(limit.clone());
 	}
 
-	filter.csv_file_scan = Some(Box::new(csv_file_scan));
+	joins.csv_file_scan = Some(Box::new(csv_file_scan));
+	filter.joins = Some(Box::new(joins));
 	distinct.filter = Some(Box::new(filter));
 	project.distinct = Some(Box::new(distinct));
 	row_update.all = node.all;
@@ -1010,6 +1057,7 @@ fn needs_aggregate_func_expr(node: &Box<parser::FuncExprNode>) -> Result<bool, E
 
 pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Result<(), Error> {
 	let mut filter = FilterNode::new();
+	let mut joins = JoinsNode::new();
 	let mut distinct = DistinctNode::new();
 	let mut csv_file_scan = CsvFileScanNode::new();
 	let mut sort = SortNode::new();
@@ -1036,7 +1084,8 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 			aggregate.limit = Some(limit.clone());
 		}
 
-		filter.csv_file_scan = Some(Box::new(csv_file_scan));
+		joins.csv_file_scan = Some(Box::new(csv_file_scan));
+		filter.joins = Some(Box::new(joins));
 		distinct.enable = node.distinct;
 		distinct.filter = Some(Box::new(filter));
 		aggregate.distinct = Some(Box::new(distinct));
@@ -1071,7 +1120,8 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 
 		if let Some(order_by) = &node.order_by {
 			if let Some(expr) = &order_by.expr {
-				filter.csv_file_scan = Some(Box::new(csv_file_scan));
+				joins.csv_file_scan = Some(Box::new(csv_file_scan));
+				filter.joins = Some(Box::new(joins));
 				distinct.enable = node.distinct;
 				distinct.filter = Some(Box::new(filter));
 				project.distinct = Some(Box::new(distinct));
@@ -1085,7 +1135,8 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 				return err_planning!("invalid state: plan get stmt");
 			}
 		} else {
-			filter.csv_file_scan = Some(Box::new(csv_file_scan));
+			joins.csv_file_scan = Some(Box::new(csv_file_scan));
+			filter.joins = Some(Box::new(joins));
 			distinct.enable = node.distinct;
 			distinct.filter = Some(Box::new(filter));
 			project.distinct = Some(Box::new(distinct));

@@ -49,6 +49,7 @@ impl StmtNode {
 pub struct JoinClauseNode {
 	pub ident: Option<Box<IdentNode>>,
 	pub expr: Option<Box<ExprNode>>,
+	pub is_inner: bool,
 }
 
 impl JoinClauseNode {
@@ -56,6 +57,7 @@ impl JoinClauseNode {
 		Self {
 			ident: None,
 			expr: None,
+			is_inner: false,
 		}
 	}
 }
@@ -63,14 +65,14 @@ impl JoinClauseNode {
 #[derive(Debug, Clone)]
 pub struct OfClauseNode {
 	pub ident: Option<Box<IdentNode>>,
-	pub join_clause: Option<Box<JoinClauseNode>>,
+	pub join_clauses: Vec<Box<JoinClauseNode>>,
 }
 
 impl OfClauseNode {
 	pub fn new() -> Self {
 		Self {
 			ident: None,
-			join_clause: None,
+			join_clauses: vec![],
 		}
 	}
 }
@@ -1448,7 +1450,13 @@ pub fn parse_of_clause(tok_strm: &mut TokenStream) -> Result<Option<Box<OfClause
 		return err_parse!("missing table name in of clause");
 	}
 
-	n.join_clause = parse_join_clause(tok_strm)?;
+	while !tok_strm.is_end() {
+		let join_clause = parse_join_clause(tok_strm)?;
+		if join_clause.is_none() {
+			break;
+		}
+		n.join_clauses.push(join_clause.unwrap());
+	}
 
 	Ok(Some(Box::new(n)))
 }
@@ -1463,6 +1471,8 @@ pub fn parse_join_clause(tok_strm: &mut TokenStream) -> Result<Option<Box<JoinCl
 	let tok = tok_strm.get()?;
 	if tok.kind != TokenKind::Inner {
 		tok_strm.prev();
+	} else {
+		n.is_inner = true;
 	}
 
 	let tok = tok_strm.get()?;
@@ -2492,6 +2502,7 @@ create table mytab (
 	#[test]
 	fn test_join() {
 		assert!(do_parse("GET ALL id OF test_table INNER JOIN table_2 ON test_table.id == table_2.id") == true);
+		assert!(do_parse("GET ALL id OF test_table INNER JOIN table_2 ON test_table.id == table_2.id INNER JOIN table_3 ON test_table.id == table_3.id") == true);
 		assert!(do_parse("GET ALL id OF test_table JOIN table_2 ON test_table.id == table_2.id") == true);
 		assert!(do_parse("GET ALL id OF test_table JOIN table_2 ON") == false);
 		assert!(do_parse("GET ALL id OF test_table JOIN table_2") == false);

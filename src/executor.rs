@@ -2248,8 +2248,8 @@ pub fn exec_project(context: &mut Context, project: &planner::ProjectNode) -> Re
 pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<bool, Error> {
 	if let Some(where_clause) = &node.where_clause {
 		context.filtered = true;
-		if let Some(csv_file_scan) = &node.csv_file_scan {
-			let result = exec_csv_file_scan(context, csv_file_scan)?;
+		if let Some(joins) = &node.joins {
+			let result = exec_joins(context, joins)?;
 			if !result {
 				return Ok(result);
 			}
@@ -2269,12 +2269,20 @@ pub fn exec_filter(context: &mut Context, node: &planner::FilterNode) -> Result<
 	} else {
 		context.filtered = false;
 		context.matched = false;
-		if let Some(csv_file_scan) = &node.csv_file_scan {
-			let result = exec_csv_file_scan(context, csv_file_scan)?;
+		if let Some(joins) = &node.joins {
+			let result = exec_joins(context, joins)?;
 			return Ok(result);
 		}
 	}
 	return err_exec!("invalid state: filter");
+}
+
+pub fn exec_joins(context: &mut Context, node: &planner::JoinsNode) -> Result<bool, Error> {
+	if let Some(csv_file_scan) = &node.csv_file_scan {
+		exec_csv_file_scan(context, csv_file_scan)
+	} else {
+		Ok(false)
+	}
 }
 
 pub fn exec_csv_file_scan(context: &mut Context, node: &planner::CsvFileScanNode) -> Result<bool, Error> {

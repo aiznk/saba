@@ -84,13 +84,34 @@
 
 ## GET
 
+Joins {
+	csv_file_scan,
+	joins[],	
+}
+
+InnerJoin {
+	csv_file_scan,	
+	expr,
+}
+
 > GET name OF mytab WHERE id == 123;
 
 	Get one record.
 
 	Project (select columns)
 	- Filter (WHERE id == 123)
-	 - CsvFileScan (read mytab)
+	 - Joins
+	  - CsvFileScan (read mytab)
+
+> GET name OF tab1 INNER JOIN tab2 ON tab1.id == tab2.id;
+
+	Get one record.
+
+	Project (select columns)
+	- Filter (WHERE id == 123)
+     - Joins
+	  - InnerJoin
+	   - CsvFileScan (tab1)
 
 > GET ALL id OF mytab WHERE id == 123;
 
@@ -193,7 +214,7 @@ get_stmt ::= 'GET' 'ALL'? 'DISTINCT'? (expr_list) of_clause where? limit? order_
 set_stmt ::= 'SET' 'ALL'? (expr_list) of_clause where? limit?
 add_stmt ::= 'ADD' expr_list? of_clause ( paren_idents 'VALUES' paren_values { ',' paren_values }* )?
 del_stmt ::= 'DEL' 'ALL'? of_clause where? limit?
-of_clause ::= 'OF' ident join_clause
+of_clause ::= 'OF' ident { join_clause }*
 join_clause ::= 'INNER' 'JOIN' ident 'ON' expr
 paren_idents ::= '(' ident { ',' ident }* ')'
 paren_values ::= '(' expr_list ')'
