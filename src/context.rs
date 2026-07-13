@@ -23,6 +23,9 @@ pub struct Context {
 	pub joined_header_idents: Vec<String>,
 	pub joined_record: StringRecord,
 	pub join_matched: bool,
+	pub joins_enable: bool,
+	pub wait_left_scan: bool,
+	pub scanned_record_is_empty: bool,
 
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
@@ -32,6 +35,7 @@ pub struct Context {
 	pub unmatched_record: StringRecord,
 
 	pub test_get_records: Option<Vec<StringRecord>>,
+	pub test_selected_records: Option<Vec<StringRecord>>,
 	pub limit_counter: i128,
 	pub filtered: bool,
 	pub matched: bool,
@@ -64,10 +68,14 @@ impl Context {
 			joined_header_idents: vec![],
 			joined_record: StringRecord::new(),
 			join_matched: false,
+			joins_enable: false,
+			wait_left_scan: false,
+			scanned_record_is_empty: false,
 			is_cli: false,
 			matched_record: StringRecord::new(),
 			unmatched_record: StringRecord::new(),
 			test_get_records: None,
+			test_selected_records: None,
 			limit_counter: 0,
 			filtered: false,
 			matched: false,
@@ -95,10 +103,16 @@ impl Context {
 		self.joined_header_idents.clear();
 		self.joined_record.clear();
 		self.join_matched = false;
+		self.joins_enable = false;
+		self.wait_left_scan = false;
+		self.scanned_record_is_empty = false;
 		self.matched_record.clear();
 		self.unmatched_record.clear();
 		if let Some(test_get_records) = self.test_get_records.as_mut() {
 			test_get_records.clear();
+		}
+		if let Some(test_selected_records) = self.test_selected_records.as_mut() {
+			test_selected_records.clear();
 		}
 		self.limit_counter = 0;
 		self.filtered = false;
@@ -109,6 +123,22 @@ impl Context {
 		self.avg_counter = 0;
 		self.min_value = f64::MAX;
 		self.max_value = 0.0;
+	}
+
+	pub fn rewind_table_csv_reader(&mut self, table_name: &str) -> Result<(), Error> {
+		let path = self.gen_table_file_path(table_name)?;
+		if let Some(table) = self.tables.get_mut(table_name) {
+			let reader = match Reader::from_path(&path) {
+				Ok(v) => v,
+				Err(e) => return err_runtime!("failed to create csv reader. {}", e),
+			};
+			table.csv_reader = Some(reader);
+		}
+		Ok(())
+	}
+
+	pub fn joins_enable_unmatched(&self) -> bool {
+		self.joins_enable && !self.join_matched
 	}
 
 	pub fn print_record(&self, record: &StringRecord) {

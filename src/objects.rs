@@ -1,6 +1,7 @@
 use crate::error::{Error, make_error, err_parse, err_runtime};
 use std::fs::File;
 use csv::{Reader, StringRecord};
+use std::io::{Seek, SeekFrom};
 
 #[derive(Debug)]
 pub struct Table {

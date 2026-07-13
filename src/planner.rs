@@ -378,6 +378,7 @@ impl ProjectNode {
 
 #[derive(Clone, Debug)]
 pub struct InnerJoinNode {
+	pub table_name: String,
 	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
 	pub expr: Option<Box<parser::ExprNode>>,
 }
@@ -385,6 +386,7 @@ pub struct InnerJoinNode {
 impl InnerJoinNode {
 	pub fn new() -> Self {
 		Self {
+			table_name: String::new(),
 			csv_file_scan: None,
 			expr: None,
 		}
@@ -1085,6 +1087,7 @@ macro_rules! solve_join_clauses {
 
 			if join_clause.is_inner {
 				let mut n = InnerJoinNode::new();
+				n.table_name = table_name.clone();
 				n.csv_file_scan = Some(Box::new(csv_file_scan));
 				n.expr = Some(expr);
 				let item = JoinsItemNode::InnerJoin(n);
