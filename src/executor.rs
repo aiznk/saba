@@ -100,21 +100,42 @@ fn exec_sort(context: &mut Context, sort: &mut SortNode) -> Result<(), Error> {
 			if !result.scanning {
 				break;
 			}
+			if result.record_is_empty {
+				continue;
+			}
 			if context.skip {
 				continue;
 			}
-			if context.filtered {
+			if context.selected_csv_columns.len() == 0 {
+				continue;
+			}
+			let v = vec_string_to_string_record(&context.selected_csv_columns);
+			records.push(v);
+/*			if context.filtered {
 				if context.matched {
 					records.push(context.matched_record.clone());
 				}
 			} else {
-				records.push(context.get_current_table_scanned_record()?);
+				let record = context.get_current_table_scanned_record()?;
+				if record.len() == 0 {
+					continue;
+				}
+				records.push(record);
 			}
-		}
+*/		}
 
 		context.is_cli = is_cli;
 
-		let index = context.get_table_header_idents(&sort.table_name)?.iter().position(|s| *s == obj.ident);
+		let index = context.selected_header_idents.iter().position(|s| {
+			if let Some(parent) = &obj.parent {
+				let par = &parent.ident;
+				let chi = &obj.ident;
+				let rhs = format!("{}.{}", par, chi);
+				*s == rhs
+			} else {
+				*s == obj.ident
+			}
+		});
 		if index.is_none() {
 			return err_exec!("not found '{}' ident in sort", obj.ident);
 		}
@@ -126,6 +147,7 @@ fn exec_sort(context: &mut Context, sort: &mut SortNode) -> Result<(), Error> {
 			});
 		} else {
 			records.sort_by(|a, b| {
+				// println!("len[{}] [{}]", a.len(), b.len());
 				b[index].cmp(&a[index])
 			});
 		}
@@ -143,6 +165,9 @@ fn exec_sort(context: &mut Context, sort: &mut SortNode) -> Result<(), Error> {
 
 		if let Some(test_get_records) = context.test_get_records.as_mut() {
 			*test_get_records = records.clone();
+		}
+		if let Some(test_selected_records) = context.test_selected_records.as_mut() {
+			*test_selected_records = records.clone();
 		}
 
 		if context.is_cli {
@@ -2018,6 +2043,9 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<(StringRec
 	   	return Ok((row.clone(), true));
 	}
 
+	let mut ident = String::new();
+	let mut selected_header_idents = StringRecord::new();
+
 	for obj in objs.iter() {
 		let table_name = get_table_name(context, &obj)?;
 		let row = get_table_record(context, &obj)?;
@@ -2028,8 +2056,10 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<(StringRec
 					let rhs = format!("{}.{}", spar, obj.to_string());
 					let lhs = format!("{}.{}", table_name, s);
 					// println!("lhs[{}] == rhs[{}]", lhs, rhs);
+					ident = lhs.clone();
 					lhs == rhs
 				} else {
+					ident = (*s).clone();
 					*s == *obj.to_string()
 				}
 			}) {
@@ -2039,15 +2069,19 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<(StringRec
 			}
 			let col = &row[index];
 			record.push_field(col.to_string().as_str());
+			selected_header_idents.push_field(ident.as_str());
 		} else {
 			if obj.kind == ObjectKind::Ident {
 				return err_exec!("invalid column: {} in select record", obj.to_string());
 			}
 			record.push_field(obj.to_string().as_str());
+			selected_header_idents.push_field(obj.to_string().as_str());
 		}
 	}
 
-	print_record("select record", &record);
+	context.selected_header_idents = selected_header_idents;
+
+	// print_record("select record", &record);
 	Ok((record, true))
 }
 
@@ -5596,6 +5630,40 @@ mod tests {
 		println!("s[{}]", s);
 		assert!(s == "4,2,bbb
 1,1,aaa
+");
+	}
+
+	#[test]
+	fn test_inner_join_order_by() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS users").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS products").unwrap();
+		do_exec(&mut context, "CREATE TABLE users (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE products (id: INT, user_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, name = \"aaa\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 2, name = \"bbb\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 3, name = \"ccc\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 4, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 5, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 1, user_id = 1, name = \"aaa product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 2, user_id = 1, name = \"aaa product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 3, user_id = 2, name = \"bbb product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 4, user_id = 2, name = \"bbb product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 5, user_id = 3, name = \"ccc product 1\" OF products").unwrap();
+
+		context.test_selected_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL users.id, products.id OF users INNER JOIN products ON users.id == products.user_id ORDER BY users.id DESC").unwrap();
+
+		let s = test_selected_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "3,5
+2,3
+2,4
+1,1
+1,2
 ");
 	}
 

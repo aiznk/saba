@@ -27,6 +27,7 @@ pub struct Context {
 	pub wait_left_scan: bool,
 	pub scanned_record_is_empty: bool,
 	pub id_counter: usize,
+	pub selected_header_idents: StringRecord,
 
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
@@ -73,6 +74,7 @@ impl Context {
 			wait_left_scan: false,
 			scanned_record_is_empty: false,
 			id_counter: 1,
+			selected_header_idents: StringRecord::new(),
 			is_cli: false,
 			matched_record: StringRecord::new(),
 			unmatched_record: StringRecord::new(),
@@ -109,6 +111,7 @@ impl Context {
 		self.wait_left_scan = false;
 		self.scanned_record_is_empty = false;
 		self.id_counter = 1;
+		self.selected_header_idents.clear();
 		self.matched_record.clear();
 		self.unmatched_record.clear();
 		if let Some(test_get_records) = self.test_get_records.as_mut() {
@@ -144,7 +147,6 @@ impl Context {
 		v.sort_by(|a, b| a.0.cmp(&b.0));
 
 		for (id, record) in v.iter() {
-			println!("id[{}] record: {:?}", id, record);
 			for field in record.iter() {
 				ret.push_field(field);
 			}
