@@ -28,7 +28,11 @@ pub fn exec_plan(context: &mut Context, node: &mut PlanNode) -> Result<(), Error
 	} else if let Some(sort) = node.sort.as_mut() {
 		exec_sort(context, sort)?;
 	} else if let Some(project) = node.project.as_mut() {
-		while exec_project(context, project)? {
+		loop {
+			let result = exec_project(context, project)?;
+			if !result.scanning {
+				break;
+			}
 		}
 	} else if let Some(aggregate) = node.aggregate.as_mut() {
 		exec_aggregate(context, aggregate)?;
@@ -91,7 +95,11 @@ fn exec_sort(context: &mut Context, sort: &mut SortNode) -> Result<(), Error> {
 		let mut project = (*project).clone();
 		project.limit = None;
 
-		while exec_project(context, &mut project)? {
+		loop {
+			let result = exec_project(context, &mut project)?;
+			if !result.scanning {
+				break;
+			}
 			if context.skip {
 				continue;
 			}
@@ -2220,7 +2228,8 @@ fn vec_string_to_string_record(v: &Vec<String>) -> StringRecord {
 	r
 }
 
-pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<bool, Error> {
+pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<ExecResult, Error> {
+	let mut ret = ExecResult::new();
 	let mut limit_value = None;
 
 	if let Some(limit) = &project.limit {
@@ -2229,26 +2238,25 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 
 	if let Some(distinct) = project.distinct.as_mut() {
 		let result = exec_distinct(context, distinct)?;
-		context.print_tables_scanned_records();
-		// println!("result: {:?}", result);
+		ret.merge(&result);
 		if !result.scanning {
-			return Ok(false);
+			return Ok(ret);
 		}
 		if context.joins_enable_unmatched() {
-			return Ok(result.scanning);
+			return Ok(ret);
 		}
 		if result.record_is_empty {
-			return Ok(true);
+			return Ok(ret);
 		}
 		if context.skip {
-			return Ok(true);
+			return Ok(ret);
 		}
 		if context.filtered {
 			if context.matched {
 				if let Some(limit_value) = limit_value {
 					if context.limit_counter >= limit_value &&
 					   project.method == TokenKind::Get {
-						return Ok(false);						
+						return Ok(ret);						
 					}
 				}
 				context.limit_counter += 1;
@@ -2270,7 +2278,7 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 			if let Some(limit_value) = limit_value {
 				if context.limit_counter >= limit_value &&
 				   project.method == TokenKind::Get {
-					return Ok(false);						
+					return Ok(ret);						
 				}
 			}
 			context.limit_counter += 1;
@@ -2291,9 +2299,10 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 		}
 		if !project.all && context.counter_selected >= 1 {
 			context.do_read_record = false;
-			return Ok(false);
+			ret.scanning = false;
+			return Ok(ret);
 		}
-		return Ok(result.scanning);
+		return Ok(ret);
 	}
 	return err_exec!("invalid state: project");
 }
@@ -2660,7 +2669,11 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &mut RowDeleteNode, wr
 		}
 
 		if all {
-			while exec_project(context, project)? {
+			loop {
+				let result = exec_project(context, project)?;
+				if !result.scanning {
+					break;
+				}
 				if !limited {
 					if context.filtered {
 						if context.matched {
@@ -2695,7 +2708,11 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &mut RowDeleteNode, wr
 				}
 			}
 
-			while exec_project(context, project)? {
+			loop {
+				let result = exec_project(context, project)?;
+				if !result.scanning {
+					break;
+				}
 				if !limited {
 					if context.filtered {
 						if count == 0 {
@@ -2793,7 +2810,11 @@ fn alter_field_column_type(types: &Vec<HeaderType>, ident: &String, row: &String
 pub fn exec_column_alter_type(context: &mut Context, types: &Vec<HeaderType>, node: &mut ColumnAlterTypeNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 
 	if let Some(project) = node.project.as_mut() {
-		while exec_project(context, project)? {
+		loop {
+			let result = exec_project(context, project)?;
+			if !result.scanning {
+				break;
+			}
 			if let Some(ident) = &node.ident {
 				let row = alter_field_column_type(types, ident, &context.get_current_table_scanned_record()?)?;
 				writer.write_record(&row).unwrap();
@@ -2806,7 +2827,11 @@ pub fn exec_column_alter_type(context: &mut Context, types: &Vec<HeaderType>, no
 
 pub fn exec_column_rename(context: &mut Context, node: &mut ColumnRenameNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 	if let Some(project) = node.project.as_mut() {
-		while exec_project(context, project)? {
+		loop {
+			let result = exec_project(context, project)?;
+			if !result.scanning {
+				break;
+			}
 			let row = &context.get_current_table_scanned_record()?;
 			writer.write_record(row).unwrap();
 		}
@@ -2832,7 +2857,11 @@ pub fn exec_column_drop(context: &mut Context, node: &mut ColumnDropNode, writer
 		}
 		let drop_index = drop_index.unwrap();
 
-		while exec_project(context, project)? {
+		loop {
+			let result = exec_project(context, project)?;
+			if !result.scanning {
+				break;
+			}
 			let row = &context.	get_current_table_scanned_record()?;
 			let row = drop_record_column(&row, drop_index)?;
 			writer.write_record(&row).unwrap();
@@ -2846,7 +2875,11 @@ pub fn exec_column_add(context: &mut Context, node: &mut ColumnAddNode, writer: 
 		let def_row = gen_default_record(headers)?;
 		assert!(def_row.len() > 0);
 
-		while exec_project(context, project)? {
+		loop {
+			let result = exec_project(context, project)?;
+			if !result.scanning {
+				break;
+			}
 			let mut row = context.get_current_table_scanned_record()?;
 			row.push_field(def_row.to_vec().last().unwrap().as_str());
 			writer.write_record(&row).unwrap();
@@ -2873,7 +2906,11 @@ pub fn exec_row_update(context: &mut Context, row_update: &mut RowUpdateNode, wr
 			}
 
 			if row_update.all {
-				while exec_project(context, project)? {
+				loop {
+					let result = exec_project(context, project)?;
+					if !result.scanning {
+						break;
+					}
 					if !limited {
 						if context.filtered {
 							if context.matched {
@@ -2907,7 +2944,11 @@ pub fn exec_row_update(context: &mut Context, row_update: &mut RowUpdateNode, wr
 			} else {
 				let mut writted = false;
 
-				while exec_project(context, project)? {
+				loop {
+					let result = exec_project(context, project)?;
+					if !result.scanning {
+						break;
+					}
 					if !limited {
 						if context.filtered {
 							if context.matched && !writted {
