@@ -1,6 +1,7 @@
+use crate::error::Error::Exec;
 use crate::error::{Error, make_error, err_exec, err_parse, err_planning};
 use crate::parser::{self, ParenIdentsNode};
-use crate::planner;
+use crate::planner::*;
 use crate::tokenizer::{TokenKind};
 use crate::context::{Context};
 use crate::objects::{Object, ObjectKind, HeaderType, Table};
@@ -11,9 +12,7 @@ use std::io::{Write};
 use csv::{Reader, Writer, StringRecord};
 use regex::Regex;
 
-const DEBUG: bool = false;
-
-pub fn exec(context: &mut Context, node: &mut planner::PlansNode) -> Result<(), Error> {
+pub fn exec(context: &mut Context, node: &mut PlansNode) -> Result<(), Error> {
 	for plan in node.plans.iter_mut() {
 		context.clear();
 		exec_plan(context, plan)?
@@ -21,7 +20,7 @@ pub fn exec(context: &mut Context, node: &mut planner::PlansNode) -> Result<(), 
 	Ok(())
 }
 
-pub fn exec_plan(context: &mut Context, node: &mut planner::PlanNode) -> Result<(), Error> {
+pub fn exec_plan(context: &mut Context, node: &mut PlanNode) -> Result<(), Error> {
 	if let Some(use_db) = &node.use_db {
 		exec_use_db(context, &use_db)?;
 	} else if let Some(desc_table) = &node.desc_table {
@@ -66,7 +65,7 @@ fn string_record_to_vev_string(record: &StringRecord) -> Vec<String> {
 	v
 }
 
-fn exec_sort(context: &mut Context, sort: &mut planner::SortNode) -> Result<(), Error> {
+fn exec_sort(context: &mut Context, sort: &mut SortNode) -> Result<(), Error> {
 	let mut obj = Object::new();
 
 	context.current_table_name = sort.table_name.clone();
@@ -148,7 +147,7 @@ fn exec_sort(context: &mut Context, sort: &mut planner::SortNode) -> Result<(), 
 	Ok(())
 }
 
-fn exec_desc_table(context: &mut Context, node: &planner::DescTableNode) -> Result<(), Error> {
+fn exec_desc_table(context: &mut Context, node: &DescTableNode) -> Result<(), Error> {
 	if let Some(table_name) = &node.table_name {
 		let headers = read_table_headers(context, &table_name)?;
 		for header in headers.iter() {
@@ -202,7 +201,7 @@ fn open_append_writer(path: &PathBuf) -> Result<Writer<fs::File>, Error> {
     Ok(writer)
 }
 
-fn rewrite_append_record_by_vars(context: &mut Context, node: &planner::CsvFileAppendNode, headers: &StringRecord, row: &mut Vec<String>) -> Result<(), Error> {
+fn rewrite_append_record_by_vars(context: &mut Context, node: &CsvFileAppendNode, headers: &StringRecord, row: &mut Vec<String>) -> Result<(), Error> {
 	if let Some(expr_list) = &node.expr_list {
 		let objs = exec_expr_list(context, &expr_list)?;
 		for obj in objs.iter() {
@@ -347,7 +346,7 @@ fn check_invalid_append_record(record: &Vec<String>, headers: &StringRecord) -> 
 	Ok(())
 }
 
-pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppendNode) -> Result<(), Error> {
+pub fn exec_csv_file_append(context: &mut Context, node: &CsvFileAppendNode) -> Result<(), Error> {
 	let path = context.gen_table_file_path(&node.table_name)?;
     let mut writer = open_append_writer(&path)?;
     let headers = read_table_headers(context, &node.table_name)?;
@@ -446,7 +445,7 @@ pub fn exec_csv_file_append(context: &mut Context, node: &planner::CsvFileAppend
 	Ok(())
 }
 
-pub fn exec_use_db(context: &mut Context, node: &planner::UseDatabaseNode) -> Result<(), Error> {
+pub fn exec_use_db(context: &mut Context, node: &UseDatabaseNode) -> Result<(), Error> {
 	if node.db_name.contains("..") {
 		return err_exec!("directory traversal error");
 	}
@@ -1935,7 +1934,7 @@ fn get_header_idents_by_obj(context: &Context, obj: &Object) -> Result<Vec<Strin
 					let idents = context.get_table_header_idents(&table_name)?;
 					Ok(idents)
 				} else {
-					return err_exec!("not found table ident '{}'", table_name);
+					return err_exec!("not found table ident '{}' in get header idents", table_name);
 				}
 			}
 			_ => return err_exec!("invalid parent object"),
@@ -1954,7 +1953,7 @@ fn get_table_record<'a>(context: &'a Context, obj: &'a Object) -> Result<&'a Str
 				if let Some(table) = context.tables.get(&table_name) {
 					Ok(&table.scanned_record)
 				} else {
-					return err_exec!("not found table ident '{}'", table_name);
+					return err_exec!("not found table ident '{}' in get table record", table_name);
 				}
 			}
 			_ => return err_exec!("invalid parent object"),
@@ -1981,7 +1980,7 @@ fn get_table_name<'a>(context: &'a Context, obj: &'a Object) -> Result<&'a Strin
 	}
 }
 
-fn select_get_columns(context: &mut Context, node: &planner::ProjectNode) -> Result<(), Error> {
+fn select_get_columns(context: &mut Context, node: &ProjectNode) -> Result<(), Error> {
 	context.selected_csv_columns.clear();
 
 	let mut objs: Vec<Object> = vec![];
@@ -2006,6 +2005,7 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<StringReco
 
 	for obj in objs.iter() {
 		let table_name = get_table_name(context, &obj)?;
+		// println!("table_name[{}]", table_name);
 		let row = get_table_record(context, &obj)?;
 		let header_idents = get_header_idents_by_obj(context, &obj)?;
 		if let Some(index) = header_idents.iter().position(|s| {
@@ -2019,7 +2019,7 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<StringReco
 					*s == *obj.to_string()
 				}
 			}) {
-			// println!("index[{}] row.len[{}]", index, row.len());
+			println!("index[{}] row.len[{}]", index, row.len());
 			let col = &row[index];
 			record.push_field(col.to_string().as_str());
 		} else {
@@ -2030,7 +2030,7 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<StringReco
 		}
 	}
 
-	// print_record("select record", &record);
+	print_record("select record", &record);
 	Ok(record)
 }
 
@@ -2079,7 +2079,7 @@ fn vec_string_to_hashed_value_string(row: &Vec<String>) -> String {
 	return s;
 }
 
-pub fn exec_aggregate(context: &mut Context, aggregate: &mut planner::AggregateNode) -> Result<(), Error> {
+pub fn exec_aggregate(context: &mut Context, aggregate: &mut AggregateNode) -> Result<(), Error> {
 	let mut limit_value = None;
 
 	if let Some(limit) = &aggregate.limit {
@@ -2089,7 +2089,14 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &mut planner::AggregateN
 	if let Some(distinct) = aggregate.distinct.as_mut() {
 		let mut record = StringRecord::new();
 
-		while exec_distinct(context, distinct)? {
+		loop {
+			let result = exec_distinct(context, distinct)?;
+			if !result.is_continue {
+				break;
+			}
+			if result.record_is_empty {
+				continue;
+			}
 			if context.filtered {
 				if context.matched {
 					if let Some(limit_value) = limit_value {
@@ -2137,14 +2144,17 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &mut planner::AggregateN
 	return err_exec!("invalid state: aggregate");
 }
 
-pub fn exec_distinct(context: &mut Context, distinct: &mut planner::DistinctNode) -> Result<bool, Error> {
+pub fn exec_distinct(context: &mut Context, distinct: &mut DistinctNode) -> Result<ExecResult, Error> {
+	let mut ret = ExecResult::new();
+
 	if let Some(filter) = distinct.filter.as_mut() {
 		let result = exec_filter(context, filter)?;
-		if !result {
+		ret.merge(&result);
+		if !result.is_continue {
 			return Ok(result);
 		}
 		if context.joins_enable_unmatched() {
-			return Ok(result);
+			return Ok(ret);
 		}
 
 		if distinct.enable {
@@ -2177,7 +2187,7 @@ pub fn exec_distinct(context: &mut Context, distinct: &mut planner::DistinctNode
 		return err_exec!("invalid state: distinct (2)");
 	}
 
-	Ok(true)
+	Ok(ret)
 }
 
 fn vec_string_to_string_record(v: &Vec<String>) -> StringRecord {
@@ -2188,7 +2198,7 @@ fn vec_string_to_string_record(v: &Vec<String>) -> StringRecord {
 	r
 }
 
-pub fn exec_project(context: &mut Context, project: &mut planner::ProjectNode) -> Result<bool, Error> {
+pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<bool, Error> {
 	let mut limit_value = None;
 
 	if let Some(limit) = &project.limit {
@@ -2197,13 +2207,14 @@ pub fn exec_project(context: &mut Context, project: &mut planner::ProjectNode) -
 
 	if let Some(distinct) = project.distinct.as_mut() {
 		let result = exec_distinct(context, distinct)?;
-		if !result {
-			return Ok(result);
+		println!("result: {:?}", result);
+		if !result.is_continue {
+			return Ok(false);
 		}
 		if context.joins_enable_unmatched() {
-			return Ok(result);
+			return Ok(result.is_continue);
 		}
-		if context.scanned_record_is_empty {
+		if result.record_is_empty {
 			return Ok(true);
 		}
 		if context.skip {
@@ -2257,21 +2268,25 @@ pub fn exec_project(context: &mut Context, project: &mut planner::ProjectNode) -
 			context.do_read_record = false;
 			return Ok(false);
 		}
-		return Ok(result);
+		return Ok(result.is_continue);
 	}
 	return err_exec!("invalid state: project");
 }
 
-pub fn exec_filter(context: &mut Context, node: &mut planner::FilterNode) -> Result<bool, Error> {
+pub fn exec_filter(context: &mut Context, node: &mut FilterNode) -> Result<ExecResult, Error> {
+	let mut ret = ExecResult::new();
+
 	if let Some(where_clause) = &node.where_clause {
 		context.filtered = true;
 		if let Some(joins) = node.joins.as_mut() {
 			let result = exec_joins(context, joins)?;
-			if !result {
-				return Ok(result);
+			if !result.is_continue {
+				ret.merge(&result);
+				return Ok(ret);
 			}
 			if context.joins_enable_unmatched() {
-				return Ok(true);
+				ret.merge(&result);
+				return Ok(ret);
 			}
 
 			let o = exec_where_clause(context, where_clause)?;
@@ -2291,50 +2306,83 @@ pub fn exec_filter(context: &mut Context, node: &mut planner::FilterNode) -> Res
 		context.matched = false;
 		if let Some(joins) = node.joins.as_mut() {
 			let result = exec_joins(context, joins)?;
-			return Ok(result);
+			println!("result filter: {:?}", result);
+			ret.merge(&result);
+			return Ok(ret);
 		}
 	}
 	return err_exec!("invalid state: filter");
 }
 
-pub fn exec_joins(context: &mut Context, node: &mut planner::JoinsNode) -> Result<bool, Error> {
+pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecResult, Error> {
+	let mut ret = ExecResult::new();
+
 	if !context.wait_left_scan {
 		if let Some(csv_file_scan) = node.csv_file_scan.as_mut() {
-			if !exec_csv_file_scan(context, csv_file_scan)? {
-				return Ok(false);
+			let result = exec_csv_file_scan(context, csv_file_scan)?;
+			if !result.is_continue {
+				ret.merge(&result);
+				return Ok(ret);
 			}
 		}
 	}
 
-	context.joins_enable = node.items.len() != 0;
-	
-	for item in node.items.iter_mut() {
+	if let Some(join) = node.join.as_mut() {
+		let result = exec_join(context, join)?;	
+		ret.merge(&result);
+		ret.is_continue = true;
+		if result.pending {
+			context.wait_left_scan = true;
+			context.join_matched = true;
+		} else {
+			context.wait_left_scan = false;
+			context.join_matched = false;
+		}
+	}
+
+	Ok(ret)
+}
+
+pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResult, Error> {
+	let mut ret = ExecResult::new();
+
+	if let Some(item) = node.item.as_mut() {
 		match item {
-			planner::JoinsItemNode::InnerJoin(inner_join) => {
+			JoinItemNode::InnerJoin(inner_join) => {
+				if let Some(csv_file_scan) = inner_join.csv_file_scan.as_mut() {
 				if let Some(expr) = &inner_join.expr {
-					if let Some(csv_file_scan) = inner_join.csv_file_scan.as_mut() {
-						while exec_csv_file_scan(context, csv_file_scan)? {
-							let obj = exec_expr(context, expr)?;
-							if obj.kind == ObjectKind::Bool && obj.bool_value {
-								// println!("matched (ON)");
-								context.join_matched = true;
-								context.wait_left_scan = true;
-								return Ok(true);
-							} else {
-								context.join_matched = false;
+					// println!("inner_join [{}]", inner_join.table_name);
+					loop {
+						if let Some(join) = node.join.as_mut() {
+							let result = exec_join(context, join)?;	
+							ret.merge(&result);
+							if result.pending {
+								break;
 							}
 						}
-						context.wait_left_scan = false;
-					}
+						let result = exec_csv_file_scan(context, csv_file_scan)?;
+						if !result.is_continue {
+							ret.merge(&result);
+							break;
+						}
+						let o = exec_expr(context, expr)?;
+						if o.kind == ObjectKind::Bool && o.bool_value {
+							// match
+							ret.pending = true;
+							break;
+						}
+					}	
+				}
 				}
 			}
 		}
 	}
 
-	Ok(true)
+	Ok(ret)
 }
 
-pub fn exec_csv_file_scan(context: &mut Context, node: &mut planner::CsvFileScanNode) -> Result<bool, Error> {
+pub fn exec_csv_file_scan(context: &mut Context, node: &mut CsvFileScanNode) -> Result<ExecResult, Error> {
+	let mut ret = ExecResult::new();
 	let mut reader_is_none: bool = true;
 
 	if context.tables.contains_key(&node.table_name) {
@@ -2348,7 +2396,6 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &mut planner::CsvFileScan
 
 	if reader_is_none {
 		context.current_table_name = node.table_name.clone();
-		context.scanned_record_is_empty = false;
 
 		let path = context.gen_table_file_path(&node.table_name)?;
 		let mut reader = match Reader::from_path(&path) {
@@ -2377,14 +2424,16 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &mut planner::CsvFileScan
 					table.scanned_record = scanned_record;
 					if table.scanned_record.len() == 0 {
 						table.csv_reader = None;
-						context.scanned_record_is_empty = true;
-						return Ok(false);
+						ret.record_is_empty = true;
+						ret.is_continue = false;
+						return Ok(ret);
 					}
-					return Ok(true);
+					return Ok(ret);
 				}
 				Err(_) => {
 					table.csv_reader = None;
-					return Ok(false);
+					ret.is_continue = false;
+					return Ok(ret);
 				}
 			};
 		} else {
@@ -2412,7 +2461,7 @@ fn is_db_dir(path: &Path) -> bool {
 	path.join("id").exists() && path.join("tables").exists()
 }
 
-pub fn exec_dir_delete_all(context: &mut Context, node: &planner::DirDeleteAllNode) -> Result<(), Error> {
+pub fn exec_dir_delete_all(context: &mut Context, node: &DirDeleteAllNode) -> Result<(), Error> {
 	let db_name = node.db_name.clone().unwrap();
 	if db_name == context.using_db_name {
 		return err_exec!("{} database is using now. can't delete", db_name);
@@ -2450,7 +2499,7 @@ pub fn exec_dir_delete_all(context: &mut Context, node: &planner::DirDeleteAllNo
 	Ok(())
 }
 
-pub fn exec_dir_list(context: &mut Context, node: &planner::DirListNode) -> Result<(), Error> {
+pub fn exec_dir_list(context: &mut Context, node: &DirListNode) -> Result<(), Error> {
 	if node.csv_file_grep.is_some() {
 		// show tables
 		let path = context.gen_using_db_tables_path()?;
@@ -2481,7 +2530,7 @@ pub fn exec_dir_list(context: &mut Context, node: &planner::DirListNode) -> Resu
 	Ok(())
 }
 
-pub fn exec_database_create(context: &mut Context, node: &planner::DatabaseCreateNode) -> Result<(), Error> {
+pub fn exec_database_create(context: &mut Context, node: &DatabaseCreateNode) -> Result<(), Error> {
 	let path = context.gen_db_dir_path(&node.db_name)?;
 	if path.exists() {
 		return err_exec!("{} database already exists", node.db_name);
@@ -2502,7 +2551,7 @@ pub fn exec_database_create(context: &mut Context, node: &planner::DatabaseCreat
 	Ok(())
 }
 
-pub fn exec_row_delete(context: &mut Context, row_delete: &mut planner::RowDeleteNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+pub fn exec_row_delete(context: &mut Context, row_delete: &mut RowDeleteNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 	if let Some(project) = row_delete.project.as_mut() {
 		let all = row_delete.all;
 		let mut limit_value = None;
@@ -2648,7 +2697,7 @@ fn alter_field_column_type(types: &Vec<HeaderType>, ident: &String, row: &String
 	return Ok(dst);
 }
 
-pub fn exec_column_alter_type(context: &mut Context, types: &Vec<HeaderType>, node: &mut planner::ColumnAlterTypeNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+pub fn exec_column_alter_type(context: &mut Context, types: &Vec<HeaderType>, node: &mut ColumnAlterTypeNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 
 	if let Some(project) = node.project.as_mut() {
 		while exec_project(context, project)? {
@@ -2662,7 +2711,7 @@ pub fn exec_column_alter_type(context: &mut Context, types: &Vec<HeaderType>, no
 	Ok(())
 }
 
-pub fn exec_column_rename(context: &mut Context, node: &mut planner::ColumnRenameNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+pub fn exec_column_rename(context: &mut Context, node: &mut ColumnRenameNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 	if let Some(project) = node.project.as_mut() {
 		while exec_project(context, project)? {
 			let row = &context.get_current_table_scanned_record()?;
@@ -2672,7 +2721,7 @@ pub fn exec_column_rename(context: &mut Context, node: &mut planner::ColumnRenam
 	Ok(())
 }
 
-pub fn exec_column_drop(context: &mut Context, node: &mut planner::ColumnDropNode, writer: &mut Writer<fs::File>, types: &Vec<HeaderType>) -> Result<(), Error> {
+pub fn exec_column_drop(context: &mut Context, node: &mut ColumnDropNode, writer: &mut Writer<fs::File>, types: &Vec<HeaderType>) -> Result<(), Error> {
 	if let Some(project) = node.project.as_mut() {
 		let mut drop_index: Option<usize> = None;
 
@@ -2699,7 +2748,7 @@ pub fn exec_column_drop(context: &mut Context, node: &mut planner::ColumnDropNod
 	Ok(())
 }
 
-pub fn exec_column_add(context: &mut Context, node: &mut planner::ColumnAddNode, writer: &mut Writer<fs::File>, headers: &StringRecord) -> Result<(), Error> {
+pub fn exec_column_add(context: &mut Context, node: &mut ColumnAddNode, writer: &mut Writer<fs::File>, headers: &StringRecord) -> Result<(), Error> {
 	if let Some(project) = node.project.as_mut() {
 		let def_row = gen_default_record(headers)?;
 		assert!(def_row.len() > 0);
@@ -2714,7 +2763,7 @@ pub fn exec_column_add(context: &mut Context, node: &mut planner::ColumnAddNode,
 	Ok(())
 }
 
-pub fn exec_row_update(context: &mut Context, row_update: &mut planner::RowUpdateNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
+pub fn exec_row_update(context: &mut Context, row_update: &mut RowUpdateNode, writer: &mut Writer<fs::File>) -> Result<(), Error> {
 	if let Some(project) = row_update.project.as_mut() {
 		if let Some(expr_list) = &row_update.expr_list {
 			let update_expr_list_objs = exec_expr_list(context, expr_list)?;
@@ -2838,7 +2887,7 @@ fn rename_headers_column(types: &Vec<HeaderType>, from_ident: &String, to_ident:
 	Ok(dst)
 }
 
-pub fn exec_csv_file_rename(context: &mut Context, node: &planner::CsvFileRenameNode) -> Result<(), Error> {
+pub fn exec_csv_file_rename(context: &mut Context, node: &CsvFileRenameNode) -> Result<(), Error> {
 	if let Some(table_name) = &node.table_name {
 		if let Some(to_ident) = &node.to_ident {
 			let old_path = context.gen_table_file_path(table_name)?;
@@ -2905,7 +2954,7 @@ pub fn alter_headers_column_type(context: &mut Context, types: &Vec<HeaderType>,
 	Ok(headers)
 }
 
-pub fn exec_csv_file_rewrite(context: &mut Context, node: &mut planner::CsvFileRewriteNode) -> Result<(), Error> {
+pub fn exec_csv_file_rewrite(context: &mut Context, node: &mut CsvFileRewriteNode) -> Result<(), Error> {
 	if let Some(table_name) = &node.table_name {
 		context.current_table_name = table_name.clone();
 		let org_path = context.gen_table_file_path(&table_name)?;
@@ -2983,7 +3032,7 @@ pub fn read_table_headers(context: &Context, table_name: &str) -> Result<StringR
 	Ok(headers.clone())
 }
 
-pub fn exec_csv_file_delete(context: &mut Context, node: &planner::CsvFileDeleteNode) -> Result<(), Error> {
+pub fn exec_csv_file_delete(context: &mut Context, node: &CsvFileDeleteNode) -> Result<(), Error> {
 	let table_name = node.table_name.clone().unwrap();
 	let path = context.gen_table_file_path(&table_name)?;
 	if node.if_exists {
@@ -2999,7 +3048,7 @@ pub fn exec_csv_file_delete(context: &mut Context, node: &planner::CsvFileDelete
 	Ok(())
 }
 
-pub fn exec_csv_file_create(context: &mut Context, node: &planner::CsvFileCreateNode) -> Result<(), Error> {
+pub fn exec_csv_file_create(context: &mut Context, node: &CsvFileCreateNode) -> Result<(), Error> {
 	// create_table
 	let path = context.gen_table_file_path(&node.table_name)?;
 
@@ -3026,7 +3075,6 @@ mod tests {
 	use super::*;
 	use crate::tokenizer::{Token, TokenStream, tokenize};
 	use crate::parser::{QueryNode, parse};
-	use crate::planner::{PlansNode, planning};
 
 /*	fn setup(context: &mut Context) {
 		if Path::new("test_env/test_db").exists() {
@@ -5458,7 +5506,56 @@ mod tests {
 */	}
 
 	#[test]
-	fn test_inner_join_1() {
+	fn test_inner_join_multi() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS users").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS products").unwrap();
+		do_exec(&mut context, "CREATE TABLE users (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE products (id: INT, user_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE countries (id: INT, user_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, name = \"aaa\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 2, name = \"bbb\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 3, name = \"ccc\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 4, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 5, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 1, user_id = 1, name = \"aaa product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 2, user_id = 1, name = \"aaa product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 3, user_id = 2, name = \"bbb product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 4, user_id = 2, name = \"bbb product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 5, user_id = 3, name = \"ccc product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 1, user_id = 1, name = \"japan\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 2, user_id = 2, name = \"usa\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 3, user_id = 3, name = \"korean\" OF products").unwrap();
+
+/*
++----+------+----+---------+---------------+----+---------+--------+
+| id | name | id | user_id | name          | id | user_id | name   |
++----+------+----+---------+---------------+----+---------+--------+
+|  1 | aaa  |  1 |       1 | aaa product 1 |  1 |       1 | japan  |
+|  1 | aaa  |  2 |       1 | aaa product 2 |  1 |       1 | japan  |
+|  2 | bbb  |  3 |       2 | bbb product 1 |  2 |       2 | usa    |
+|  2 | bbb  |  4 |       2 | bbb product 2 |  2 |       2 | usa    |
+|  3 | ccc  |  5 |       3 | ccc product 1 |  3 |       3 | korean |
++----+------+----+---------+---------------+----+---------+--------+
+ */
+		context.test_selected_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL users.id, products.id, countries.name OF users INNER JOIN products ON users.id == products.user_id INNER JOIN countries ON users.id == countries.user_id").unwrap();
+
+		let s = test_selected_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,1,japan
+1,2,japan
+2,3,usa
+2,4,usa
+3,5,korean
+");
+	}
+
+	#[test]
+	fn test_inner_join_star() {
 		let mut context = Context::new();
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();

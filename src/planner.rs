@@ -5,6 +5,35 @@ use crate::tokenizer::{TokenKind};
 use crate::objects::{Object, ObjectKind};
 
 #[derive(Clone, Debug)]
+pub struct ExecResult {
+	pub is_continue: bool,
+	pub pending: bool,	
+	pub record_is_empty: bool,
+}
+
+impl ExecResult {
+	pub fn new() -> Self {
+		Self {
+			is_continue: true,
+			pending: false,
+			record_is_empty: false,
+		}
+	}
+
+	pub fn merge(&mut self, other: &ExecResult) {
+		if !other.is_continue {
+			self.is_continue = false;			
+		}
+		if other.pending {
+			self.pending = true;
+		}
+		if other.record_is_empty {
+			self.record_is_empty = true;
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
 pub struct PlansNode {
 	pub plans: Vec<PlanNode>,
 }
@@ -394,23 +423,54 @@ impl InnerJoinNode {
 }
 
 #[derive(Clone, Debug)]
-pub enum JoinsItemNode {
-	InnerJoin(InnerJoinNode),
-}
-
-#[derive(Clone, Debug)]
 pub struct JoinsNode {
 	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
-	pub items: Vec<JoinsItemNode>,
+	pub join: Option<Box<JoinNode>>,
 }
 
 impl JoinsNode {
 	pub fn new() -> Self {
 		Self {
 			csv_file_scan: None,
-			items: vec![],
+			join: None,
 		}
 	}
+
+	pub fn append(&mut self, join: JoinNode) {
+		if let Some(j) = self.join.as_mut() {
+			j.as_mut().append(join);
+		} else {
+			self.join = Some(Box::new(join));
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+pub struct JoinNode {
+	pub item: Option<JoinItemNode>,
+	pub join: Option<Box<JoinNode>>,
+}
+
+impl JoinNode {
+	pub fn new() -> Self {
+		Self {
+			item: None,
+			join: None,
+		}
+	}
+
+	pub fn append(&mut self, join: JoinNode) {
+		if let Some(j) = self.join.as_mut() {
+			j.as_mut().append(join);
+		} else {
+			self.join = Some(Box::new(join));
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+pub enum JoinItemNode {
+	InnerJoin(InnerJoinNode),
 }
 
 #[derive(Clone, Debug)]
@@ -1067,6 +1127,8 @@ fn needs_aggregate_func_expr(node: &Box<parser::FuncExprNode>) -> Result<bool, E
 
 macro_rules! solve_join_clauses {
 	($node:ident, $of_clause:ident, $joins:ident) => {
+		let mut join = JoinNode::new();
+
 		for join_clause in $of_clause.join_clauses.iter() {
 			let table_name;
 			let expr;
@@ -1090,8 +1152,17 @@ macro_rules! solve_join_clauses {
 				n.table_name = table_name.clone();
 				n.csv_file_scan = Some(Box::new(csv_file_scan));
 				n.expr = Some(expr);
-				let item = JoinsItemNode::InnerJoin(n);
-				$joins.items.push(item);
+				let item = JoinItemNode::InnerJoin(n);
+				join.item = Some(item);
+				if $joins.join.is_none() {
+					$joins.join = Some(Box::new(join));
+					join = JoinNode::new();
+				} else {
+					if let Some(j) = $joins.join.as_mut() {
+						j.append(join);
+						join = JoinNode::new();
+					}
+				}
 			}
 		}
 	}
