@@ -6,25 +6,23 @@ use crate::objects::{Object, ObjectKind};
 
 #[derive(Clone, Debug)]
 pub struct ExecResult {
-	pub is_continue: bool,
+	pub scanning: bool,
 	pub record_is_empty: bool,
 	pub join_matched: bool,	
-	pub join_loop_end: bool
 }
 
 impl ExecResult {
 	pub fn new() -> Self {
 		Self {
-			is_continue: true,
+			scanning: true,
 			record_is_empty: false,
 			join_matched: false,
-			join_loop_end: false,
 		}
 	}
 
 	pub fn merge(&mut self, other: &ExecResult) {
-		if !other.is_continue {
-			self.is_continue = false;			
+		if !other.scanning {
+			self.scanning = false;			
 		}
 		if other.record_is_empty {
 			self.record_is_empty = true;

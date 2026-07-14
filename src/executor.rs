@@ -2003,7 +2003,10 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<(StringRec
 
 	if objs.len() == 1 &&
 	   objs[0].kind == ObjectKind::Star {
-	   	let row = get_table_record(context, &objs[0])?;
+	   	let (row, ok) = context.join_table_records();
+	   	if !ok {
+	   		return Ok((record, false));
+	   	}
 	   	return Ok((row.clone(), true));
 	}
 
@@ -2022,7 +2025,7 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<(StringRec
 					*s == *obj.to_string()
 				}
 			}) {
-			println!("table_name[{}] index[{}] row.len[{}] row: {:?}", table_name, index, row.len(), row);
+			// println!("table_name[{}] index[{}] row.len[{}] row: {:?}", table_name, index, row.len(), row);
 			if index >= row.len() {
 				return Ok((record, false));
 			}
@@ -2098,7 +2101,7 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &mut AggregateNode) -> R
 
 		loop {
 			let result = exec_distinct(context, distinct)?;
-			if !result.is_continue {
+			if !result.scanning {
 				break;
 			}
 			if result.record_is_empty {
@@ -2169,7 +2172,7 @@ pub fn exec_distinct(context: &mut Context, distinct: &mut DistinctNode) -> Resu
 	if let Some(filter) = distinct.filter.as_mut() {
 		let result = exec_filter(context, filter)?;
 		ret.merge(&result);
-		if !result.is_continue {
+		if !result.scanning {
 			return Ok(result);
 		}
 		if context.joins_enable_unmatched() {
@@ -2228,11 +2231,11 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 		let result = exec_distinct(context, distinct)?;
 		context.print_tables_scanned_records();
 		// println!("result: {:?}", result);
-		if !result.is_continue {
+		if !result.scanning {
 			return Ok(false);
 		}
 		if context.joins_enable_unmatched() {
-			return Ok(result.is_continue);
+			return Ok(result.scanning);
 		}
 		if result.record_is_empty {
 			return Ok(true);
@@ -2290,7 +2293,7 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 			context.do_read_record = false;
 			return Ok(false);
 		}
-		return Ok(result.is_continue);
+		return Ok(result.scanning);
 	}
 	return err_exec!("invalid state: project");
 }
@@ -2302,7 +2305,7 @@ pub fn exec_filter(context: &mut Context, node: &mut FilterNode) -> Result<ExecR
 		context.filtered = true;
 		if let Some(joins) = node.joins.as_mut() {
 			let result = exec_joins(context, joins)?;
-			if !result.is_continue {
+			if !result.scanning {
 				ret.merge(&result);
 				return Ok(ret);
 			}
@@ -2335,13 +2338,43 @@ pub fn exec_filter(context: &mut Context, node: &mut FilterNode) -> Result<ExecR
 	return err_exec!("invalid state: filter");
 }
 
+pub fn ready_joins_tables(context: &mut Context, node: &mut JoinsNode) -> Result<(), Error> {
+	if let Some(csv_file_scan) = node.csv_file_scan.as_mut() {
+		ready_table(context, &csv_file_scan.table_name)?;
+	}
+
+	if let Some(join) = node.join.as_mut() {
+		ready_join_tables(context, join)?;
+	}
+
+	Ok(())
+}
+
+pub fn ready_join_tables(context: &mut Context, node: &mut JoinNode) -> Result<(), Error> {
+	if let Some(item) = node.item.as_mut() {
+		match item {
+			JoinItemNode::InnerJoin(inner_join) => {
+				if let Some(csv_file_scan) = inner_join.csv_file_scan.as_mut() {
+					ready_table(context, &csv_file_scan.table_name)?;
+				}
+				if let Some(join) = node.join.as_mut() {
+					ready_join_tables(context, join)?;
+				}
+			}
+		}
+	}
+	Ok(())
+}
+
 pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecResult, Error> {
 	let mut ret = ExecResult::new();
+
+	ready_joins_tables(context, node)?;
 
 	if !context.wait_left_scan {
 		if let Some(csv_file_scan) = node.csv_file_scan.as_mut() {
 			let result = exec_csv_file_scan(context, csv_file_scan)?;
-			if !result.is_continue {
+			if !result.scanning {
 				ret.merge(&result);
 				return Ok(ret);
 			}
@@ -2351,7 +2384,7 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 	if let Some(join) = node.join.as_mut() {
 		let result = exec_join(context, join)?;	
 		ret.merge(&result);
-		ret.is_continue = true;
+		ret.scanning = true;
 		if result.join_matched {
 			context.wait_left_scan = true;
 			context.join_matched = true;
@@ -2368,7 +2401,7 @@ macro_rules! solve_scan {
 	($context:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
 
 		let result = exec_csv_file_scan($context, $csv_file_scan)?;
-		if !result.is_continue {
+		if !result.scanning {
 			$ret.merge(&result);
 			break;
 		}
@@ -2402,15 +2435,15 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 						// println!("inner_join[{}] scan", inner_join.table_name);
 						if let Some(join) = node.join.as_mut() {
 							let result = exec_join(context, join)?;	
-							println!("result: {:?}", result);
+							// println!("result: {:?}", result);
 							ret.merge(&result);
-							if !result.is_continue {
+							if !result.scanning {
 								solve_scan!(context, csv_file_scan, expr, ret);
 							}
 							if result.join_matched {
 								if !context.tables.contains_key(&inner_join.table_name) {
 									let result = exec_csv_file_scan(context, csv_file_scan)?;
-									if !result.is_continue {
+									if !result.scanning {
 										ret.merge(&result);
 										break;
 									}
@@ -2437,91 +2470,62 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 	Ok(ret)
 }
 
-pub fn create_table(context: &mut Context, node: &mut CsvFileScanNode) -> Result<(), Error> {
-	if !context.tables.contains_key(&node.table_name) {
-		let mut table = Box::new(Table::from(node.table_name.clone()));
-		table.name = node.table_name.clone();
-
-		context.current_table_name = node.table_name.clone();
-
-		let path = context.gen_table_file_path(&node.table_name)?;
-		let mut reader = match Reader::from_path(&path) {
-			Ok(v) => v,
-			Err(e) => return err_exec!("failed to create csv reader. {}", e),
-		};
-
-		let headers = match reader.headers() {
-			Ok(v) => v.clone(),
-			Err(e) => return err_exec!("failed to read header of CSV file. {}", e),
-		};
-		let header_types = parse_csv_headers_as_types(&headers)?;
-		let header_idents = parse_header_idents(&headers)?;
-		table.csv_reader = Some(reader);
-		table.headers = headers;
-		table.header_types = header_types;
-		table.header_idents = header_idents;
-
-		context.tables.insert(node.table_name.clone(), table);
-	}
-	Ok(())
-}
-
-pub fn exec_csv_file_scan(context: &mut Context, node: &mut CsvFileScanNode) -> Result<ExecResult, Error> {
-	let mut ret = ExecResult::new();
-	let mut reader_is_none: bool = true;
-
-	if context.tables.contains_key(&node.table_name) {
-		let table = context.tables.get(&node.table_name).unwrap();
-		reader_is_none = table.csv_reader.is_none();
-	} else {
-		let mut table = Box::new(Table::from(node.table_name.clone()));
-		table.name = node.table_name.clone();
-		// println!("scan table[{}]", table.name);
-		context.tables.insert(node.table_name.clone(), table);
+pub fn ready_table(context: &mut Context, table_name: &str) -> Result<(), Error> {
+	if !context.tables.contains_key(table_name) {
+		let mut table = Box::new(Table::from(context.id_counter, table_name.to_string().clone()));
+		context.id_counter += 1;
+		table.name = table_name.to_string().clone();
+		context.tables.insert(table_name.to_string().clone(), table);
 	}
 
-	if reader_is_none {
-		context.current_table_name = node.table_name.clone();
+	let path = context.gen_table_file_path(table_name)?;
 
-		let path = context.gen_table_file_path(&node.table_name)?;
-		let mut reader = match Reader::from_path(&path) {
-			Ok(v) => v,
-			Err(e) => return err_exec!("failed to create csv reader. {}", e),
-		};
+	if let Some(table) = context.tables.get_mut(table_name) {
+		context.current_table_name = table_name.to_string().clone();
+		if table.csv_reader.is_none() {
+			let mut reader = match Reader::from_path(&path) {
+				Ok(v) => v,
+				Err(e) => return err_exec!("failed to create csv reader. {}", e),
+			};
 
-		let headers = match reader.headers() {
-			Ok(v) => v.clone(),
-			Err(e) => return err_exec!("failed to read header of CSV file. {}", e),
-		};
-		let header_types = parse_csv_headers_as_types(&headers)?;
-		let header_idents = parse_header_idents(&headers)?;
-		if let Some(table) = context.tables.get_mut(&node.table_name) {
+			let headers = match reader.headers() {
+				Ok(v) => v.clone(),
+				Err(e) => return err_exec!("failed to read header of CSV file. {}", e),
+			};
+			let header_types = parse_csv_headers_as_types(&headers)?;
+			let header_idents = parse_header_idents(&headers)?;
 			table.csv_reader = Some(reader);
 			table.headers = headers;
 			table.header_types = header_types;
 			table.header_idents = header_idents;
 		}
-		println!("table created: {}", node.table_name);
-	}	
+	}
+
+	Ok(())
+}
+
+pub fn exec_csv_file_scan(context: &mut Context, node: &mut CsvFileScanNode) -> Result<ExecResult, Error> {
+	let mut ret = ExecResult::new();
+
+	ready_table(context, &node.table_name)?;
+
 	if let Some(table) = context.tables.get_mut(&node.table_name) {
 		if let Some(reader) = table.csv_reader.as_mut() {
 			let mut scanned_record = StringRecord::new();
-			println!("scan record: {}", node.table_name);
 			match reader.read_record(&mut scanned_record) {
 				Ok(_) => {
 					table.scanned_record = scanned_record;
 					if table.scanned_record.len() == 0 {
 						table.csv_reader = None;
 						ret.record_is_empty = true;
-						ret.is_continue = false;
-						println!("is continue false");
+						ret.scanning = false;
 						return Ok(ret);
 					}
 					return Ok(ret);
 				}
 				Err(_) => {
 					table.csv_reader = None;
-					ret.is_continue = false;
+					ret.scanning = false;
 					return Ok(ret);
 				}
 			};
@@ -3803,6 +3807,7 @@ mod tests {
 	fn test_selected_records_to_string(context: &mut Context) -> String {
 		let mut writer = Writer::from_writer(vec![]);
 		for rec in context.test_selected_records.clone().unwrap().iter() {
+			print_record("selected", &rec);
 			writer.write_record(rec).unwrap();
 		}
 		let bytes = writer.into_inner().unwrap();
@@ -5637,7 +5642,7 @@ mod tests {
 3,5,3
 ");
 	}
-/*
+
 	#[test]
 	fn test_inner_join_star() {
 		let mut context = Context::new();
@@ -5648,34 +5653,34 @@ mod tests {
 		do_exec(&mut context, "DROP TABLE IF EXISTS products").unwrap();
 		do_exec(&mut context, "CREATE TABLE users (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
 		do_exec(&mut context, "CREATE TABLE products (id: INT, user_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE countries (id: INT, user_id: INT, name: CHAR[128])").unwrap();
 		do_exec(&mut context, "ADD id = 1, name = \"aaa\" OF users").unwrap();
 		do_exec(&mut context, "ADD id = 2, name = \"bbb\" OF users").unwrap();
 		do_exec(&mut context, "ADD id = 3, name = \"ccc\" OF users").unwrap();
 		do_exec(&mut context, "ADD id = 4, name = \"ddd\" OF users").unwrap();
 		do_exec(&mut context, "ADD id = 5, name = \"ddd\" OF users").unwrap();
+
 		do_exec(&mut context, "ADD id = 1, user_id = 1, name = \"aaa product 1\" OF products").unwrap();
 		do_exec(&mut context, "ADD id = 2, user_id = 1, name = \"aaa product 2\" OF products").unwrap();
 		do_exec(&mut context, "ADD id = 3, user_id = 2, name = \"bbb product 1\" OF products").unwrap();
 		do_exec(&mut context, "ADD id = 4, user_id = 2, name = \"bbb product 2\" OF products").unwrap();
 		do_exec(&mut context, "ADD id = 5, user_id = 3, name = \"ccc product 1\" OF products").unwrap();
 
+		do_exec(&mut context, "ADD id = 1, user_id = 1, name = \"japan\" OF countries").unwrap();
+		do_exec(&mut context, "ADD id = 2, user_id = 2, name = \"usa\" OF countries").unwrap();
+		do_exec(&mut context, "ADD id = 3, user_id = 3, name = \"korean\" OF countries").unwrap();
+
 		context.test_selected_records = Some(vec![]);
-		do_exec(&mut context, "GET ALL * OF users INNER JOIN products ON users.id == products.user_id").unwrap();
+		do_exec(&mut context, "GET ALL * OF users INNER JOIN products ON users.id == products.user_id INNER JOIN countries ON users.id == countries.user_id").unwrap();
 
 		let s = test_selected_records_to_string(&mut context);
 		println!("s[{}]", s);
-		assert!(s == "1,aaa,1,1,aaa product 1
-1,aaa,2,1,aaa product 2
-2,bbb,3,2,bbb product 1
-2,bbb,4,2,bbb product 2
-3,ccc,5,3,ccc product 1
+		assert!(s == "1,0.0,aaa,1,1,aaa product 1,1,1,japan
+1,0.0,aaa,2,1,aaa product 2,1,1,japan
+2,0.0,bbb,3,2,bbb product 1,2,2,usa
+2,0.0,bbb,4,2,bbb product 2,2,2,usa
+3,0.0,ccc,5,3,ccc product 1,3,3,korean
 ");
-*/
-/*		assert!(s == "1,aaa,1,1,aaa product 1
-1,aaa,2,1,aaa product 2
-2,bbb,3,2,bbb product 1
-2,bbb,4,2,bbb product 2
-3,ccc,5,3,ccc product 1
-");
-*/
+	}
+
 }

@@ -26,6 +26,7 @@ pub struct Context {
 	pub joins_enable: bool,
 	pub wait_left_scan: bool,
 	pub scanned_record_is_empty: bool,
+	pub id_counter: usize,
 
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
@@ -71,6 +72,7 @@ impl Context {
 			joins_enable: false,
 			wait_left_scan: false,
 			scanned_record_is_empty: false,
+			id_counter: 1,
 			is_cli: false,
 			matched_record: StringRecord::new(),
 			unmatched_record: StringRecord::new(),
@@ -106,6 +108,7 @@ impl Context {
 		self.joins_enable = false;
 		self.wait_left_scan = false;
 		self.scanned_record_is_empty = false;
+		self.id_counter = 1;
 		self.matched_record.clear();
 		self.unmatched_record.clear();
 		if let Some(test_get_records) = self.test_get_records.as_mut() {
@@ -125,16 +128,29 @@ impl Context {
 		self.max_value = 0.0;
 	}
 
-	pub fn rewind_table_csv_reader(&mut self, table_name: &str) -> Result<(), Error> {
-		let path = self.gen_table_file_path(table_name)?;
-		if let Some(table) = self.tables.get_mut(table_name) {
-			let reader = match Reader::from_path(&path) {
-				Ok(v) => v,
-				Err(e) => return err_runtime!("failed to create csv reader. {}", e),
-			};
-			table.csv_reader = Some(reader);
+	pub fn join_table_records(&self) -> (StringRecord, bool) {
+		let mut ret = StringRecord::new();
+		let mut v: Vec<(usize, StringRecord)> = vec![];
+
+		for table in self.tables.values() {
+			let id = table.id;
+			let r = table.scanned_record.clone();
+			if r.len() == 0 {
+				return (ret, false);
+			}
+			v.push((id, r));
 		}
-		Ok(())
+
+		v.sort_by(|a, b| a.0.cmp(&b.0));
+
+		for (id, record) in v.iter() {
+			println!("id[{}] record: {:?}", id, record);
+			for field in record.iter() {
+				ret.push_field(field);
+			}
+		}
+
+		(ret, true)
 	}
 
 	pub fn joins_enable_unmatched(&self) -> bool {

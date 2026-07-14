@@ -5,6 +5,7 @@ use std::io::{Seek, SeekFrom};
 
 #[derive(Debug)]
 pub struct Table {
+	pub id: usize,
 	pub name: String,
 	pub csv_reader: Option<Reader<File>>,
 	pub headers: StringRecord,
@@ -16,6 +17,7 @@ pub struct Table {
 impl Table {
 	pub fn new() -> Self {
 		Self {
+			id: 0,
 			name: String::new(),
 			csv_reader: None,
 			headers: StringRecord::new(),
@@ -25,8 +27,9 @@ impl Table {
 		}
 	}
 
-	pub fn from(table_name: String) -> Self {
+	pub fn from(id: usize, table_name: String) -> Self {
 		let mut s = Self::new();
+		s.id = id;
 		s.name = table_name;
 		return s;
 	}
