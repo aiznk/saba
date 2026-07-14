@@ -210,7 +210,7 @@ fn rewrite_append_record_by_vars(context: &mut Context, node: &CsvFileAppendNode
 				if let Some(index) = find_header_position(&headers, key.as_str())? {
 					row[index] = o.to_string();
 				} else {
-					return err_exec!("invalid column: {}", key);
+					return err_exec!("invalid column: {} in append record", key);
 				}
 			} else {
 				return err_exec!("failed to get value of vars");
@@ -596,7 +596,7 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 		let ident = arg.to_string();
 		let header_idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
-			return err_exec!("invalid column '{}'", ident);
+			return err_exec!("invalid column '{}' in count", ident);
 		};
 		if index >= record.len() {
 			return err_exec!("index out of range in count function");
@@ -644,7 +644,7 @@ fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		let types = context.get_table_header_types(context.current_table_name.clone().as_str())?;
 		let header_idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
-			return err_exec!("invalid column '{}'", ident);
+			return err_exec!("invalid column '{}' in avg", ident);
 		};
 		if index >= record.len() {
 			return err_exec!("index out of range in avg function");
@@ -696,7 +696,7 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		let types = context.get_table_header_types(context.current_table_name.clone().as_str())?;
 		let header_idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
-			return err_exec!("invalid column '{}'", ident);
+			return err_exec!("invalid column '{}' in sum", ident);
 		};
 		if index >= record.len() {
 			return err_exec!("index out of range in sum function");
@@ -745,7 +745,7 @@ fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		let types = context.get_table_header_types(context.current_table_name.clone().as_str())?;
 		let header_idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
-			return err_exec!("invalid column '{}'", ident);
+			return err_exec!("invalid column '{}' in max", ident);
 		};
 		if index >= record.len() {
 			return err_exec!("index out of range in max function");
@@ -794,7 +794,7 @@ fn call_min(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 		let types = context.get_table_header_types(context.current_table_name.clone().as_str())?;
 		let header_idents = context.get_table_header_idents(context.current_table_name.clone().as_str())?;
 		let Some(index) = header_idents.iter().position(|s| *s == ident) else {
-			return err_exec!("invalid column '{}'", ident);
+			return err_exec!("invalid column '{}' in min", ident);
 		};
 		if index >= record.len() {
 			return err_exec!("index out of range in min function");
@@ -1980,7 +1980,7 @@ fn get_table_name<'a>(context: &'a Context, obj: &'a Object) -> Result<&'a Strin
 	}
 }
 
-fn select_get_columns(context: &mut Context, node: &ProjectNode) -> Result<(), Error> {
+fn select_get_columns(context: &mut Context, node: &ProjectNode) -> Result<bool, Error> {
 	context.selected_csv_columns.clear();
 
 	let mut objs: Vec<Object> = vec![];
@@ -1988,24 +1988,27 @@ fn select_get_columns(context: &mut Context, node: &ProjectNode) -> Result<(), E
 		objs = exec_expr_list(context, expr_list)?;
 	}
 
-	let records = select_record(context, &objs)?;
+	let (records, ok) = select_record(context, &objs)?;
+	if !ok {
+		return Ok(ok);
+	}
+
 	context.selected_csv_columns = string_record_to_vev_string(&records);
 
-	Ok(())
+	Ok(ok)
 }
 
-fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<StringRecord, Error> {
+fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<(StringRecord, bool), Error> {
 	let mut record = StringRecord::new();
 
 	if objs.len() == 1 &&
 	   objs[0].kind == ObjectKind::Star {
 	   	let row = get_table_record(context, &objs[0])?;
-	   	return Ok(row.clone());
+	   	return Ok((row.clone(), true));
 	}
 
 	for obj in objs.iter() {
 		let table_name = get_table_name(context, &obj)?;
-		// println!("table_name[{}]", table_name);
 		let row = get_table_record(context, &obj)?;
 		let header_idents = get_header_idents_by_obj(context, &obj)?;
 		if let Some(index) = header_idents.iter().position(|s| {
@@ -2019,19 +2022,22 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<StringReco
 					*s == *obj.to_string()
 				}
 			}) {
-			println!("index[{}] row.len[{}] row: {:?}", index, row.len(), row);
+			println!("table_name[{}] index[{}] row.len[{}] row: {:?}", table_name, index, row.len(), row);
+			if index >= row.len() {
+				return Ok((record, false));
+			}
 			let col = &row[index];
 			record.push_field(col.to_string().as_str());
 		} else {
 			if obj.kind == ObjectKind::Ident {
-				return err_exec!("invalid column: {}", obj.to_string());
+				return err_exec!("invalid column: {} in select record", obj.to_string());
 			}
 			record.push_field(obj.to_string().as_str());
 		}
 	}
 
 	print_record("select record", &record);
-	Ok(record)
+	Ok((record, true))
 }
 
 fn get_indices(idents: &Vec<String>, objs: &Vec<Object>) -> Result<Vec<usize>, Error> {
@@ -2088,6 +2094,7 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &mut AggregateNode) -> R
 
 	if let Some(distinct) = aggregate.distinct.as_mut() {
 		let mut record = StringRecord::new();
+		let mut ok;
 
 		loop {
 			let result = exec_distinct(context, distinct)?;
@@ -2106,11 +2113,17 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &mut AggregateNode) -> R
 					}
 					let objs = context.cache_distinct_objs.clone();
 					if let Some(objs) = objs {
-						record = select_record(context, &objs)?;
+						(record, ok) = select_record(context, &objs)?;
+						if !ok {
+							return Ok(());
+						}
 						context.cache_distinct_objs = None;
 					} else if let Some(expr_list) = &aggregate.expr_list {
 						let objs = exec_expr_list(context, expr_list)?;
-						record = select_record(context, &objs)?;
+						(record, ok) = select_record(context, &objs)?;
+						if !ok {
+							return Ok(());
+						}
 					}
 					context.limit_counter += 1;
 				}
@@ -2122,11 +2135,17 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &mut AggregateNode) -> R
 				}
 				let objs = context.cache_distinct_objs.clone();
 				if let Some(objs) = objs {
-					record = select_record(context, &objs)?;
+					(record, ok) = select_record(context, &objs)?;
+					if !ok {
+						return Ok(());
+					}
 					context.cache_distinct_objs = None;
 				} else if let Some(expr_list) = &aggregate.expr_list {
 					let objs = exec_expr_list(context, expr_list)?;
-					record = select_record(context, &objs)?;
+					(record, ok) = select_record(context, &objs)?;
+					if !ok {
+						return Ok(());
+					}
 				}
 				context.limit_counter += 1;
 			}
@@ -2207,6 +2226,7 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 
 	if let Some(distinct) = project.distinct.as_mut() {
 		let result = exec_distinct(context, distinct)?;
+		context.print_tables_scanned_records();
 		// println!("result: {:?}", result);
 		if !result.is_continue {
 			return Ok(false);
@@ -2232,15 +2252,16 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 				if let Some(test_get_records) = context.test_get_records.as_mut() {
 					test_get_records.push(context.matched_record.clone());
 				}
-				select_get_columns(context, project)?;
-				if let Some(test_selected_records) = context.test_selected_records.as_mut() {
-					let rec = context.selected_csv_columns.clone();
-					test_selected_records.push(vec_string_to_string_record(&rec));
+				if select_get_columns(context, project)? {
+					if let Some(test_selected_records) = context.test_selected_records.as_mut() {
+						let rec = context.selected_csv_columns.clone();
+						test_selected_records.push(vec_string_to_string_record(&rec));
+					}
+					if context.is_cli {
+						print_selected_columns(context)?;
+					}
+					context.counter_selected += 1;
 				}
-				if context.is_cli {
-					print_selected_columns(context)?;
-				}
-				context.counter_selected += 1;
 			}
 		} else {
 			if let Some(limit_value) = limit_value {
@@ -2254,15 +2275,16 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 			if let Some(test_get_records) = context.test_get_records.as_mut() {
 				test_get_records.push(record);
 			}
-			select_get_columns(context, project)?;
-			if let Some(test_selected_records) = context.test_selected_records.as_mut() {
-				let rec = context.selected_csv_columns.clone();
-				test_selected_records.push(vec_string_to_string_record(&rec));
+			if select_get_columns(context, project)? {				
+				if let Some(test_selected_records) = context.test_selected_records.as_mut() {
+					let rec = context.selected_csv_columns.clone();
+					test_selected_records.push(vec_string_to_string_record(&rec));
+				}
+				if context.is_cli {
+					print_selected_columns(context)?;
+				}
+				context.counter_selected += 1;
 			}
-			if context.is_cli {
-				print_selected_columns(context)?;
-			}
-			context.counter_selected += 1;
 		}
 		if !project.all && context.counter_selected >= 1 {
 			context.do_read_record = false;
@@ -2330,7 +2352,7 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 		let result = exec_join(context, join)?;	
 		ret.merge(&result);
 		ret.is_continue = true;
-		if result.pending {
+		if result.join_matched {
 			context.wait_left_scan = true;
 			context.join_matched = true;
 		} else {
@@ -2342,42 +2364,68 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 	Ok(ret)
 }
 
+macro_rules! solve_scan {
+	($context:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
+
+		let result = exec_csv_file_scan($context, $csv_file_scan)?;
+		if !result.is_continue {
+			$ret.merge(&result);
+			break;
+		}
+		let o = exec_expr($context, $expr)?;
+		if o.kind == ObjectKind::Bool && o.bool_value {
+			// match
+			$ret.join_matched = true;
+			break;
+		}								
+	}
+}
+
 pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResult, Error> {
 	let mut ret = ExecResult::new();
 
+	/*
+		for (users) {
+			for (products) {
+				for (countries) {
+				}
+			}
+		}
+
+	 */
 	if let Some(item) = node.item.as_mut() {
 		match item {
 			JoinItemNode::InnerJoin(inner_join) => {
-				// println!("inner_join[{}]", inner_join.table_name);
 				if let Some(csv_file_scan) = inner_join.csv_file_scan.as_mut() {
 				if let Some(expr) = &inner_join.expr {
-					println!("inner_join [{}]", inner_join.table_name);
 					loop {
-						let result = exec_csv_file_scan(context, csv_file_scan)?;
-						println!("result: {:?}", result);
-						if !result.is_continue {
-							ret.merge(&result);
-							if let Some(join) = node.join.as_mut() {
-								let result = exec_join(context, join)?;	
-								ret.merge(&result);
-							}
-							break;
-						}
-						let o = exec_expr(context, expr)?;
-						if o.kind == ObjectKind::Bool && o.bool_value {
-							// match
-							ret.pending = true;
-						}
-						println!("join");
+						// println!("inner_join[{}] scan", inner_join.table_name);
 						if let Some(join) = node.join.as_mut() {
 							let result = exec_join(context, join)?;	
+							println!("result: {:?}", result);
 							ret.merge(&result);
-							if result.pending {
+							if !result.is_continue {
+								solve_scan!(context, csv_file_scan, expr, ret);
+							}
+							if result.join_matched {
+								if !context.tables.contains_key(&inner_join.table_name) {
+									let result = exec_csv_file_scan(context, csv_file_scan)?;
+									if !result.is_continue {
+										ret.merge(&result);
+										break;
+									}
+									let o = exec_expr(context, expr)?;
+									if o.kind == ObjectKind::Bool && o.bool_value {
+										// match
+										ret.join_matched = true;
+										break;
+									}								
+									break;
+								}
 								break;
 							}
-						}
-						if ret.pending {
-							break;
+						} else {
+							solve_scan!(context, csv_file_scan, expr, ret);
 						}
 					}	
 				}
@@ -2387,6 +2435,35 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 	}
 
 	Ok(ret)
+}
+
+pub fn create_table(context: &mut Context, node: &mut CsvFileScanNode) -> Result<(), Error> {
+	if !context.tables.contains_key(&node.table_name) {
+		let mut table = Box::new(Table::from(node.table_name.clone()));
+		table.name = node.table_name.clone();
+
+		context.current_table_name = node.table_name.clone();
+
+		let path = context.gen_table_file_path(&node.table_name)?;
+		let mut reader = match Reader::from_path(&path) {
+			Ok(v) => v,
+			Err(e) => return err_exec!("failed to create csv reader. {}", e),
+		};
+
+		let headers = match reader.headers() {
+			Ok(v) => v.clone(),
+			Err(e) => return err_exec!("failed to read header of CSV file. {}", e),
+		};
+		let header_types = parse_csv_headers_as_types(&headers)?;
+		let header_idents = parse_header_idents(&headers)?;
+		table.csv_reader = Some(reader);
+		table.headers = headers;
+		table.header_types = header_types;
+		table.header_idents = header_idents;
+
+		context.tables.insert(node.table_name.clone(), table);
+	}
+	Ok(())
 }
 
 pub fn exec_csv_file_scan(context: &mut Context, node: &mut CsvFileScanNode) -> Result<ExecResult, Error> {
@@ -2424,10 +2501,12 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &mut CsvFileScanNode) -> 
 			table.header_types = header_types;
 			table.header_idents = header_idents;
 		}
+		println!("table created: {}", node.table_name);
 	}	
 	if let Some(table) = context.tables.get_mut(&node.table_name) {
 		if let Some(reader) = table.csv_reader.as_mut() {
 			let mut scanned_record = StringRecord::new();
+			println!("scan record: {}", node.table_name);
 			match reader.read_record(&mut scanned_record) {
 				Ok(_) => {
 					table.scanned_record = scanned_record;
@@ -2435,6 +2514,7 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &mut CsvFileScanNode) -> 
 						table.csv_reader = None;
 						ret.record_is_empty = true;
 						ret.is_continue = false;
+						println!("is continue false");
 						return Ok(ret);
 					}
 					return Ok(ret);

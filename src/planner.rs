@@ -7,16 +7,18 @@ use crate::objects::{Object, ObjectKind};
 #[derive(Clone, Debug)]
 pub struct ExecResult {
 	pub is_continue: bool,
-	pub pending: bool,	
 	pub record_is_empty: bool,
+	pub join_matched: bool,	
+	pub join_loop_end: bool
 }
 
 impl ExecResult {
 	pub fn new() -> Self {
 		Self {
 			is_continue: true,
-			pending: false,
 			record_is_empty: false,
+			join_matched: false,
+			join_loop_end: false,
 		}
 	}
 
@@ -24,11 +26,11 @@ impl ExecResult {
 		if !other.is_continue {
 			self.is_continue = false;			
 		}
-		if other.pending {
-			self.pending = true;
-		}
 		if other.record_is_empty {
 			self.record_is_empty = true;
+		}
+		if other.join_matched {
+			self.join_matched = true;
 		}
 	}
 }
@@ -436,6 +438,12 @@ impl JoinsNode {
 		}
 	}
 
+	pub fn print_joins(&self) {
+		if let Some(join) = &self.join {
+			join.print_joins();
+		}
+	}
+
 	pub fn append(&mut self, join: JoinNode) {
 		if let Some(j) = self.join.as_mut() {
 			j.as_mut().append(join);
@@ -456,6 +464,13 @@ impl JoinNode {
 		Self {
 			item: None,
 			join: None,
+		}
+	}
+
+	pub fn print_joins(&self) {
+		println!("join: {:?}", self.item);
+		if let Some(join) = &self.join {
+			join.print_joins();
 		}
 	}
 
@@ -1165,6 +1180,8 @@ macro_rules! solve_join_clauses {
 				}
 			}
 		}
+
+		$joins.print_joins();
 	}
 }
 
