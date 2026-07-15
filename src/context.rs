@@ -278,13 +278,22 @@ impl Context {
 		}
 	}
 
-	pub fn gen_db_dir_path(&self, db_name: &str) -> Result<PathBuf, Error> {
+	pub fn gen_db_dir_path(&self) -> Result<PathBuf, Error> {
+		let path = Path::new(&self.root_dir_path)
+			.join("db");
+
+		Ok(path)		
+	}
+
+	pub fn gen_using_db_dir_path(&self, db_name: &str) -> Result<PathBuf, Error> {
 		if self.root_dir_path.as_os_str().is_empty() ||
 		   db_name.len() == 0 {
 		   	return err_runtime!("invalid state in gen db dir path");
 		}
 
-		let path = Path::new(&self.root_dir_path).join(db_name);
+		let path = Path::new(&self.root_dir_path)
+			.join("db")
+			.join(db_name);
 
 		Ok(path)		
 	}
@@ -295,7 +304,10 @@ impl Context {
 		   	return err_runtime!("invalid state in gen using db dir path");
 		}
 
-		let path = Path::new(&self.root_dir_path).join(&self.using_db_name).join("tables");
+		let path = Path::new(&self.root_dir_path)
+			.join("db")
+			.join(&self.using_db_name)
+			.join("table");
 		if path.as_os_str().to_string_lossy().contains("..") {
 			return err_runtime!("directory traversal error");
 		}
@@ -310,24 +322,10 @@ impl Context {
 		}
 
 		let path = Path::new(&self.root_dir_path)
+			.join("db")
 			.join(&self.using_db_name)
 			.join("id")
 			.join(format!("{}__{}.txt", table_name, typ.ident));
-		if path.as_os_str().to_string_lossy().contains("..") {
-			return err_runtime!("directory traversal error");
-		}
-
-		Ok(path)		
-	}
-
-	#[allow(dead_code)]
-	pub fn gen_using_db_dir_path(&self) -> Result<PathBuf, Error> {
-		if self.root_dir_path.as_os_str().is_empty() ||
-		   self.using_db_name.len() == 0 {
-		   	return err_runtime!("invalid state in gen using db dir path");
-		}
-
-		let path = Path::new(&self.root_dir_path).join(&self.using_db_name);
 		if path.as_os_str().to_string_lossy().contains("..") {
 			return err_runtime!("directory traversal error");
 		}
@@ -342,8 +340,9 @@ impl Context {
 		}
 
 		let path = Path::new(&self.root_dir_path)
+			.join("db")
 			.join(&self.using_db_name)
-			.join("tables")
+			.join("table")
 			.join(table_name.to_lowercase() + ".csv");
 		if path.as_os_str().to_string_lossy().contains("..") {
 			return err_runtime!("directory traversal error");
@@ -359,8 +358,9 @@ impl Context {
 		}
 
 		let path = Path::new(&self.root_dir_path)
+			.join("db")
 			.join(&self.using_db_name)
-			.join("tables")
+			.join("table")
 			.join(table_name.to_lowercase() + ".tmp.csv");
 		if path.as_os_str().to_string_lossy().contains("..") {
 			return err_runtime!("directory traversal error");

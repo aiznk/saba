@@ -483,7 +483,7 @@ pub fn exec_use_db(context: &mut Context, node: &UseDatabaseNode) -> Result<(), 
 		return err_exec!("directory traversal error");
 	}
 	context.using_db_name = node.db_name.clone();
-	let path = context.gen_db_dir_path(&context.using_db_name)?;
+	let path = context.gen_using_db_dir_path(&context.using_db_name)?;
 	if !path.exists() {
 		return err_exec!("{} does not exists database", context.using_db_name);
 	}
@@ -2577,7 +2577,7 @@ pub fn parse_header_idents(headers: &StringRecord) -> Result<Vec<String>, Error>
 }
 
 fn is_db_dir(path: &Path) -> bool {
-	path.join("id").exists() && path.join("tables").exists()
+	path.join("id").exists() && path.join("table").exists()
 }
 
 pub fn exec_dir_delete_all(context: &mut Context, node: &DirDeleteAllNode) -> Result<(), Error> {
@@ -2588,7 +2588,7 @@ pub fn exec_dir_delete_all(context: &mut Context, node: &DirDeleteAllNode) -> Re
 	if db_name.contains("..") {
 		return err_exec!("directory traversal error");
 	}
-	let path = context.gen_db_dir_path(&db_name)?;
+	let path = context.gen_using_db_dir_path(&db_name)?;
 	if path.as_os_str().is_empty() {
 		return err_exec!("invalid path in dir delete all");
 	}
@@ -2596,7 +2596,7 @@ pub fn exec_dir_delete_all(context: &mut Context, node: &DirDeleteAllNode) -> Re
 	if node.if_exists {
 		if path.exists() {
 			if !is_db_dir(&path) {
-				return err_exec!("does not database directory");
+				return err_exec!("does not database directory: {}", path.as_os_str().to_string_lossy());
 			}
 			match fs::remove_dir_all(&path) {
 				Ok(_) => {},
@@ -2650,16 +2650,24 @@ pub fn exec_dir_list(context: &mut Context, node: &DirListNode) -> Result<(), Er
 }
 
 pub fn exec_database_create(context: &mut Context, node: &DatabaseCreateNode) -> Result<(), Error> {
-	let path = context.gen_db_dir_path(&node.db_name)?;
+	let path = context.gen_db_dir_path()?;
+	if !path.exists() {
+		match fs::create_dir(&path) {
+			Ok(_) => {},
+			Err(e) => return err_exec!("failed to create database directory. {}", e),
+		}		
+	}
+
+	let path = context.gen_using_db_dir_path(&node.db_name)?;
 	if path.exists() {
 		return err_exec!("{} database already exists", node.db_name);
 	}
 
 	match fs::create_dir(&path) {
 		Ok(_) => {},
-		Err(e) => return err_exec!("failed to create database directory. {}", e),
+		Err(e) => return err_exec!("failed to create using database directory. {}", e),
 	}
-	match fs::create_dir(&path.join("tables")) {
+	match fs::create_dir(&path.join("table")) {
 		Ok(_) => {},
 		Err(e) => return err_exec!("failed to create tables directory. {}", e),
 	}		
@@ -3206,9 +3214,12 @@ pub fn exec_csv_file_create(context: &mut Context, node: &CsvFileCreateNode) -> 
 	if !path.exists() {
 		let header = &node.csv_head_row;
 
-		let mut file = match fs::File::create(path) {
+		let mut file = match fs::File::create(&path) {
 			Ok(v) => v,
-			Err(e) => return err_exec!("failed to create CSV file. {}", e),
+			Err(e) => { 
+				println!("path[{}]", path.as_os_str().to_string_lossy());
+				return err_exec!("failed to create CSV file. {}", e); 
+			}
 		};
 		match file.write_all(header.as_bytes()) {
 			Ok(_) => {},
@@ -3292,7 +3303,7 @@ mod tests {
 
 	#[test]
 	fn test_database_create() {
-		let path = Path::new("test_env").join("test_db");
+		let path = Path::new("test_env").join("db").join("test_db");
 		if path.exists() {
 			fs::remove_dir_all(&path).unwrap();
 		}
@@ -3300,12 +3311,23 @@ mod tests {
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
 		assert!(path.exists());
-		assert!(path.join("tables").exists());
+		assert!(path.join("table").exists());
 		assert!(path.join("id").exists());
 	}
 
 	fn gen_test_table_path() -> PathBuf {
-		Path::new("test_env").join("test_db").join("tables").join("test_table.csv")
+		Path::new("test_env").join("db").join("test_db").join("table").join("test_table.csv")
+	}
+
+	#[test]
+	fn test_create_database() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		let path = Path::new("test_env").join("db");
+		assert!(path.exists());
+		let path = Path::new("test_env").join("db").join("test_db");
+		assert!(path.exists());
 	}
 
 	#[test]
@@ -3507,7 +3529,7 @@ mod tests {
 		do_exec(&mut context, "ADD name = \"hoge\" OF test_table").unwrap();
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: INT AUTO_INCREMENT,name: CHAR[4]\n1,hige\n2,hoge\n");
-		assert!(Path::new("test_env/test_db/id/test_table__id.txt").exists());
+		assert!(Path::new("test_env/db/test_db/id/test_table__id.txt").exists());
 	}
 
 	#[test]
@@ -4106,9 +4128,9 @@ mod tests {
 		let mut context = Context::new();
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
 		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
-		assert!(Path::new("test_env").join("test_db").exists());
+		assert!(Path::new("test_env").join("db").join("test_db").exists());
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
-		assert!(!Path::new("test_env").join("test_db").exists());
+		assert!(!Path::new("test_env").join("db").join("test_db").exists());
 	}
 
 	#[test]
@@ -4792,8 +4814,8 @@ mod tests {
 		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n3,3.14,moge\n4,3.14,huge\n5,3.14,oge\n");
 
 		do_exec(&mut context, "ALTER TABLE test_table RENAME TO new_table").unwrap();
-		assert!(Path::new("test_env/test_db/tables/new_table.csv").exists());
-		assert!(!Path::new("test_env/test_db/tables/test_table.csv").exists());
+		assert!(Path::new("test_env/db/test_db/table/new_table.csv").exists());
+		assert!(!Path::new("test_env/db/test_db/table/test_table.csv").exists());
 	}
 
 	#[test]
