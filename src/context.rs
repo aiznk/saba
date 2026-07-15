@@ -14,7 +14,6 @@ pub struct Context {
 	pub vars: HashMap<String, Box<Object>>,
 	pub counter_selected: usize,
 	pub distinct_map: HashMap<String, bool>,
-	pub skip: bool,
 	pub cache_distinct_objs: Option<Vec<Object>>,
 	pub tables: HashMap<String, Box<Table>>,
 	pub do_read_record: bool,
@@ -27,7 +26,7 @@ pub struct Context {
 	pub wait_left_scan: bool,
 	pub scanned_record_is_empty: bool,
 	pub id_counter: usize,
-	pub selected_header_idents: StringRecord,
+	pub selected_header_idents: Vec<String>,
 
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
@@ -61,7 +60,6 @@ impl Context {
 			vars: HashMap::new(),
 			counter_selected: 0,
 			distinct_map: HashMap::new(),
-			skip: false,
 			cache_distinct_objs: None,
 			tables: HashMap::new(),
 			do_read_record: false,
@@ -74,7 +72,7 @@ impl Context {
 			wait_left_scan: false,
 			scanned_record_is_empty: false,
 			id_counter: 1,
-			selected_header_idents: StringRecord::new(),
+			selected_header_idents: vec![],
 			is_cli: false,
 			matched_record: StringRecord::new(),
 			unmatched_record: StringRecord::new(),
@@ -98,7 +96,6 @@ impl Context {
 		self.vars.clear();
 		self.counter_selected = 0;
 		self.distinct_map.clear();
-		self.skip = false;
 		self.cache_distinct_objs = None;
 		self.tables.clear();
 		self.do_read_record = false;
@@ -131,6 +128,27 @@ impl Context {
 		self.max_value = 0.0;
 	}
 
+	pub fn join_table_header_idents(&self) -> Vec<String> {
+		let mut ret: Vec<String> = vec![];
+
+		if self.tables.len() == 0 {
+			return ret;
+		} else if self.tables.len() >= 2 {
+			for table in self.tables.values() {
+				for ident in table.header_idents.iter() {
+					let ident = format!("{}.{}", table.name, ident);
+					ret.push(ident);
+				}
+			}
+		} else {
+			for table in self.tables.values() {
+				ret = table.header_idents.clone();
+			}			
+		}
+
+		ret
+	}
+
 	pub fn join_table_records(&self) -> (StringRecord, bool) {
 		let mut ret = StringRecord::new();
 		let mut v: Vec<(usize, StringRecord)> = vec![];
@@ -146,7 +164,7 @@ impl Context {
 
 		v.sort_by(|a, b| a.0.cmp(&b.0));
 
-		for (id, record) in v.iter() {
+		for (_id, record) in v.iter() {
 			for field in record.iter() {
 				ret.push_field(field);
 			}

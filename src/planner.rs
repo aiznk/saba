@@ -9,6 +9,7 @@ pub struct ExecResult {
 	pub scanning: bool,
 	pub record_is_empty: bool,
 	pub join_matched: bool,	
+	pub distinct_matched: bool,
 }
 
 impl ExecResult {
@@ -17,6 +18,7 @@ impl ExecResult {
 			scanning: true,
 			record_is_empty: false,
 			join_matched: false,
+			distinct_matched: false,
 		}
 	}
 
@@ -29,6 +31,9 @@ impl ExecResult {
 		}
 		if other.join_matched {
 			self.join_matched = true;
+		}
+		if other.distinct_matched {
+			self.distinct_matched = true;
 		}
 	}
 }

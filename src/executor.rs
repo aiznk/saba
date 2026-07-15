@@ -103,30 +103,30 @@ fn exec_sort(context: &mut Context, sort: &mut SortNode) -> Result<(), Error> {
 			if result.record_is_empty {
 				continue;
 			}
-			if context.skip {
+			if result.distinct_matched {
 				continue;
 			}
 			if context.selected_csv_columns.len() == 0 {
 				continue;
 			}
-			let v = vec_string_to_string_record(&context.selected_csv_columns);
-			records.push(v);
-/*			if context.filtered {
+			if context.filtered {
 				if context.matched {
-					records.push(context.matched_record.clone());
+					let v = vec_string_to_string_record(&context.selected_csv_columns);
+					println!("v:{:?}", v);
+					records.push(v);
 				}
 			} else {
-				let record = context.get_current_table_scanned_record()?;
-				if record.len() == 0 {
-					continue;
-				}
-				records.push(record);
+				let v = vec_string_to_string_record(&context.selected_csv_columns);
+				println!("v:{:?}", v);
+				records.push(v);				
 			}
-*/		}
+		}
 
 		context.is_cli = is_cli;
 
+		println!("{:?}", context.selected_header_idents);
 		let index = context.selected_header_idents.iter().position(|s| {
+			println!("s[{}] ident[{}]", s, obj.ident);
 			if let Some(parent) = &obj.parent {
 				let par = &parent.ident;
 				let chi = &obj.ident;
@@ -605,9 +605,6 @@ pub fn exec_ass_expr(context: &mut Context, node: &parser::AssExprNode) -> Resul
 
 fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	if context.skip {
-		return Ok(Object::from_int(context.count_counter as i128));
-	}
 	if context.filtered {
 		if context.matched {
 			record = context.matched_record.clone();
@@ -644,12 +641,6 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 
 fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	if context.skip {
-		if context.avg_counter == 0 {
-			return Ok(Object::from_float(context.avg_sum_value));
-		}
-		return Ok(Object::from_float(context.avg_sum_value / context.avg_counter as f64));
-	}
 	if context.filtered {
 		if context.matched {
 			record = context.matched_record.clone();
@@ -704,9 +695,6 @@ fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 
 fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	if context.skip {
-		return Ok(Object::from_float(context.sum_value));
-	}
 	if context.filtered {
 		if context.matched {
 			record = context.matched_record.clone();
@@ -753,9 +741,6 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 
 fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	if context.skip {
-		return Ok(Object::from_float(context.max_value));
-	}
 	if context.filtered {
 		if context.matched {
 			record = context.matched_record.clone();
@@ -802,9 +787,6 @@ fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 
 fn call_min(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	if context.skip {
-		return Ok(Object::from_float(context.min_value));
-	}
 	if context.filtered {
 		if context.matched {
 			record = context.matched_record.clone();
@@ -2021,12 +2003,13 @@ fn select_get_columns(context: &mut Context, node: &ProjectNode) -> Result<bool,
 		objs = exec_expr_list(context, expr_list)?;
 	}
 
-	let (records, ok) = select_record(context, &objs)?;
+	let (record, ok) = select_record(context, &objs)?;
 	if !ok {
 		return Ok(ok);
 	}
 
-	context.selected_csv_columns = string_record_to_vev_string(&records);
+	println!("select_get_columns: {:?}", record);
+	context.selected_csv_columns = string_record_to_vev_string(&record);
 
 	Ok(ok)
 }
@@ -2037,6 +2020,8 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<(StringRec
 	if objs.len() == 1 &&
 	   objs[0].kind == ObjectKind::Star {
 	   	let (row, ok) = context.join_table_records();
+	   	let idents = context.join_table_header_idents();
+	   	context.selected_header_idents = idents;
 	   	if !ok {
 	   		return Ok((record, false));
 	   	}
@@ -2044,7 +2029,7 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<(StringRec
 	}
 
 	let mut ident = String::new();
-	let mut selected_header_idents = StringRecord::new();
+	let mut selected_header_idents = vec![];
 
 	for obj in objs.iter() {
 		let table_name = get_table_name(context, &obj)?;
@@ -2069,13 +2054,13 @@ fn select_record(context: &mut Context, objs: &Vec<Object>) -> Result<(StringRec
 			}
 			let col = &row[index];
 			record.push_field(col.to_string().as_str());
-			selected_header_idents.push_field(ident.as_str());
+			selected_header_idents.push(ident.clone());
 		} else {
 			if obj.kind == ObjectKind::Ident {
 				return err_exec!("invalid column: {} in select record", obj.to_string());
 			}
 			record.push_field(obj.to_string().as_str());
-			selected_header_idents.push_field(obj.to_string().as_str());
+			selected_header_idents.push(obj.to_string());
 		}
 	}
 
@@ -2222,8 +2207,6 @@ pub fn exec_distinct(context: &mut Context, distinct: &mut DistinctNode) -> Resu
 		}
 
 		if distinct.enable {
-			context.skip = false;
-
 			if let Some(expr_list) = &distinct.expr_list {
 				let objs = exec_expr_list(context, expr_list)?;
 				let row: &StringRecord = if let Some(table) = context.tables.get(&distinct.table_name) {
@@ -2237,7 +2220,7 @@ pub fn exec_distinct(context: &mut Context, distinct: &mut DistinctNode) -> Resu
 					let row = collect_by_indices(&row, &indices)?;
 					let key = vec_string_to_hashed_value_string(&row);
 					if context.distinct_map.contains_key(&key) {
-						context.skip = true;
+						ret.distinct_matched = true;
 					} else {
 						context.distinct_map.insert(key.clone(), true);
 					}
@@ -2282,7 +2265,7 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 		if result.record_is_empty {
 			return Ok(ret);
 		}
-		if context.skip {
+		if result.distinct_matched {
 			return Ok(ret);
 		}
 		if context.filtered {
@@ -3554,9 +3537,10 @@ mod tests {
 2,moge
 3,moge
 ");
-		context.test_get_records = Some(vec![]);
+		context.test_selected_records = Some(vec![]);
 		do_exec(&mut context, "get all * of test_table where id < 5 order by id limit 4").unwrap();
-		let s = test_get_records_to_string(&mut context);
+		let s = test_selected_records_to_string(&mut context);
+		println!("s[{}]", s);
 		assert!(s == "1,hoge
 2,moge
 3,moge
@@ -5623,13 +5607,13 @@ mod tests {
 		do_exec(&mut context, "ADD id = 4, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
 		do_exec(&mut context, "ADD id = 5, weight = 2.0, name = \"bbb\" OF test_table").unwrap();
 
-		context.test_get_records = Some(vec![]);
+		context.test_selected_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL DISTINCT name OF test_table ORDER BY name DESC").unwrap();
 
-		let s = test_get_records_to_string(&mut context);
+		let s = test_selected_records_to_string(&mut context);
 		println!("s[{}]", s);
-		assert!(s == "4,2,bbb
-1,1,aaa
+		assert!(s == "bbb
+aaa
 ");
 	}
 
