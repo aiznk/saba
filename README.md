@@ -125,6 +125,12 @@ SET weight = 100.2 OF mytable WHERE id == 2;
 SET ALL name = "Taro" OF mytable;
 ```
 
+## INNER JOIN
+
+```
+GET ALL users.id, products.id OF users INNER JOIN products ON users.id == products.id;
+```
+
 ## Functions
 
 ### COUNT
