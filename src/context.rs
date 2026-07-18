@@ -38,8 +38,6 @@ pub struct Context {
 	pub test_get_records: Option<Vec<StringRecord>>,
 	pub test_selected_records: Option<Vec<StringRecord>>,
 	pub limit_counter: i128,
-	pub filtered: bool,
-	pub matched: bool,
 
 	// functions
 	pub count_counter: usize,
@@ -79,8 +77,6 @@ impl Context {
 			test_get_records: None,
 			test_selected_records: None,
 			limit_counter: 0,
-			filtered: false,
-			matched: false,
 			count_counter: 0,
 			sum_value: 0.0,
 			avg_sum_value: 0.0,
@@ -118,8 +114,6 @@ impl Context {
 			test_selected_records.clear();
 		}
 		self.limit_counter = 0;
-		self.filtered = false;
-		self.matched = false;
 		self.count_counter = 0;
 		self.sum_value = 0.0;
 		self.avg_sum_value = 0.0;

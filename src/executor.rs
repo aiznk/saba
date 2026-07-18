@@ -109,8 +109,8 @@ fn exec_sort(context: &mut Context, sort: &mut SortNode) -> Result<(), Error> {
 			if context.selected_csv_columns.len() == 0 {
 				continue;
 			}
-			if context.filtered {
-				if context.matched {
+			if result.filtered {
+				if result.filter_matched {
 					let v = vec_string_to_string_record(&context.selected_csv_columns);
 					println!("v:{:?}", v);
 					records.push(v);
@@ -605,15 +605,7 @@ pub fn exec_ass_expr(context: &mut Context, node: &parser::AssExprNode) -> Resul
 
 fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	if context.filtered {
-		if context.matched {
-			record = context.matched_record.clone();
-		} else {
-			return Ok(Object::from_int(context.count_counter as i128));
-		}
-	} else {
-		record = context.get_current_table_scanned_record()?;
-	}
+	record = context.get_current_table_scanned_record()?;
 
 	if args.len() != 1 {
 		return err_exec!("invalid args length in count function");
@@ -641,20 +633,8 @@ fn call_count(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error
 
 fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	if context.filtered {
-		if context.matched {
-			record = context.matched_record.clone();
-			context.avg_counter += 1;
-		} else {
-			if context.avg_counter == 0 {
-				return Ok(Object::from_float(context.avg_sum_value));
-			}
-			return Ok(Object::from_float(context.avg_sum_value / context.avg_counter as f64));
-		}
-	} else {
-		record = context.get_current_table_scanned_record()?;
-		context.avg_counter += 1;
-	}
+	record = context.get_current_table_scanned_record()?;
+	context.avg_counter += 1;
 
 	if args.len() != 1 {
 		return err_exec!("invalid args length in avg function");
@@ -695,15 +675,7 @@ fn call_avg(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 
 fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	if context.filtered {
-		if context.matched {
-			record = context.matched_record.clone();
-		} else {
-			return Ok(Object::from_float(context.sum_value));
-		}
-	} else {
-		record = context.get_current_table_scanned_record()?;
-	}
+	record = context.get_current_table_scanned_record()?;
 
 	if args.len() != 1 {
 		return err_exec!("invalid args length in sum function");
@@ -741,15 +713,7 @@ fn call_sum(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 
 fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	if context.filtered {
-		if context.matched {
-			record = context.matched_record.clone();
-		} else {
-			return Ok(Object::from_float(context.max_value));
-		}
-	} else {
-		record = context.get_current_table_scanned_record()?;
-	}
+	record = context.get_current_table_scanned_record()?;
 
 	if args.len() != 1 {
 		return err_exec!("invalid args length in max function");
@@ -787,15 +751,7 @@ fn call_max(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> 
 
 fn call_min(context: &mut Context, args: &Vec<Object>) -> Result<Object, Error> {
 	let record;
-	if context.filtered {
-		if context.matched {
-			record = context.matched_record.clone();
-		} else {
-			return Ok(Object::from_float(context.min_value));
-		}
-	} else {
-		record = context.get_current_table_scanned_record()?;
-	}
+	record = context.get_current_table_scanned_record()?;
 
 	if args.len() != 1 {
 		return err_exec!("invalid args length in min function");
@@ -2134,8 +2090,8 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &mut AggregateNode) -> R
 			if result.record_is_empty {
 				continue;
 			}
-			if context.filtered {
-				if context.matched {
+			if result.filtered {
+				if result.filter_matched {
 					if let Some(limit_value) = limit_value {
 						if context.limit_counter >= limit_value {	
 							break;
@@ -2268,8 +2224,8 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 		if result.distinct_matched {
 			return Ok(ret);
 		}
-		if context.filtered {
-			if context.matched {
+		if result.filtered {
+			if result.filter_matched {
 				if let Some(limit_value) = limit_value {
 					if context.limit_counter >= limit_value &&
 					   project.method == TokenKind::Get {
@@ -2328,15 +2284,14 @@ pub fn exec_filter(context: &mut Context, node: &mut FilterNode) -> Result<ExecR
 	let mut ret = ExecResult::new();
 
 	if let Some(where_clause) = &node.where_clause {
-		context.filtered = true;
+		ret.filtered = true;
 		if let Some(joins) = node.joins.as_mut() {
 			let result = exec_joins(context, joins)?;
+			ret.merge(&result);
 			if !result.scanning {
-				ret.merge(&result);
 				return Ok(ret);
 			}
 			if context.joins_enable_unmatched() {
-				ret.merge(&result);
 				return Ok(ret);
 			}
 
@@ -2344,17 +2299,17 @@ pub fn exec_filter(context: &mut Context, node: &mut FilterNode) -> Result<ExecR
 			if o.bool_value {
 				context.matched_record = context.get_current_table_scanned_record()?;
 				context.unmatched_record.clear();
-				context.matched = true;
+				ret.filter_matched = true;
 			} else {
 				context.matched_record.clear();
 				context.unmatched_record = context.get_current_table_scanned_record()?;
-				context.matched = false;
+				ret.filter_matched = false;
 			}
-			return Ok(result);
+			return Ok(ret);
 		}
 	} else {
-		context.filtered = false;
-		context.matched = false;
+		ret.filtered = false;
+		ret.filter_matched = false;
 		if let Some(joins) = node.joins.as_mut() {
 			let result = exec_joins(context, joins)?;
 			ret.merge(&result);
@@ -2700,8 +2655,8 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &mut RowDeleteNode, wr
 					break;
 				}
 				if !limited {
-					if context.filtered {
-						if context.matched {
+					if result.filtered {
+						if result.filter_matched {
 							// delete
 							if let Some(limit_value) = limit_value {
 								if context.limit_counter >= limit_value {
@@ -2739,9 +2694,9 @@ pub fn exec_row_delete(context: &mut Context, row_delete: &mut RowDeleteNode, wr
 					break;
 				}
 				if !limited {
-					if context.filtered {
+					if result.filtered {
 						if count == 0 {
-							if context.matched {
+							if result.filter_matched {
 								count += 1;
 								// delete
 								if let Some(limit_value) = limit_value {
@@ -2937,8 +2892,8 @@ pub fn exec_row_update(context: &mut Context, row_update: &mut RowUpdateNode, wr
 						break;
 					}
 					if !limited {
-						if context.filtered {
-							if context.matched {
+						if result.filtered {
+							if result.filter_matched {
 								let cols = context.matched_record.clone();
 								let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
 								writer.write_record(&cols).unwrap();
@@ -2975,8 +2930,8 @@ pub fn exec_row_update(context: &mut Context, row_update: &mut RowUpdateNode, wr
 						break;
 					}
 					if !limited {
-						if context.filtered {
-							if context.matched && !writted {
+						if result.filtered {
+							if result.filter_matched && !writted {
 								let cols = context.matched_record.clone();
 								let cols = replace_columns_by_objs(context, &cols, &update_expr_list_objs)?;
 								writer.write_record(&cols).unwrap();

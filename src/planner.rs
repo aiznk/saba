@@ -10,6 +10,8 @@ pub struct ExecResult {
 	pub record_is_empty: bool,
 	pub join_matched: bool,	
 	pub distinct_matched: bool,
+	pub filtered: bool,
+	pub filter_matched: bool,
 }
 
 impl ExecResult {
@@ -19,6 +21,8 @@ impl ExecResult {
 			record_is_empty: false,
 			join_matched: false,
 			distinct_matched: false,
+			filtered: false,
+			filter_matched: false,
 		}
 	}
 
@@ -34,6 +38,12 @@ impl ExecResult {
 		}
 		if other.distinct_matched {
 			self.distinct_matched = true;
+		}
+		if other.filtered {
+			self.filtered = true;
+		}
+		if other.filter_matched {
+			self.filter_matched = true;
 		}
 	}
 }
