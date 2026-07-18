@@ -50,6 +50,7 @@ pub struct JoinClauseNode {
 	pub ident: Option<Box<IdentNode>>,
 	pub expr: Option<Box<ExprNode>>,
 	pub is_inner: bool,
+	pub is_left: bool,
 }
 
 impl JoinClauseNode {
@@ -58,6 +59,7 @@ impl JoinClauseNode {
 			ident: None,
 			expr: None,
 			is_inner: false,
+			is_left: false,
 		}
 	}
 }
@@ -1469,10 +1471,13 @@ pub fn parse_join_clause(tok_strm: &mut TokenStream) -> Result<Option<Box<JoinCl
 	}
 
 	let tok = tok_strm.get()?;
-	if tok.kind != TokenKind::Inner {
-		tok_strm.prev();
+	if tok.kind == TokenKind::Inner {
+		n.is_inner = true;
+	} else if tok.kind == TokenKind::Left {
+		n.is_left = true;
 	} else {
 		n.is_inner = true;
+		tok_strm.prev();
 	}
 
 	let tok = tok_strm.get()?;

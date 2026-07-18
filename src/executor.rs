@@ -2334,8 +2334,16 @@ pub fn ready_joins_tables(context: &mut Context, node: &mut JoinsNode) -> Result
 pub fn ready_join_tables(context: &mut Context, node: &mut JoinNode) -> Result<(), Error> {
 	if let Some(item) = node.item.as_mut() {
 		match item {
-			JoinItemNode::InnerJoin(inner_join) => {
-				if let Some(csv_file_scan) = inner_join.csv_file_scan.as_mut() {
+			JoinItemNode::LeftJoin(join) => {
+				if let Some(csv_file_scan) = join.csv_file_scan.as_mut() {
+					ready_table(context, &csv_file_scan.table_name)?;
+				}
+				if let Some(join) = node.join.as_mut() {
+					ready_join_tables(context, join)?;
+				}
+			}
+			JoinItemNode::InnerJoin(join) => {
+				if let Some(csv_file_scan) = join.csv_file_scan.as_mut() {
 					ready_table(context, &csv_file_scan.table_name)?;
 				}
 				if let Some(join) = node.join.as_mut() {
@@ -2380,7 +2388,6 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 
 macro_rules! solve_scan {
 	($context:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
-
 		let result = exec_csv_file_scan($context, $csv_file_scan)?;
 		if !result.scanning {
 			$ret.merge(&result);
@@ -2409,41 +2416,43 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 	 */
 	if let Some(item) = node.item.as_mut() {
 		match item {
+			JoinItemNode::LeftJoin(left_join) => {
+				if let Some(csv_file_scan) = left_join.csv_file_scan.as_mut() {
+				if let Some(expr) = &left_join.expr {
+					loop {
+						if let Some(join) = node.join.as_mut() {
+							let result = exec_join(context, join)?;
+							ret.merge(&result);
+							if !result.scanning {
+								solve_scan!(context, csv_file_scan, expr, ret);			
+							}
+							if result.join_matched {
+								break;
+							}
+						} else {
+							solve_scan!(context, csv_file_scan, expr, ret);
+						}
+					}
+				}}
+			}
 			JoinItemNode::InnerJoin(inner_join) => {
 				if let Some(csv_file_scan) = inner_join.csv_file_scan.as_mut() {
 				if let Some(expr) = &inner_join.expr {
 					loop {
-						// println!("inner_join[{}] scan", inner_join.table_name);
 						if let Some(join) = node.join.as_mut() {
 							let result = exec_join(context, join)?;	
-							// println!("result: {:?}", result);
 							ret.merge(&result);
 							if !result.scanning {
 								solve_scan!(context, csv_file_scan, expr, ret);
 							}
 							if result.join_matched {
-								if !context.tables.contains_key(&inner_join.table_name) {
-									let result = exec_csv_file_scan(context, csv_file_scan)?;
-									if !result.scanning {
-										ret.merge(&result);
-										break;
-									}
-									let o = exec_expr(context, expr)?;
-									if o.kind == ObjectKind::Bool && o.bool_value {
-										// match
-										ret.join_matched = true;
-										break;
-									}								
-									break;
-								}
 								break;
 							}
 						} else {
 							solve_scan!(context, csv_file_scan, expr, ret);
 						}
 					}	
-				}
-				}
+				}}
 			}
 		}
 	}

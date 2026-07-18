@@ -438,6 +438,23 @@ impl InnerJoinNode {
 }
 
 #[derive(Clone, Debug)]
+pub struct LeftJoinNode {
+	pub table_name: String,
+	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
+	pub expr: Option<Box<parser::ExprNode>>,
+}
+
+impl LeftJoinNode {
+	pub fn new() -> Self {
+		Self {
+			table_name: String::new(),
+			csv_file_scan: None,
+			expr: None,
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
 pub struct JoinsNode {
 	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
 	pub join: Option<Box<JoinNode>>,
@@ -499,6 +516,7 @@ impl JoinNode {
 #[derive(Clone, Debug)]
 pub enum JoinItemNode {
 	InnerJoin(InnerJoinNode),
+	LeftJoin(LeftJoinNode),
 }
 
 #[derive(Clone, Debug)]
@@ -1182,16 +1200,25 @@ macro_rules! solve_join_clauses {
 				n.expr = Some(expr);
 				let item = JoinItemNode::InnerJoin(n);
 				join.item = Some(item);
-				if $joins.join.is_none() {
-					$joins.join = Some(Box::new(join));
-					join = JoinNode::new();
-				} else {
-					if let Some(j) = $joins.join.as_mut() {
-						j.append(join);
-						join = JoinNode::new();
-					}
-				}
+			} else if join_clause.is_left {
+				let mut n = LeftJoinNode::new();
+				n.table_name = table_name.clone();
+				n.csv_file_scan = Some(Box::new(csv_file_scan));
+				n.expr = Some(expr);
+				let item = JoinItemNode::LeftJoin(n);
+				join.item = Some(item);
+			} else {
+				return err_planning!("invalid state: join clause");
 			}
+			if $joins.join.is_none() {
+				$joins.join = Some(Box::new(join));
+				join = JoinNode::new();
+			} else {
+				if let Some(j) = $joins.join.as_mut() {
+					j.append(join);
+					join = JoinNode::new();
+				}
+			}				
 		}
 
 		$joins.print_joins();
