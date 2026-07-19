@@ -2428,6 +2428,7 @@ macro_rules! solve_scan {
 		if o.kind == ObjectKind::Bool && o.bool_value {
 			// match
 			$ret.join_matched = true;
+			$context.join_matched_counter += 1;
 			break;
 		}								
 	}
