@@ -18,10 +18,6 @@ pub struct Context {
 	pub cache_distinct_objs: Option<Vec<Object>>,
 	pub tables: HashMap<String, Box<Table>>,
 	pub do_read_record: bool,
-	pub joined_headers: StringRecord,
-	pub joined_header_types: Vec<HeaderType>,
-	pub joined_header_idents: Vec<String>,
-	pub joined_record: StringRecord,
 	pub wait_left_scan: bool,
 	pub scanned_record_is_empty: bool,
 	pub id_counter: usize,
@@ -62,10 +58,6 @@ impl Context {
 			cache_distinct_objs: None,
 			tables: HashMap::new(),
 			do_read_record: false,
-			joined_headers: StringRecord::new(),
-			joined_header_types: vec![],
-			joined_header_idents: vec![],
-			joined_record: StringRecord::new(),
 			wait_left_scan: false,
 			scanned_record_is_empty: false,
 			id_counter: 1,
@@ -96,10 +88,6 @@ impl Context {
 		self.cache_distinct_objs = None;
 		self.tables.clear();
 		self.do_read_record = false;
-		self.joined_headers.clear();
-		self.joined_header_types.clear();
-		self.joined_header_idents.clear();
-		self.joined_record.clear();
 		self.wait_left_scan = false;
 		self.scanned_record_is_empty = false;
 		self.id_counter = 1;
@@ -193,6 +181,7 @@ impl Context {
 		println!("{}", s);
 	}
 
+	#[allow(dead_code)]
 	pub fn print_tables_scanned_records(&self) {
 		for table in self.tables.values() {
 			print!("{}: ", table.name);
@@ -200,6 +189,7 @@ impl Context {
 		}		
 	}
 
+	#[allow(dead_code)]
 	pub fn clear_tables_scanned_records(&mut self) -> Result<(), Error> {
 		for table in self.tables.values_mut() {
 			table.scanned_record.clear();
@@ -215,6 +205,15 @@ impl Context {
 		}
 	}
 
+	pub fn get_table_scanned_record(&self, table_name: &str) -> Result<StringRecord, Error> {
+		if let Some(table) = self.tables.get(table_name) {
+			Ok(table.scanned_record.clone())
+		} else {
+			err_runtime!("not found table '{}' in get table scanned record", table_name)
+		}
+	}
+
+	#[allow(dead_code)]
 	pub fn set_table_scanned_record(&mut self, table_name: &str, scanned_record: StringRecord) -> Result<(), Error> {
 		if let Some(table) = self.tables.get_mut(table_name) {
 			table.scanned_record = scanned_record;
@@ -224,14 +223,7 @@ impl Context {
 		Ok(())
 	}	
 
-	pub fn get_table_scanned_record(&self, table_name: &str) -> Result<StringRecord, Error> {
-		if let Some(table) = self.tables.get(table_name) {
-			Ok(table.scanned_record.clone())
-		} else {
-			err_runtime!("not found table '{}' in get table scanned record", table_name)
-		}
-	}
-
+	#[allow(dead_code)]
 	pub fn get_current_table_headers(&mut self) -> Result<StringRecord, Error> {
 		if let Some(table) = self.tables.get(self.current_table_name.as_str()) {
 			Ok(table.headers.clone())
@@ -264,6 +256,7 @@ impl Context {
 		}
 	}
 
+	#[allow(dead_code)]
 	pub fn set_table_header_types(&mut self, table_name: &str, header_types: &Vec<HeaderType>) -> Result<(), Error> {
 		if let Some(table) = self.tables.get_mut(table_name) {
 			table.header_types = header_types.clone();
@@ -273,6 +266,7 @@ impl Context {
 		}
 	}
 
+	#[allow(dead_code)]
 	pub fn set_table_header_idents(&mut self, table_name: &str, header_idents: &Vec<String>) -> Result<(), Error> {
 		if let Some(table) = self.tables.get_mut(table_name) {
 			table.header_idents = header_idents.clone();
