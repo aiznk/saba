@@ -13,7 +13,8 @@ pub struct ExecResult {
 	pub distinct_matched: bool,
 	pub filtered: bool,
 	pub filter_matched: bool,
-	pub need_nil_record: bool,
+	pub is_left: bool,
+	pub is_right: bool,
 }
 
 impl ExecResult {
@@ -26,7 +27,8 @@ impl ExecResult {
 			distinct_matched: false,
 			filtered: false,
 			filter_matched: false,
-			need_nil_record: false,
+			is_left: false,
+			is_right: false,
 		}
 	}
 
@@ -56,8 +58,11 @@ impl ExecResult {
 		if other.filter_matched {
 			self.filter_matched = true;
 		}
-		if other.need_nil_record {
-			self.need_nil_record = true;
+		if other.is_left {
+			self.is_left = true;
+		}
+		if other.is_right {
+			self.is_right = true;
 		}
 	}
 }

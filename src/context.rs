@@ -111,6 +111,66 @@ impl Context {
 		self.max_value = 0.0;
 	}
 
+	pub fn set_is_ready_right_join(&self, table_name: &str, b: bool) -> Result<(), Error> {
+		if let Some(table) = self.tables.get_mut(table_name) {
+			table.is_ready_right_join = b;
+			Ok(())
+		} else {
+			err_runtime!("not found table name '{}' in is ready right join", table_name)
+		}
+	}
+
+	pub fn is_ready_right_join(&self, table_name: &str) -> Result<bool, Error> {
+		if let Some(table) = self.tables.get(table_name) {
+			Ok(table.is_ready_right_join)
+		} else {
+			err_runtime!("not found table name '{}' in is ready right join", table_name)
+		}
+	}
+
+	pub fn clear_right_matched(&mut self, table_name: &str) -> Result<(), Error> {
+		if let Some(table) = self.tables.get_mut(table_name) {
+			table.right_matched.clear();
+		} else {
+			return err_runtime!("not found table name '{}' in clear right matched", table_name);
+		}
+		Ok(())
+	}
+
+	pub fn get_record_num(&self, table_name: &str) -> Result<usize, Error> {
+		if let Some(table) = self.tables.get(table_name) {
+			Ok(table.record_num)
+		} else {
+			err_runtime!("not found table name '{}' in push right matched", table_name)
+		}
+	}
+
+	pub fn push_right_matched(&mut self, table_name: &str, b: bool) -> Result<(), Error> {
+		if let Some(table) = self.tables.get_mut(table_name) {
+			table.right_matched.push(b);
+		} else {
+			return err_runtime!("not found table name '{}' in push right matched", table_name);
+		};
+		Ok(())
+	}
+
+	pub fn set_right_matched(&mut self, table_name: &str, index: usize, b: bool) -> Result<(), Error> {
+		if let Some(table) = self.tables.get_mut(table_name) {
+			table.right_matched[index] = b;
+		} else {
+			return err_runtime!("not found table name '{}' in push right matched", table_name);
+		};
+		Ok(())
+	}
+	
+	pub fn get_right_matched(&mut self, table_name: &str, index: usize) -> Result<bool, Error> {
+		if let Some(table) = self.tables.get_mut(table_name) {
+			Ok(table.right_matched[index])
+		} else {
+			err_runtime!("not found table name '{}' in push right matched", table_name)
+		}
+	}
+	
 	pub fn join_table_header_idents(&self) -> Vec<String> {
 		let mut ret: Vec<String> = vec![];
 

@@ -2381,7 +2381,9 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 			context.wait_left_scan = false;
 		}
 		if !result.scanning {
-			if result.need_nil_record &&
+			println!("[{:?}]", result);
+			println!("{}", context.join_matched_counter);
+			if result.is_left &&
 			   context.join_matched_counter == 0 {
 				ret.join_matched = true;
 				ret.record_is_empty = false;
@@ -2402,8 +2404,29 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 	u:3      p.u = 2
 	u:4      p.u = 2
 */
+
+macro_rules! solve_right_scan {
+	($context:ident, $table_name:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
+		let result = exec_csv_file_scan($context, $csv_file_scan)?;
+		if !result.scanning {
+			$ret.merge(&result);
+			$context.finished_scan_table_names.push($table_name.clone());
+			break;
+		}
+		let o = exec_expr($context, $expr)?;
+		if o.kind == ObjectKind::Bool && o.bool_value {
+			// match
+			let rec_num = $context.get_record_num($table_name)?;
+			$context.set_right_matched($table_name, rec_num-1, true)?;
+			$ret.join_matched = true;
+			$context.join_matched_counter += 1;
+			break;
+		}
+	}
+}
+
 macro_rules! solve_left_scan {
-	($context:ident, $left_join:ident, $table_name:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
+	($context:ident, $table_name:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
 		let result = exec_csv_file_scan($context, $csv_file_scan)?;
 		if !result.scanning {
 			$ret.merge(&result);
@@ -2453,29 +2476,45 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 	if let Some(item) = node.item.as_mut() {
 		match item {
 			JoinItemNode::RightJoin(right_join) => {
-				ret.need_nil_record = true;
+				ret.is_right = true;
+				println!("right join {}", right_join.table_name);
 
 				if let Some(csv_file_scan) = right_join.csv_file_scan.as_mut() {
 				if let Some(expr) = &right_join.expr {
 					let table_name = &right_join.table_name;
+
+					if !context.is_ready_right_join(table_name)? {
+						context.clear_right_matched(table_name)?;
+
+						loop {
+							let result = exec_csv_file_scan(context, csv_file_scan)?;
+							if !result.scanning {
+								break;
+							}
+							context.push_right_matched(table_name, false)?;
+						}
+
+						context.set_is_ready_right_join(table_name, true)?;
+					}
+
 					loop {
 						if let Some(join) = node.join.as_mut() {
 							let result = exec_join(context, join)?;
 							ret.merge(&result);
 							if !result.scanning {
-								solve_left_scan!(context, right_join, table_name, csv_file_scan, expr, ret);			
+								solve_right_scan!(context, table_name, csv_file_scan, expr, ret);			
 							}
 							if result.join_matched {
 								break;
 							}
 						} else {
-							solve_left_scan!(context, left_join, table_name, csv_file_scan, expr, ret);
+							solve_right_scan!(context, table_name, csv_file_scan, expr, ret);
 						}
 					}
 				}}
 			}
 			JoinItemNode::LeftJoin(left_join) => {
-				ret.need_nil_record = true;
+				ret.is_left = true;
 
 				if let Some(csv_file_scan) = left_join.csv_file_scan.as_mut() {
 				if let Some(expr) = &left_join.expr {
@@ -2485,13 +2524,13 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 							let result = exec_join(context, join)?;
 							ret.merge(&result);
 							if !result.scanning {
-								solve_left_scan!(context, left_join, table_name, csv_file_scan, expr, ret);			
+								solve_left_scan!(context, table_name, csv_file_scan, expr, ret);			
 							}
 							if result.join_matched {
 								break;
 							}
 						} else {
-							solve_left_scan!(context, left_join, table_name, csv_file_scan, expr, ret);
+							solve_left_scan!(context, table_name, csv_file_scan, expr, ret);
 						}
 					}
 				}}
@@ -2550,6 +2589,7 @@ pub fn ready_table(context: &mut Context, table_name: &str) -> Result<(), Error>
 			table.headers = headers;
 			table.header_types = header_types;
 			table.header_idents = header_idents;
+			table.record_num = 0;
 		}
 	}
 
@@ -2564,6 +2604,7 @@ pub fn exec_csv_file_scan(context: &mut Context, node: &mut CsvFileScanNode) -> 
 	if let Some(table) = context.tables.get_mut(&node.table_name) {
 		if let Some(reader) = table.csv_reader.as_mut() {
 			let mut scanned_record = StringRecord::new();
+			table.record_num += 1;
 			match reader.read_record(&mut scanned_record) {
 				Ok(_) => {
 					table.scanned_record = scanned_record;
@@ -5763,18 +5804,12 @@ aaa
 		do_exec(&mut context, "ADD id = 3, rtab1_id = 2, name = \"C\" OF rtab2").unwrap();
 
 /*
-> select * from rtab2 right join rtab1 on rtab2.rtab1_id = rtab1.id;
-+------+----------+------+----+------+
-| id   | rtab1_id | name | id | name |
-+------+----------+------+----+------+
-|    1 |        1 | A    |  1 | aaa  |
-|    2 |        1 | B    |  1 | aaa  |
-|    3 |        2 | C    |  2 | bbb  |
-| NULL |     NULL | NULL |  3 | ccc  |
-| NULL |     NULL | NULL |  4 | ddd  |
-| NULL |     NULL | NULL |  5 | ddd  |
-+------+----------+------+----+------+
-*/
+	for rtab2 {
+		for rtab1 {
+	
+		}
+	}
+ */
 		context.test_selected_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL rtab2.id, rtab1.id OF rtab2 RIGHT JOIN rtab1 ON rtab2.rtab1_id == rtab1.id").unwrap();
 

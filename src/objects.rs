@@ -12,6 +12,9 @@ pub struct Table {
 	pub header_types: Vec<HeaderType>,
 	pub header_idents: Vec<String>,
 	pub scanned_record: StringRecord,
+	pub record_num: usize,
+	pub right_matched: Vec<bool>,
+	pub is_ready_right_join: bool,
 }
 
 impl Table {
@@ -24,6 +27,9 @@ impl Table {
 			header_types: vec![],
 			header_idents: vec![],
 			scanned_record: StringRecord::new(),
+			record_num: 0,
+			right_matched: vec![],
+			is_ready_right_join: false,
 		}
 	}
 
