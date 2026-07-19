@@ -2325,24 +2325,28 @@ pub fn ready_joins_tables(context: &mut Context, node: &mut JoinsNode) -> Result
 	Ok(())
 }
 
+macro_rules! solve_ready {
+	($context:ident, $node:ident, $join:ident) => {
+		if let Some(csv_file_scan) = $join.csv_file_scan.as_mut() {
+			ready_table($context, &csv_file_scan.table_name)?;
+		}
+		if let Some($join) = $node.join.as_mut() {
+			ready_join_tables($context, $join)?;
+		}
+	}
+}
+
 pub fn ready_join_tables(context: &mut Context, node: &mut JoinNode) -> Result<(), Error> {
 	if let Some(item) = node.item.as_mut() {
 		match item {
+			JoinItemNode::RightJoin(join) => {
+				solve_ready!(context, node, join);
+			}
 			JoinItemNode::LeftJoin(join) => {
-				if let Some(csv_file_scan) = join.csv_file_scan.as_mut() {
-					ready_table(context, &csv_file_scan.table_name)?;
-				}
-				if let Some(join) = node.join.as_mut() {
-					ready_join_tables(context, join)?;
-				}
+				solve_ready!(context, node, join);
 			}
 			JoinItemNode::InnerJoin(join) => {
-				if let Some(csv_file_scan) = join.csv_file_scan.as_mut() {
-					ready_table(context, &csv_file_scan.table_name)?;
-				}
-				if let Some(join) = node.join.as_mut() {
-					ready_join_tables(context, join)?;
-				}
+				solve_ready!(context, node, join);
 			}
 		}
 	}
@@ -2448,6 +2452,28 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 	 */
 	if let Some(item) = node.item.as_mut() {
 		match item {
+			JoinItemNode::RightJoin(right_join) => {
+				ret.need_nil_record = true;
+
+				if let Some(csv_file_scan) = right_join.csv_file_scan.as_mut() {
+				if let Some(expr) = &right_join.expr {
+					let table_name = &right_join.table_name;
+					loop {
+						if let Some(join) = node.join.as_mut() {
+							let result = exec_join(context, join)?;
+							ret.merge(&result);
+							if !result.scanning {
+								solve_left_scan!(context, right_join, table_name, csv_file_scan, expr, ret);			
+							}
+							if result.join_matched {
+								break;
+							}
+						} else {
+							solve_left_scan!(context, left_join, table_name, csv_file_scan, expr, ret);
+						}
+					}
+				}}
+			}
 			JoinItemNode::LeftJoin(left_join) => {
 				ret.need_nil_record = true;
 
@@ -5714,6 +5740,52 @@ aaa
 3,5
 4,$nil
 5,$nil
+");
+	}
+
+	#[test]
+	fn test_right_join_0() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS users").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS products").unwrap();
+		do_exec(&mut context, "CREATE TABLE rtab1 (id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE rtab2 (id: INT, rtab1_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, name = \"aaa\" OF rtab1").unwrap();
+		do_exec(&mut context, "ADD id = 2, name = \"bbb\" OF rtab1").unwrap();
+		do_exec(&mut context, "ADD id = 3, name = \"ccc\" OF rtab1").unwrap();
+		do_exec(&mut context, "ADD id = 4, name = \"ddd\" OF rtab1").unwrap();
+		do_exec(&mut context, "ADD id = 5, name = \"ddd\" OF rtab1").unwrap();
+		do_exec(&mut context, "ADD id = 1, rtab1_id = 1, name = \"A\" OF rtab2").unwrap();
+		do_exec(&mut context, "ADD id = 2, rtab1_id = 1, name = \"B\" OF rtab2").unwrap();
+		do_exec(&mut context, "ADD id = 3, rtab1_id = 2, name = \"C\" OF rtab2").unwrap();
+
+/*
+> select * from rtab2 right join rtab1 on rtab2.rtab1_id = rtab1.id;
++------+----------+------+----+------+
+| id   | rtab1_id | name | id | name |
++------+----------+------+----+------+
+|    1 |        1 | A    |  1 | aaa  |
+|    2 |        1 | B    |  1 | aaa  |
+|    3 |        2 | C    |  2 | bbb  |
+| NULL |     NULL | NULL |  3 | ccc  |
+| NULL |     NULL | NULL |  4 | ddd  |
+| NULL |     NULL | NULL |  5 | ddd  |
++------+----------+------+----+------+
+*/
+		context.test_selected_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL rtab2.id, rtab1.id OF rtab2 RIGHT JOIN rtab1 ON rtab2.rtab1_id == rtab1.id").unwrap();
+
+		let s = test_selected_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,1
+2,1
+3,2
+$nil,3
+$nil,4
+$nil,5
 ");
 	}
 

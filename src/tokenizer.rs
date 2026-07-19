@@ -10,6 +10,7 @@ pub enum TokenKind {
 	Distinct, // DISTINCT
 	Inner, // INNER
 	Left, // LEFT
+	Right, // RIGHT
 	Join, // JOIN
 	On, // ON
 	To, // TO
@@ -362,6 +363,9 @@ pub fn tokenize(string: String) -> Result<Vec<Token>, Error> {
 		} else if c1 == ' ' && c2 == 'l' && c3 == 'e' && c4 == 'f' && c5 == 't' && c6 == ' ' {
 			ret.push(Token::from(TokenKind::Left, None));
 			i += 4;
+		} else if c1 == ' ' && c2 == 'r' && c3 == 'i' && c4 == 'g' && c5 == 'h' && c6 == 't' && c7 == ' ' {
+			ret.push(Token::from(TokenKind::Right, None));
+			i += 5;
 		} else if c1 == ' ' && c2 == 'i' && c3 == 'n' && c4 == 'n' && c5 == 'e' && c6 == 'r' && c7 == ' ' {
 			ret.push(Token::from(TokenKind::Inner, None));
 			i += 5;
