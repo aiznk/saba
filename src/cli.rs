@@ -22,6 +22,10 @@ fn run_shell(opts: Options) {
 	let mut context = Context::new();
 	context.is_cli = true;
 
+	if opts.is_use && opts.use_db_name.len() > 0 {
+		context.using_db_name = opts.use_db_name.clone();
+	}
+
 	loop {
 		show_prompt(&opts, &context);
 

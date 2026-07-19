@@ -1,6 +1,6 @@
 use std::path::{PathBuf};
 use crate::error::{Error, make_error, err_runtime};
-use crate::security::{check_query};
+use crate::security::{check_query, check_query_param};
 
 #[derive(Clone, Debug)]
 pub struct Options {
@@ -26,6 +26,7 @@ impl Options {
 
     pub fn gen_use_query(&self) -> Result<String, Error> {
     	if self.use_db_name.len() > 0 {
+    		check_query_param(&self.use_db_name)?;
     		let query = format!("USE {};", self.use_db_name);
     		check_query(&query)?;
     		Ok(query)
@@ -61,6 +62,7 @@ impl Options {
                     }
                     let arg = &args[i];
                 	self.use_db_name = arg.to_string();
+                	check_query_param(&self.use_db_name)?;
                 	self.is_use = true;
                 }
                 &_ => {

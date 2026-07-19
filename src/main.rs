@@ -17,7 +17,14 @@ use crate::options::{Options};
 
 fn main() {
     let mut opts = Options::new();
-    opts.parse_args();
+    
+    match opts.parse_args() {
+        Ok(_) => {},
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    }
 
     if opts.is_usage {
         usage::run();
