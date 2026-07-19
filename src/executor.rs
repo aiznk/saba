@@ -2635,7 +2635,8 @@ pub fn exec_dir_list(context: &mut Context, node: &DirListNode) -> Result<(), Er
 		}
 	} else {
 		// show databases
-		let dir = match fs::read_dir(&context.root_dir_path) {
+		let path = context.gen_db_dir_path()?;
+		let dir = match fs::read_dir(&path) {
 			Ok(v) => v,
 			Err(e) => return err_exec!("failed to read dir: {}", e),
 		};
