@@ -12,6 +12,7 @@ pub struct ExecResult {
 	pub distinct_matched: bool,
 	pub filtered: bool,
 	pub filter_matched: bool,
+	pub need_nil_record: bool,
 }
 
 impl ExecResult {
@@ -23,6 +24,7 @@ impl ExecResult {
 			distinct_matched: false,
 			filtered: false,
 			filter_matched: false,
+			need_nil_record: false,
 		}
 	}
 
@@ -44,6 +46,9 @@ impl ExecResult {
 		}
 		if other.filter_matched {
 			self.filter_matched = true;
+		}
+		if other.need_nil_record {
+			self.need_nil_record = true;
 		}
 	}
 }
@@ -442,6 +447,7 @@ pub struct LeftJoinNode {
 	pub table_name: String,
 	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
 	pub expr: Option<Box<parser::ExprNode>>,
+	pub matched: bool,
 }
 
 impl LeftJoinNode {
@@ -450,12 +456,14 @@ impl LeftJoinNode {
 			table_name: String::new(),
 			csv_file_scan: None,
 			expr: None,
+			matched: false,
 		}
 	}
 }
 
 #[derive(Clone, Debug)]
 pub struct JoinsNode {
+	pub table_name: String,
 	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
 	pub join: Option<Box<JoinNode>>,
 }
@@ -463,6 +471,7 @@ pub struct JoinsNode {
 impl JoinsNode {
 	pub fn new() -> Self {
 		Self {
+			table_name: String::new(),
 			csv_file_scan: None,
 			join: None,
 		}
@@ -1220,8 +1229,6 @@ macro_rules! solve_join_clauses {
 				}
 			}				
 		}
-
-		$joins.print_joins();
 	}
 }
 
@@ -1246,6 +1253,7 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 				csv_file_scan.all = node.all;
 				sort.table_name = table_name.clone();
 				distinct.table_name = table_name.clone();
+				joins.table_name = table_name.clone();
 			}
 			solve_join_clauses!(node, of_clause, joins);
 		}
@@ -1280,6 +1288,7 @@ pub fn plan_get_stmt(node: &Box<parser::GetStmtNode>, plan: &mut PlanNode) -> Re
 				csv_file_scan.all = node.all;
 				sort.table_name = table_name.clone();
 				distinct.table_name = table_name.clone();
+				joins.table_name = table_name.clone();
 			}
 			solve_join_clauses!(node, of_clause, joins);
 		}

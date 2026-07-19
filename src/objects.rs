@@ -194,11 +194,6 @@ impl Object {
 		}
 	}
 
-	pub fn print(&self, head: &str) {
-		print!("{}: ", head);
-		println!("{}", self.to_string());
-	}
-
 	pub fn to_column_string(&self) -> String {
 		match self.kind {
 			ObjectKind::String => { format!("\"{}\"", self.string) }

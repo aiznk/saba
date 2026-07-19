@@ -1,5 +1,6 @@
 use crate::error::{make_error, err_runtime, Error};
 use crate::objects::{Object, HeaderType, Table};
+use crate::consts::{NIL};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use csv::{Reader, StringRecord};
@@ -27,6 +28,8 @@ pub struct Context {
 	pub scanned_record_is_empty: bool,
 	pub id_counter: usize,
 	pub selected_header_idents: Vec<String>,
+	pub join_matched_counter: usize,
+	pub finished_scan_table_names: Vec<String>,
 
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
@@ -71,6 +74,8 @@ impl Context {
 			scanned_record_is_empty: false,
 			id_counter: 1,
 			selected_header_idents: vec![],
+			join_matched_counter: 0,
+			finished_scan_table_names: vec![],
 			is_cli: false,
 			matched_record: StringRecord::new(),
 			unmatched_record: StringRecord::new(),
@@ -105,6 +110,8 @@ impl Context {
 		self.scanned_record_is_empty = false;
 		self.id_counter = 1;
 		self.selected_header_idents.clear();
+		self.join_matched_counter = 0;
+		self.finished_scan_table_names.clear();
 		self.matched_record.clear();
 		self.unmatched_record.clear();
 		if let Some(test_get_records) = self.test_get_records.as_mut() {
@@ -165,6 +172,19 @@ impl Context {
 		}
 
 		(ret, true)
+	}
+
+	pub fn replace_scanned_record_to_nil_record(&mut self, table_name: &String) -> Result<(), Error> {
+		if let Some(table) = self.tables.get_mut(table_name) {
+			let len = table.headers.len();
+			table.scanned_record.clear();
+			for _ in 0..len {
+				table.scanned_record.push_field(NIL);
+			}
+			Ok(())
+		} else {
+			return err_runtime!("not found table '{}' on gen table nil record", table_name);
+		}
 	}
 
 	pub fn joins_enable_unmatched(&self) -> bool {

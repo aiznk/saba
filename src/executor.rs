@@ -112,21 +112,17 @@ fn exec_sort(context: &mut Context, sort: &mut SortNode) -> Result<(), Error> {
 			if result.filtered {
 				if result.filter_matched {
 					let v = vec_string_to_string_record(&context.selected_csv_columns);
-					println!("v:{:?}", v);
 					records.push(v);
 				}
 			} else {
 				let v = vec_string_to_string_record(&context.selected_csv_columns);
-				println!("v:{:?}", v);
 				records.push(v);				
 			}
 		}
 
 		context.is_cli = is_cli;
 
-		println!("{:?}", context.selected_header_idents);
 		let index = context.selected_header_idents.iter().position(|s| {
-			println!("s[{}] ident[{}]", s, obj.ident);
 			if let Some(parent) = &obj.parent {
 				let par = &parent.ident;
 				let chi = &obj.ident;
@@ -147,7 +143,6 @@ fn exec_sort(context: &mut Context, sort: &mut SortNode) -> Result<(), Error> {
 			});
 		} else {
 			records.sort_by(|a, b| {
-				// println!("len[{}] [{}]", a.len(), b.len());
 				b[index].cmp(&a[index])
 			});
 		}
@@ -1964,7 +1959,7 @@ fn select_get_columns(context: &mut Context, node: &ProjectNode) -> Result<bool,
 		return Ok(ok);
 	}
 
-	println!("select_get_columns: {:?}", record);
+	// println!("select_get_columns: {:?}", record);
 	context.selected_csv_columns = string_record_to_vev_string(&record);
 
 	Ok(ok)
@@ -2142,7 +2137,6 @@ pub fn exec_aggregate(context: &mut Context, aggregate: &mut AggregateNode) -> R
 		}
 
 		context.selected_csv_columns = string_record_to_vev_string(&record);
-		print_string_record(&record)?;
 
 		return Ok(());
 	}
@@ -2362,6 +2356,8 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 
 	if !context.wait_left_scan {
 		if let Some(csv_file_scan) = node.csv_file_scan.as_mut() {
+			context.join_matched_counter = 0;
+			context.finished_scan_table_names.clear();
 			let result = exec_csv_file_scan(context, csv_file_scan)?;
 			if !result.scanning {
 				ret.merge(&result);
@@ -2381,16 +2377,53 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 			context.wait_left_scan = false;
 			context.join_matched = false;
 		}
+		if !result.scanning {
+			if result.need_nil_record &&
+			   context.join_matched_counter == 0 {
+				context.join_matched = true;
+				ret.join_matched = true;
+				ret.record_is_empty = false;
+				let table_names = context.finished_scan_table_names.clone();
+				for table_name in table_names.iter() {
+					context.replace_scanned_record_to_nil_record(table_name)?;
+				}
+			}
+		}
 	}
 
 	Ok(ret)
 }
 
-macro_rules! solve_scan {
-	($context:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
+/*
+	u:1      p.u = 1
+	u:2      p.u = 1
+	u:3      p.u = 2
+	u:4      p.u = 2
+*/
+macro_rules! solve_left_scan {
+	($context:ident, $left_join:ident, $table_name:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
 		let result = exec_csv_file_scan($context, $csv_file_scan)?;
 		if !result.scanning {
 			$ret.merge(&result);
+			$context.finished_scan_table_names.push($table_name.clone());
+			break;
+		}
+		let o = exec_expr($context, $expr)?;
+		if o.kind == ObjectKind::Bool && o.bool_value {
+			// match
+			$ret.join_matched = true;
+			$context.join_matched_counter += 1;
+			break;
+		}
+	}
+}
+
+macro_rules! solve_scan {
+	($context:ident, $table_name:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
+		let result = exec_csv_file_scan($context, $csv_file_scan)?;
+		if !result.scanning {
+			$ret.merge(&result);
+			$context.finished_scan_table_names.push($table_name.clone());
 			break;
 		}
 		let o = exec_expr($context, $expr)?;
@@ -2417,20 +2450,23 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 	if let Some(item) = node.item.as_mut() {
 		match item {
 			JoinItemNode::LeftJoin(left_join) => {
+				ret.need_nil_record = true;
+
 				if let Some(csv_file_scan) = left_join.csv_file_scan.as_mut() {
 				if let Some(expr) = &left_join.expr {
+					let table_name = &left_join.table_name;
 					loop {
 						if let Some(join) = node.join.as_mut() {
 							let result = exec_join(context, join)?;
 							ret.merge(&result);
 							if !result.scanning {
-								solve_scan!(context, csv_file_scan, expr, ret);			
+								solve_left_scan!(context, left_join, table_name, csv_file_scan, expr, ret);			
 							}
 							if result.join_matched {
 								break;
 							}
 						} else {
-							solve_scan!(context, csv_file_scan, expr, ret);
+							solve_left_scan!(context, left_join, table_name, csv_file_scan, expr, ret);
 						}
 					}
 				}}
@@ -2438,18 +2474,19 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 			JoinItemNode::InnerJoin(inner_join) => {
 				if let Some(csv_file_scan) = inner_join.csv_file_scan.as_mut() {
 				if let Some(expr) = &inner_join.expr {
+					let table_name = &inner_join.table_name;
 					loop {
 						if let Some(join) = node.join.as_mut() {
 							let result = exec_join(context, join)?;	
 							ret.merge(&result);
 							if !result.scanning {
-								solve_scan!(context, csv_file_scan, expr, ret);
+								solve_scan!(context, table_name, csv_file_scan, expr, ret);
 							}
 							if result.join_matched {
 								break;
 							}
 						} else {
-							solve_scan!(context, csv_file_scan, expr, ret);
+							solve_scan!(context, table_name, csv_file_scan, expr, ret);
 						}
 					}	
 				}}
@@ -3181,7 +3218,6 @@ pub fn exec_csv_file_create(context: &mut Context, node: &CsvFileCreateNode) -> 
 		let mut file = match fs::File::create(&path) {
 			Ok(v) => v,
 			Err(e) => { 
-				println!("path[{}]", path.as_os_str().to_string_lossy());
 				return err_exec!("failed to create CSV file. {}", e); 
 			}
 		};
@@ -3681,7 +3717,6 @@ mod tests {
 		let s = fs::read_to_string(&path).unwrap();
 		assert!(s == "id: INT,weight: FLOAT,name: CHAR[128]\n1,3.14,hige\n2,3.14,hoge\n");
 		do_exec(&mut context, "GET id, name OF test_table WHERE id == 2").unwrap();
-		print_selected_columns(&mut context).unwrap();
 		assert!(context.selected_csv_columns.len() == 2);
 		assert!(context.selected_csv_columns[0] == "2");
 		assert!(context.selected_csv_columns[1] == "hoge");
@@ -5600,6 +5635,85 @@ mod tests {
 		println!("s[{}]", s);
 		assert!(s == "bbb
 aaa
+");
+	}
+
+	#[test]
+	fn test_left_join_multi() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS users").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS products").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS countries").unwrap();
+		do_exec(&mut context, "CREATE TABLE users (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE products (id: INT, user_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE countries (id: INT, user_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, name = \"aaa\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 2, name = \"bbb\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 3, name = \"ccc\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 4, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 5, name = \"ddd\" OF users").unwrap();
+
+		do_exec(&mut context, "ADD id = 1, user_id = 1, name = \"aaa product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 2, user_id = 1, name = \"aaa product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 3, user_id = 2, name = \"bbb product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 4, user_id = 2, name = \"bbb product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 5, user_id = 3, name = \"ccc product 1\" OF products").unwrap();
+
+		do_exec(&mut context, "ADD id = 1, user_id = 1, name = \"japan\" OF countries").unwrap();
+		do_exec(&mut context, "ADD id = 2, user_id = 2, name = \"usa\" OF countries").unwrap();
+		do_exec(&mut context, "ADD id = 3, user_id = 3, name = \"korean\" OF countries").unwrap();
+
+		context.test_selected_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL users.id, products.id, countries.id OF users LEFT JOIN products ON users.id == products.user_id LEFT JOIN countries ON users.id == countries.user_id").unwrap();
+
+		let s = test_selected_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,1,1
+1,2,1
+2,3,2
+2,4,2
+3,5,3
+4,$nil,$nil
+5,$nil,$nil
+");
+	}
+
+	#[test]
+	fn test_left_join_0() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS users").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS products").unwrap();
+		do_exec(&mut context, "CREATE TABLE users (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE products (id: INT, user_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, name = \"aaa\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 2, name = \"bbb\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 3, name = \"ccc\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 4, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 5, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 1, user_id = 1, name = \"aaa product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 2, user_id = 1, name = \"aaa product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 3, user_id = 2, name = \"bbb product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 4, user_id = 2, name = \"bbb product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 5, user_id = 3, name = \"ccc product 1\" OF products").unwrap();
+
+		context.test_selected_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL users.id, products.id OF users LEFT JOIN products ON users.id == products.user_id").unwrap();
+
+		let s = test_selected_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,1
+1,2
+2,3
+2,4
+3,5
+4,$nil
+5,$nil
 ");
 	}
 
