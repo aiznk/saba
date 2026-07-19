@@ -11,6 +11,7 @@ mod planner;
 mod executor;
 mod context;
 mod objects;
+mod security;
 
 use crate::options::{Options};
 

@@ -54,8 +54,15 @@ macro_rules! err_planning {
     };
 }
 
+macro_rules! err_security {
+    ($($arg:tt)*) => {
+        Err(make_error!(Runtime, $($arg)*))
+    };
+}
+
 pub(crate) use make_error;
 pub(crate) use err_parse;
 pub(crate) use err_exec;
 pub(crate) use err_runtime;
 pub(crate) use err_planning;
+pub(crate) use err_security;
