@@ -9,6 +9,7 @@ pub struct ExecResult {
 	pub scanning: bool,
 	pub record_is_empty: bool,
 	pub join_matched: bool,	
+	pub join_enabled: bool,
 	pub distinct_matched: bool,
 	pub filtered: bool,
 	pub filter_matched: bool,
@@ -21,11 +22,16 @@ impl ExecResult {
 			scanning: true,
 			record_is_empty: false,
 			join_matched: false,
+			join_enabled: false,
 			distinct_matched: false,
 			filtered: false,
 			filter_matched: false,
 			need_nil_record: false,
 		}
+	}
+
+	pub fn join_enable_unmatched(&self) -> bool {
+		self.join_enabled && !self.join_matched
 	}
 
 	pub fn merge(&mut self, other: &ExecResult) {
@@ -37,6 +43,9 @@ impl ExecResult {
 		}
 		if other.join_matched {
 			self.join_matched = true;
+		}
+		if other.join_enabled {
+			self.join_enabled = true;
 		}
 		if other.distinct_matched {
 			self.distinct_matched = true;

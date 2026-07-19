@@ -22,8 +22,6 @@ pub struct Context {
 	pub joined_header_types: Vec<HeaderType>,
 	pub joined_header_idents: Vec<String>,
 	pub joined_record: StringRecord,
-	pub join_matched: bool,
-	pub joins_enable: bool,
 	pub wait_left_scan: bool,
 	pub scanned_record_is_empty: bool,
 	pub id_counter: usize,
@@ -68,8 +66,6 @@ impl Context {
 			joined_header_types: vec![],
 			joined_header_idents: vec![],
 			joined_record: StringRecord::new(),
-			join_matched: false,
-			joins_enable: false,
 			wait_left_scan: false,
 			scanned_record_is_empty: false,
 			id_counter: 1,
@@ -104,8 +100,6 @@ impl Context {
 		self.joined_header_types.clear();
 		self.joined_header_idents.clear();
 		self.joined_record.clear();
-		self.join_matched = false;
-		self.joins_enable = false;
 		self.wait_left_scan = false;
 		self.scanned_record_is_empty = false;
 		self.id_counter = 1;
@@ -185,10 +179,6 @@ impl Context {
 		} else {
 			return err_runtime!("not found table '{}' on gen table nil record", table_name);
 		}
-	}
-
-	pub fn joins_enable_unmatched(&self) -> bool {
-		self.joins_enable && !self.join_matched
 	}
 
 	pub fn print_record(&self, record: &StringRecord) {

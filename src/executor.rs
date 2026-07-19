@@ -2152,7 +2152,7 @@ pub fn exec_distinct(context: &mut Context, distinct: &mut DistinctNode) -> Resu
 		if !result.scanning {
 			return Ok(result);
 		}
-		if context.joins_enable_unmatched() {
+		if result.join_enable_unmatched() {
 			return Ok(ret);
 		}
 
@@ -2209,7 +2209,7 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 		if !result.scanning {
 			return Ok(ret);
 		}
-		if context.joins_enable_unmatched() {
+		if result.join_enable_unmatched() {
 			return Ok(ret);
 		}
 		if result.record_is_empty {
@@ -2285,7 +2285,7 @@ pub fn exec_filter(context: &mut Context, node: &mut FilterNode) -> Result<ExecR
 			if !result.scanning {
 				return Ok(ret);
 			}
-			if context.joins_enable_unmatched() {
+			if result.join_enable_unmatched() {
 				return Ok(ret);
 			}
 
@@ -2367,20 +2367,18 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 	}
 
 	if let Some(join) = node.join.as_mut() {
+		ret.join_enabled = true;
 		let result = exec_join(context, join)?;	
 		ret.merge(&result);
 		ret.scanning = true;
 		if result.join_matched {
 			context.wait_left_scan = true;
-			context.join_matched = true;
 		} else {
 			context.wait_left_scan = false;
-			context.join_matched = false;
 		}
 		if !result.scanning {
 			if result.need_nil_record &&
 			   context.join_matched_counter == 0 {
-				context.join_matched = true;
 				ret.join_matched = true;
 				ret.record_is_empty = false;
 				let table_names = context.finished_scan_table_names.clone();
