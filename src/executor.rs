@@ -5718,6 +5718,39 @@ aaa
 	}
 
 	#[test]
+	fn test_inner_join_where() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS users").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS products").unwrap();
+		do_exec(&mut context, "CREATE TABLE users (id: INT, weight: FLOAT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE products (id: INT, user_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "ADD id = 1, name = \"aaa\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 2, name = \"bbb\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 3, name = \"ccc\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 4, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 5, name = \"ddd\" OF users").unwrap();
+		do_exec(&mut context, "ADD id = 1, user_id = 1, name = \"aaa product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 2, user_id = 1, name = \"aaa product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 3, user_id = 2, name = \"bbb product 1\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 4, user_id = 2, name = \"bbb product 2\" OF products").unwrap();
+		do_exec(&mut context, "ADD id = 5, user_id = 3, name = \"ccc product 1\" OF products").unwrap();
+
+		context.test_selected_records = Some(vec![]);
+		do_exec(&mut context, "GET ALL users.id, products.id OF users INNER JOIN products ON users.id == products.user_id WHERE users.name == \"aaa\" OR users.name == \"bbb\"").unwrap();
+
+		let s = test_selected_records_to_string(&mut context);
+		println!("s[{}]", s);
+		assert!(s == "1,1
+1,2
+2,3
+2,4
+");
+	}
+
+	#[test]
 	fn test_inner_join_order_by() {
 		let mut context = Context::new();
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
