@@ -2469,7 +2469,6 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 									context.clear_tables_scanned_records()?;
 								}
 								if !result.scanning {
-									ret.scanning = true;
 									join.mode = JoinMode::Finished;
 								}
 							}
@@ -2535,11 +2534,6 @@ fn reset_reader_from_joins(context: &mut Context, node: &mut JoinsNode) -> Resul
 		}
 	}
 	Ok(())
-}
-
-macro_rules! solve_right_scan_emit {
-	($context:ident, $join:ident, $table_name:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
-	}
 }
 
 macro_rules! solve_right_scan {
@@ -2640,14 +2634,15 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 						}
 						JoinMode::EmitRightRemain => {
 							if let Some(join) = node.join.as_mut() {
+								todo!("multiple implement");
+							} else {
 								let result = exec_csv_file_scan(context, csv_file_scan)?;
 								if !result.scanning {
 									ret.merge(&result);
 									return Ok(ret);
 								}
-								ret.scanning = false;
 								let rec_num = context.get_record_num(table_name)?;
-								let m = join.matches[rec_num-1];
+								let m = node.matches[rec_num-1];
 								if !m {
 									println!("false {}", rec_num-1);
 									ret.join_matched = true;
@@ -2657,6 +2652,7 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 							}
 						}
 						JoinMode::Finished => {
+							ret.scanning = false;
 							ret.join_matched = false;
 						}
 					}
