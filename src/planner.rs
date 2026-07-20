@@ -522,9 +522,21 @@ impl JoinsNode {
 }
 
 #[derive(Clone, Debug)]
+pub enum JoinMode {
+	Ready,
+	Matching,
+	EmitRightRemain,
+	Finished,
+}
+
+#[derive(Clone, Debug)]
 pub struct JoinNode {
 	pub item: Option<JoinItemNode>,
 	pub join: Option<Box<JoinNode>>,
+	pub join_matched_counter: usize,
+	pub finished_scan_table_names: Vec<String>,
+	pub mode: JoinMode,
+	pub matches: Vec<bool>,
 }
 
 impl JoinNode {
@@ -532,6 +544,10 @@ impl JoinNode {
 		Self {
 			item: None,
 			join: None,
+			join_matched_counter: 0,
+			finished_scan_table_names: vec![],
+			mode: JoinMode::Ready,
+			matches: vec![],
 		}
 	}
 

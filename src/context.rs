@@ -22,8 +22,6 @@ pub struct Context {
 	pub scanned_record_is_empty: bool,
 	pub id_counter: usize,
 	pub selected_header_idents: Vec<String>,
-	pub join_matched_counter: usize,
-	pub finished_scan_table_names: Vec<String>,
 
 	// if cli mode, set true. that print projected columns
 	pub is_cli: bool,
@@ -62,8 +60,6 @@ impl Context {
 			scanned_record_is_empty: false,
 			id_counter: 1,
 			selected_header_idents: vec![],
-			join_matched_counter: 0,
-			finished_scan_table_names: vec![],
 			is_cli: false,
 			matched_record: StringRecord::new(),
 			unmatched_record: StringRecord::new(),
@@ -92,8 +88,6 @@ impl Context {
 		self.scanned_record_is_empty = false;
 		self.id_counter = 1;
 		self.selected_header_idents.clear();
-		self.join_matched_counter = 0;
-		self.finished_scan_table_names.clear();
 		self.matched_record.clear();
 		self.unmatched_record.clear();
 		if let Some(test_get_records) = self.test_get_records.as_mut() {
@@ -111,7 +105,7 @@ impl Context {
 		self.max_value = 0.0;
 	}
 
-	pub fn set_is_ready_right_join(&self, table_name: &str, b: bool) -> Result<(), Error> {
+	pub fn set_is_ready_right_join(&mut self, table_name: &str, b: bool) -> Result<(), Error> {
 		if let Some(table) = self.tables.get_mut(table_name) {
 			table.is_ready_right_join = b;
 			Ok(())
@@ -145,32 +139,15 @@ impl Context {
 		}
 	}
 
-	pub fn push_right_matched(&mut self, table_name: &str, b: bool) -> Result<(), Error> {
+	pub fn reset_reader(&mut self, table_name: &str) -> Result<(), Error> {
 		if let Some(table) = self.tables.get_mut(table_name) {
-			table.right_matched.push(b);
+			table.csv_reader = None;
 		} else {
 			return err_runtime!("not found table name '{}' in push right matched", table_name);
-		};
+		}
 		Ok(())
 	}
 
-	pub fn set_right_matched(&mut self, table_name: &str, index: usize, b: bool) -> Result<(), Error> {
-		if let Some(table) = self.tables.get_mut(table_name) {
-			table.right_matched[index] = b;
-		} else {
-			return err_runtime!("not found table name '{}' in push right matched", table_name);
-		};
-		Ok(())
-	}
-	
-	pub fn get_right_matched(&mut self, table_name: &str, index: usize) -> Result<bool, Error> {
-		if let Some(table) = self.tables.get_mut(table_name) {
-			Ok(table.right_matched[index])
-		} else {
-			err_runtime!("not found table name '{}' in push right matched", table_name)
-		}
-	}
-	
 	pub fn join_table_header_idents(&self) -> Vec<String> {
 		let mut ret: Vec<String> = vec![];
 
