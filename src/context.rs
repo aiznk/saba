@@ -18,7 +18,6 @@ pub struct Context {
 	pub cache_distinct_objs: Option<Vec<Object>>,
 	pub tables: HashMap<String, Box<Table>>,
 	pub do_read_record: bool,
-	pub wait_left_scan: bool,
 	pub scanned_record_is_empty: bool,
 	pub id_counter: usize,
 	pub selected_header_idents: Vec<String>,
@@ -56,7 +55,6 @@ impl Context {
 			cache_distinct_objs: None,
 			tables: HashMap::new(),
 			do_read_record: false,
-			wait_left_scan: false,
 			scanned_record_is_empty: false,
 			id_counter: 1,
 			selected_header_idents: vec![],
@@ -84,7 +82,6 @@ impl Context {
 		self.cache_distinct_objs = None;
 		self.tables.clear();
 		self.do_read_record = false;
-		self.wait_left_scan = false;
 		self.scanned_record_is_empty = false;
 		self.id_counter = 1;
 		self.selected_header_idents.clear();

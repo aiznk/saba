@@ -537,6 +537,7 @@ pub struct JoinNode {
 	pub finished_scan_table_names: Vec<String>,
 	pub mode: JoinMode,
 	pub matches: Vec<bool>,
+	pub wait_left_scan: bool,
 }
 
 impl JoinNode {
@@ -548,6 +549,13 @@ impl JoinNode {
 			finished_scan_table_names: vec![],
 			mode: JoinMode::Ready,
 			matches: vec![],
+			wait_left_scan: false,
+		}
+	}
+
+	pub fn push_finished_scan_table_name(&mut self, table_name: String) {
+		if !self.finished_scan_table_names.contains(&table_name) {
+			self.finished_scan_table_names.push(table_name);
 		}
 	}
 

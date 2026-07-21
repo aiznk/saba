@@ -2364,7 +2364,7 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 			if let Some(item) = &join.item {
 				match item {
 					JoinItemNode::InnerJoin(_) => {
-						if !context.wait_left_scan {
+						if !join.wait_left_scan {
 							let result = exec_csv_file_scan(context, csv_file_scan)?;
 							if !result.scanning {
 								ret.merge(&result);
@@ -2378,9 +2378,9 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 						ret.merge(&result);
 						ret.scanning = true;
 						if result.join_matched {
-							context.wait_left_scan = true;
+							join.wait_left_scan = true;
 						} else {
-							context.wait_left_scan = false;
+							join.wait_left_scan = false;
 						}
 						if !result.scanning {
 							if result.is_left &&
@@ -2395,11 +2395,11 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 						}
 					}
 					JoinItemNode::LeftJoin(_) => {
-						if !context.wait_left_scan {
+						if !join.wait_left_scan {
 							let result = exec_csv_file_scan(context, csv_file_scan)?;
 							if !result.scanning {
 								ret.merge(&result);
-								join.mode = JoinMode::EmitRightRemain;
+								println!("done");
 								return Ok(ret);
 							}
 						}
@@ -2409,20 +2409,24 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 						ret.merge(&result);
 						ret.scanning = true;
 						if result.join_matched {
-							context.wait_left_scan = true;
+							join.wait_left_scan = true;
 						} else {
-							context.wait_left_scan = false;
+							join.wait_left_scan = false;
 						}
 						if !result.scanning {
+							println!("!scan {} {}", result.is_left, join.join_matched_counter);
 							if result.is_left &&
 							   join.join_matched_counter == 0 {
 								ret.join_matched = true;
 								ret.record_is_empty = false;
 								let table_names = join.finished_scan_table_names.clone();
 								for table_name in table_names.iter() {
+									println!("table_name {}", table_name);
 									context.replace_scanned_record_to_nil_record(table_name)?;
 								}
 							}
+							join.join_matched_counter = 0;
+							join.finished_scan_table_names.clear();
 						}
 					}
 					JoinItemNode::RightJoin(_) => {
@@ -2434,7 +2438,7 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 							}
 							JoinMode::Matching => {
 								println!("\nmatching");
-								if !context.wait_left_scan {
+								if !join.wait_left_scan {
 									let result = exec_csv_file_scan(context, csv_file_scan)?;
 									if !result.scanning {
 										ret.merge(&result);
@@ -2449,9 +2453,9 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 								let result = exec_join(context, join)?;	
 								ret.merge(&result);
 								if result.join_matched {
-									context.wait_left_scan = true;
+									join.wait_left_scan = true;
 								} else {
-									context.wait_left_scan = false;
+									join.wait_left_scan = false;
 								}
 								if !result.scanning {
 									ret.scanning = true;
@@ -2517,25 +2521,6 @@ fn count_matches(context: &mut Context, join: &mut JoinNode) -> Result<Vec<bool>
 	Ok(matches)
 }
 
-fn reset_reader_from_joins(context: &mut Context, node: &mut JoinsNode) -> Result<(), Error> {
-	if let Some(join) = node.join.as_mut() {
-		if let Some(item) = join.item.as_mut() {
-			match item {
-				JoinItemNode::InnerJoin(j) => {
-					context.reset_reader(&j.table_name)?;
-				}
-				JoinItemNode::LeftJoin(j) => {
-					context.reset_reader(&j.table_name)?;
-				}
-				JoinItemNode::RightJoin(j) => {
-					context.reset_reader(&j.table_name)?;
-				}			
-			}
-		}
-	}
-	Ok(())
-}
-
 macro_rules! solve_right_scan {
 	($context:ident, $join:ident, $table_name:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
 		let result = exec_csv_file_scan($context, $csv_file_scan)?;
@@ -2561,13 +2546,18 @@ macro_rules! solve_left_scan {
 		let result = exec_csv_file_scan($context, $csv_file_scan)?;
 		if !result.scanning {
 			$ret.merge(&result);
-			$join.finished_scan_table_names.push($table_name.clone());
+			if !$join.finished_scan_table_names.contains(&$table_name) {
+				$join.finished_scan_table_names.push($table_name.clone());
+				println!("push {}", $table_name);
+			}
+			println!("finish");
 			break;
 		}
 		let o = exec_expr($context, $expr)?;
 		if o.kind == ObjectKind::Bool && o.bool_value {
 			// match
 			$ret.join_matched = true;
+			println!("match!");
 			$join.join_matched_counter += 1;
 			break;
 		}
@@ -2634,7 +2624,50 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 						}
 						JoinMode::EmitRightRemain => {
 							if let Some(join) = node.join.as_mut() {
-								todo!("multiple implement");
+								match join.mode {
+									JoinMode::Ready => {
+										join.matches = count_matches(context, join)?;
+										join.mode = JoinMode::Matching;
+									}
+									JoinMode::Matching => {
+										if !join.wait_left_scan {
+											let result = exec_csv_file_scan(context, csv_file_scan)?;
+											if !result.scanning {
+												ret.merge(&result);
+												join.mode = JoinMode::EmitRightRemain;
+												ret.scanning = true;
+												return Ok(ret);
+											}
+										}
+
+										ret.join_enabled = true;
+										let result = exec_join(context, join)?;	
+										ret.merge(&result);
+										if result.join_matched {
+											join.wait_left_scan = true;
+										} else {
+											join.wait_left_scan = false;
+										}
+										if !result.scanning {
+											ret.scanning = true;
+										}
+									}
+									JoinMode::EmitRightRemain => {
+										let result = exec_join(context, join)?;	
+										ret.merge(&result);
+										context.replace_scanned_record_to_nil_record(&csv_file_scan.table_name)?;
+										context.print_tables_scanned_records();
+										if !result.join_matched {
+											context.clear_tables_scanned_records()?;
+										}
+										if !result.scanning {
+											join.mode = JoinMode::Finished;
+										}
+									}
+									JoinMode::Finished => {
+										ret.scanning = false;
+									}
+								}
 							} else {
 								let result = exec_csv_file_scan(context, csv_file_scan)?;
 								if !result.scanning {
@@ -2669,7 +2702,7 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 							let result = exec_join(context, join)?;
 							ret.merge(&result);
 							if !result.scanning {
-								solve_left_scan!(context, node, table_name, csv_file_scan, expr, ret);			
+								solve_left_scan!(context, node, table_name, csv_file_scan, expr, ret);
 							}
 							if result.join_matched {
 								break;
@@ -5948,13 +5981,6 @@ aaa
 		do_exec(&mut context, "ADD id = 2, rtab1_id = 1, name = \"B\" OF rtab2").unwrap();
 		do_exec(&mut context, "ADD id = 3, rtab1_id = 2, name = \"C\" OF rtab2").unwrap();
 
-/*
-	for rtab2 {
-		for rtab1 {
-	
-		}
-	}
- */
 		context.test_selected_records = Some(vec![]);
 		do_exec(&mut context, "GET ALL rtab2.id, rtab1.id OF rtab2 RIGHT JOIN rtab1 ON rtab2.rtab1_id == rtab1.id").unwrap();
 
