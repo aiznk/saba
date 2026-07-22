@@ -525,6 +525,7 @@ pub enum RightJoinMode {
 
 #[derive(Clone, Debug)]
 pub struct JoinNode {
+	pub table_name: String,
 	pub item: Option<JoinItemNode>,
 	pub join: Option<Box<JoinNode>>,
 	pub finished_scan_table_names: Vec<String>,
@@ -562,6 +563,7 @@ pub(crate) use print_scanned_record_with_pad;
 impl JoinNode {
 	pub fn new() -> Self {
 		Self {
+			table_name: String::new(),
 			item: None,
 			join: None,
 			finished_scan_table_names: vec![],
@@ -1284,6 +1286,7 @@ macro_rules! solve_join_clauses {
 				n.expr = Some(expr);
 				let item = JoinItemNode::InnerJoin(n);
 				join.item = Some(item);
+				join.table_name = table_name.clone();
 			} else if join_clause.is_left {
 				let mut n = LeftJoinNode::new();
 				n.table_name = table_name.clone();
@@ -1291,6 +1294,7 @@ macro_rules! solve_join_clauses {
 				n.expr = Some(expr);
 				let item = JoinItemNode::LeftJoin(n);
 				join.item = Some(item);
+				join.table_name = table_name.clone();
 			} else if join_clause.is_right {
 				let mut n = RightJoinNode::new();
 				n.table_name = table_name.clone();
@@ -1298,6 +1302,7 @@ macro_rules! solve_join_clauses {
 				n.expr = Some(expr);
 				let item = JoinItemNode::RightJoin(n);
 				join.item = Some(item);
+				join.table_name = table_name.clone();
 			} else {
 				return err_planning!("invalid state: join clause");
 			}

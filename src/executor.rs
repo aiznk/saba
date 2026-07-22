@@ -1682,7 +1682,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 							let ro = refer_ident(context, &rhs)?;
 							// println!("----");
 							// context.print_tables_scanned_records();
-							println!("lhs: {} {} == rhs: {} {}", lhs.to_string(), lo.to_string(), rhs.to_string(), ro.to_string());
+							// println!("lhs: {} {} == rhs: {} {}", lhs.to_string(), lo.to_string(), rhs.to_string(), ro.to_string());
 							Ok(compare_objects(context, &lo, op, &ro)?)
 						}
 						_ => err_exec!("can't compare ident and other: a == b"),						
@@ -1959,7 +1959,7 @@ fn select_get_columns(context: &mut Context, node: &ProjectNode) -> Result<bool,
 		return Ok(ok);
 	}
 
-	// println!("select_get_columns: {:?}", record);
+	println!("select: {:?}", record);
 	context.selected_csv_columns = string_record_to_vev_string(&record);
 
 	Ok(ok)
@@ -2376,13 +2376,24 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 							}
 						}
 
+						right.matched = false;
 						let result = exec_join(context, right)?;	
 						ret.merge(&result);
+						// println!("ret.join_matched {}, right.matched {}", ret.join_matched, right.matched);
 						ret.scan_done = false;
+						if right.matched {
+							node.wait_left_scan = true;
+							ret.join_matched = true;
+							return Ok(ret);
+						} else {
+							node.wait_left_scan = false;
+							ret.join_matched = false;
+						}
 						if right.scan_done {
 							node.wait_left_scan = false;
 							right.scan_done = false;
 							right.wait_left_scan = false;
+							right.matched = false;
 						} else {
 							node.wait_left_scan = true;
 						}
@@ -2606,14 +2617,11 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 			JoinItemNode::InnerJoin(inner_join) => {
 				if let Some(csv_file_scan) = inner_join.csv_file_scan.as_mut() {
 				if let Some(expr) = &inner_join.expr {
-					let table_name = &inner_join.table_name;
-					// println!("loop");
 					context.counter += 1;
 					if context.counter >= 10000 {
 						panic!("hige");
 					}
 					if let Some(right) = node.join.as_mut() {
-						// println!("[ join ]");
 						right.depth = node.depth + 1;
 						if !node.wait_left_scan {
 							let result = exec_csv_file_scan(context, csv_file_scan)?;
@@ -2625,23 +2633,48 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 							}
 						}
 
+						let o = exec_expr(context, expr)?;
+						if o.kind == ObjectKind::Bool && o.bool_value {
+							println!("matched 1");
+							node.matched = true;
+							node.wait_left_scan = true;
+						} else {
+							node.matched = false;
+							node.wait_left_scan = true;
+						}
+
+						right.matched = false;
 						let result = exec_join(context, right)?;	
 						ret.merge(&result);
+						if right.matched {
+							node.wait_left_scan = true;
+							node.matched = node.matched && right.matched;
+						} else {
+							node.wait_left_scan = false;
+							node.matched = false;
+						}
 						if right.scan_done {
 							node.wait_left_scan = false;
 							right.scan_done = false;
 							right.wait_left_scan = false;
+							right.matched = false;
 						} else {
 							node.wait_left_scan = true;
 						}
 					} else {
-						// println!("[ else ]");
 						let result = exec_csv_file_scan(context, csv_file_scan)?;
 						ret.merge(&result);
 						if result.scan_done {
 							print_pad!(node); println!("scan done 2");
 							node.scan_done = true;
 							return Ok(ret);
+						}
+						let o = exec_expr(context, expr)?;
+						if o.kind == ObjectKind::Bool && o.bool_value {
+							println!("matched 2");
+							node.matched = true;
+						} else {
+							node.matched = false;
 						}
 					}
 				}}
@@ -4162,7 +4195,6 @@ mod tests {
 	fn test_selected_records_to_string(context: &mut Context) -> String {
 		let mut writer = Writer::from_writer(vec![]);
 		for rec in context.test_selected_records.clone().unwrap().iter() {
-			print_record("selected", &rec);
 			writer.write_record(rec).unwrap();
 		}
 		let bytes = writer.into_inner().unwrap();
