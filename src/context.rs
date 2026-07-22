@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Context {
+	pub counter: usize,
 	pub root_dir_path: PathBuf,
 	pub using_db_name: String,
 	pub current_table_name: String,
@@ -45,6 +46,7 @@ pub struct Context {
 impl Context {
 	pub fn new() -> Self {
 		Self {
+			counter: 0,
 			root_dir_path: PathBuf::new(),
 			using_db_name: String::new(),
 			current_table_name: String::new(),

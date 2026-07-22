@@ -6,29 +6,25 @@ use crate::objects::{Object, ObjectKind};
 
 #[derive(Clone, Debug)]
 pub struct ExecResult {
-	pub scanning: bool,
+	pub scan_done: bool,
 	pub record_is_empty: bool,
 	pub join_matched: bool,	
 	pub join_enabled: bool,
 	pub distinct_matched: bool,
 	pub filtered: bool,
 	pub filter_matched: bool,
-	pub is_left: bool,
-	pub is_right: bool,
 }
 
 impl ExecResult {
 	pub fn new() -> Self {
 		Self {
-			scanning: true,
+			scan_done: false,
 			record_is_empty: false,
 			join_matched: false,
 			join_enabled: false,
 			distinct_matched: false,
 			filtered: false,
 			filter_matched: false,
-			is_left: false,
-			is_right: false,
 		}
 	}
 
@@ -37,8 +33,8 @@ impl ExecResult {
 	}
 
 	pub fn merge(&mut self, other: &ExecResult) {
-		if !other.scanning {
-			self.scanning = false;			
+		if other.scan_done {
+			self.scan_done = true;			
 		}
 		if other.record_is_empty {
 			self.record_is_empty = true;
@@ -57,12 +53,6 @@ impl ExecResult {
 		}
 		if other.filter_matched {
 			self.filter_matched = true;
-		}
-		if other.is_left {
-			self.is_left = true;
-		}
-		if other.is_right {
-			self.is_right = true;
 		}
 	}
 }
@@ -495,6 +485,8 @@ pub struct JoinsNode {
 	pub table_name: String,
 	pub csv_file_scan: Option<Box<CsvFileScanNode>>,
 	pub join: Option<Box<JoinNode>>,
+	pub wait_left_scan: bool,
+	pub scan_done: bool,
 }
 
 impl JoinsNode {
@@ -503,6 +495,8 @@ impl JoinsNode {
 			table_name: String::new(),
 			csv_file_scan: None,
 			join: None,
+			wait_left_scan: false,
+			scan_done: false,
 		}
 	}
 
@@ -522,7 +516,7 @@ impl JoinsNode {
 }
 
 #[derive(Clone, Debug)]
-pub enum JoinMode {
+pub enum RightJoinMode {
 	Ready,
 	Matching,
 	EmitRightRemain,
@@ -533,25 +527,50 @@ pub enum JoinMode {
 pub struct JoinNode {
 	pub item: Option<JoinItemNode>,
 	pub join: Option<Box<JoinNode>>,
-	pub join_matched_counter: usize,
 	pub finished_scan_table_names: Vec<String>,
-	pub mode: JoinMode,
+	pub right_mode: RightJoinMode,
 	pub matches: Vec<bool>,
 	pub wait_left_scan: bool,
 	pub matched: bool,
+	pub scan_done: bool,
+	pub depth: usize,
 }
+
+macro_rules! print_pad {
+    ($node:ident) => {
+		for _ in 0..$node.depth {
+			print!("  ");
+		}
+    };
+}
+
+macro_rules! print_scanned_record_with_pad {
+	($context:ident, $join:ident) => {
+		for key in $context.tables.keys() {
+			if let Some(table) = $context.tables.get(key) {
+				print_pad!($join);
+				print!("{}: ", key);
+				println!("{:?}", table.scanned_record);
+			}
+		}
+	};
+} 
+
+pub(crate) use print_pad;
+pub(crate) use print_scanned_record_with_pad;
 
 impl JoinNode {
 	pub fn new() -> Self {
 		Self {
 			item: None,
 			join: None,
-			join_matched_counter: 0,
 			finished_scan_table_names: vec![],
-			mode: JoinMode::Ready,
+			right_mode: RightJoinMode::Ready,
 			matches: vec![],
 			wait_left_scan: false,
 			matched: false,
+			scan_done: false,
+			depth: 0,
 		}
 	}
 
