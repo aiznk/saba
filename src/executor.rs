@@ -101,6 +101,9 @@ fn exec_sort(context: &mut Context, sort: &mut SortNode) -> Result<(), Error> {
 			if result.scan_done {
 				break;
 			}
+			if result.join_enable_unmatched() {
+				continue;
+			}
 			if result.record_is_empty {
 				continue;
 			}
