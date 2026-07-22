@@ -2415,8 +2415,7 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 						}
 						if !result.scanning {
 							println!("!scan {} {}", result.is_left, join.join_matched_counter);
-							if result.is_left &&
-							   join.join_matched_counter == 0 {
+							if result.is_left && !join.matched {
 								ret.join_matched = true;
 								ret.record_is_empty = false;
 								let table_names = join.finished_scan_table_names.clone();
@@ -2542,12 +2541,12 @@ macro_rules! solve_right_scan {
 }
 
 macro_rules! solve_left_scan {
-	($context:ident, $join:ident, $table_name:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
+	($context:ident, $node:ident, $table_name:ident, $csv_file_scan:ident, $expr:ident, $ret:ident) => {
 		let result = exec_csv_file_scan($context, $csv_file_scan)?;
 		if !result.scanning {
 			$ret.merge(&result);
-			if !$join.finished_scan_table_names.contains(&$table_name) {
-				$join.finished_scan_table_names.push($table_name.clone());
+			if !$node.finished_scan_table_names.contains(&$table_name) {
+				$node.finished_scan_table_names.push($table_name.clone());
 				println!("push {}", $table_name);
 			}
 			println!("finish");
@@ -2556,10 +2555,13 @@ macro_rules! solve_left_scan {
 		let o = exec_expr($context, $expr)?;
 		if o.kind == ObjectKind::Bool && o.bool_value {
 			// match
-			$ret.join_matched = true;
 			println!("match!");
-			$join.join_matched_counter += 1;
+			$ret.join_matched = true;
+			$node.matched = true;
+			$node.join_matched_counter += 1;
 			break;
+		} else {
+			$node.matched = false;
 		}
 	}
 }
@@ -2614,7 +2616,7 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 									if !result.scanning {
 										solve_right_scan!(context, join, table_name, csv_file_scan, expr, ret);			
 									}
-									if result.join_matched {
+									if join.matched {
 										break;
 									}
 								} else {
@@ -2704,7 +2706,7 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 							if !result.scanning {
 								solve_left_scan!(context, node, table_name, csv_file_scan, expr, ret);
 							}
-							if result.join_matched {
+							if join.matched {
 								break;
 							}
 						} else {

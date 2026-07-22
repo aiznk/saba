@@ -538,6 +538,7 @@ pub struct JoinNode {
 	pub mode: JoinMode,
 	pub matches: Vec<bool>,
 	pub wait_left_scan: bool,
+	pub matched: bool,
 }
 
 impl JoinNode {
@@ -550,6 +551,7 @@ impl JoinNode {
 			mode: JoinMode::Ready,
 			matches: vec![],
 			wait_left_scan: false,
+			matched: false,
 		}
 	}
 
