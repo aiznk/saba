@@ -487,6 +487,9 @@ pub struct JoinsNode {
 	pub join: Option<Box<JoinNode>>,
 	pub wait_left_scan: bool,
 	pub scan_done: bool,
+	pub mode: RightJoinMode,
+	pub matches: Vec<bool>,
+	pub counter: usize,
 }
 
 impl JoinsNode {
@@ -497,6 +500,9 @@ impl JoinsNode {
 			join: None,
 			wait_left_scan: false,
 			scan_done: false,
+			mode: RightJoinMode::Ready,
+			matches: vec![],
+			counter: 0,
 		}
 	}
 
@@ -529,7 +535,7 @@ pub struct JoinNode {
 	pub item: Option<JoinItemNode>,
 	pub join: Option<Box<JoinNode>>,
 	pub finished_scan_table_names: Vec<String>,
-	pub right_mode: RightJoinMode,
+	pub mode: RightJoinMode,
 	pub matches: Vec<bool>,
 	pub nmatches: usize,
 	pub wait_left_scan: bool,
@@ -568,7 +574,7 @@ impl JoinNode {
 			item: None,
 			join: None,
 			finished_scan_table_names: vec![],
-			right_mode: RightJoinMode::Ready,
+			mode: RightJoinMode::Ready,
 			matches: vec![],
 			nmatches: 0,
 			wait_left_scan: false,
