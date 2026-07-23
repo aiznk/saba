@@ -1,3 +1,4 @@
+use crate::consts::{NIL};
 use crate::error::{Error, make_error, err_parse, err_runtime};
 use std::fs::File;
 use csv::{Reader, StringRecord};
@@ -209,7 +210,7 @@ impl Object {
 
 	pub fn to_string(&self) -> String {
 		match self.kind {
-			ObjectKind::Nil => { String::from("nil") }
+			ObjectKind::Nil => { String::from(NIL) }
 			ObjectKind::Bool => { format!("{}", self.bool_value) }
 			ObjectKind::Int => { format!("{}", self.int_value) }
 			ObjectKind::Float => { format!("{}", self.float_value) }

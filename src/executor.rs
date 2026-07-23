@@ -1051,6 +1051,10 @@ pub fn exec_dot_chain(context: &mut Context, node: &parser::DotChainNode) -> Res
 pub fn parse_column_by_head(head: &str, col: &str) -> Result<Object, Error> {
 	let head = head.to_lowercase();
 
+	if col == NIL {
+		return Ok(Object::from_nil());
+	}
+
 	if head.contains("int") {
 		let n = match col.parse::<i128>() {
 			Ok(v) => v,
@@ -1611,8 +1615,21 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 		},
 		parser::CompareOpNode::Eq => {
 			match lhs.kind {
+				ObjectKind::Nil => {
+					match rhs.kind {
+						ObjectKind::Nil => {
+							Ok(Object::from_bool(true))
+						}
+						_ => {
+							Ok(Object::from_bool(false))
+						}
+					}	
+				}
 				ObjectKind::Int => {
 					match rhs.kind {
+						ObjectKind::Nil => {
+							Ok(Object::from_bool(false))
+						}
 						ObjectKind::Int => {
 							let b = lhs.int_value == rhs.int_value;
 							Ok(Object::from_bool(b))
@@ -1630,6 +1647,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				},
 				ObjectKind::Float => {
 					match rhs.kind {
+						ObjectKind::Nil => {
+							Ok(Object::from_bool(false))
+						}
 						ObjectKind::Int => {
 							let b = lhs.float_value == rhs.int_value as f64;
 							Ok(Object::from_bool(b))
@@ -1647,6 +1667,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::String => {
 					match rhs.kind {
+						ObjectKind::Nil => {
+							Ok(Object::from_bool(false))
+						}
 						ObjectKind::String => {
 							let b = lhs.string == rhs.string;
 							Ok(Object::from_bool(b))
@@ -1660,6 +1683,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Bool => {
 					match rhs.kind {
+						ObjectKind::Nil => {
+							Ok(Object::from_bool(false))
+						}
 						ObjectKind::Bool => {
 							let b = lhs.bool_value == rhs.bool_value;
 							Ok(Object::from_bool(b))
@@ -1673,6 +1699,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
+						ObjectKind::Nil |
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::Bool |
@@ -1696,8 +1723,21 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 		},
 		parser::CompareOpNode::NotEq => {
 			match lhs.kind {
+				ObjectKind::Nil => {
+					match rhs.kind {
+						ObjectKind::Nil => {
+							Ok(Object::from_bool(false))
+						}
+						_ => {
+							Ok(Object::from_bool(true))
+						}
+					}
+				}
 				ObjectKind::Int => {
 					match rhs.kind {
+						ObjectKind::Nil => {
+							Ok(Object::from_bool(true))
+						}
 						ObjectKind::Int => {
 							let b = lhs.int_value != rhs.int_value;
 							Ok(Object::from_bool(b))
@@ -1715,6 +1755,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				},
 				ObjectKind::Float => {
 					match rhs.kind {
+						ObjectKind::Nil => {
+							Ok(Object::from_bool(true))
+						}
 						ObjectKind::Int => {
 							let b = lhs.float_value != rhs.int_value as f64;
 							Ok(Object::from_bool(b))
@@ -1732,6 +1775,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::String => {
 					match rhs.kind {
+						ObjectKind::Nil => {
+							Ok(Object::from_bool(true))
+						}
 						ObjectKind::String => {
 							let b = lhs.string != rhs.string;
 							Ok(Object::from_bool(b))
@@ -1745,6 +1791,9 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Bool => {
 					match rhs.kind {
+						ObjectKind::Nil => {
+							Ok(Object::from_bool(true))
+						}
 						ObjectKind::Bool => {
 							let b = lhs.bool_value != rhs.bool_value;
 							Ok(Object::from_bool(b))
@@ -1758,6 +1807,7 @@ pub fn compare_objects(context: &mut Context, lhs: &Object, op: &parser::Compare
 				}
 				ObjectKind::Ident => {
 					match rhs.kind {
+						ObjectKind::Nil |
 						ObjectKind::Int |
 						ObjectKind::Float |
 						ObjectKind::Bool |
@@ -2208,6 +2258,7 @@ pub fn exec_project(context: &mut Context, project: &mut ProjectNode) -> Result<
 
 	if let Some(distinct) = project.distinct.as_mut() {
 		let result = exec_distinct(context, distinct)?;
+		println!("result: {:?}", result);
 		ret.merge(&result);
 		if result.scan_done {
 			return Ok(ret);
@@ -2403,37 +2454,47 @@ pub fn exec_joins(context: &mut Context, node: &mut JoinsNode) -> Result<ExecRes
 						// println!("wait_left_scan {}", right.wait_left_scan);
 					}
 					JoinItemNode::LeftJoin(_) => {
-						if !right.wait_left_scan {
+						if !node.wait_left_scan {
 							let result = exec_csv_file_scan(context, csv_file_scan)?;
 							if result.scan_done {
+								println!("done all");
 								ret.merge(&result);
-								println!("done");
+								node.scan_done = true;
 								return Ok(ret);
 							}
 						}
-						
-						let result = exec_join(context, right)?;	
+
+						right.matched = false;
+						let result = exec_join(context, right)?;
 						ret.merge(&result);
+						// println!("ret.join_matched {}, right.matched {}", ret.join_matched, right.matched);
 						ret.scan_done = false;
 						if right.matched {
-							right.wait_left_scan = true;
+							node.wait_left_scan = true;
+							ret.join_matched = true;
+							right.nmatches += 1;
+							return Ok(ret);
 						} else {
-							right.wait_left_scan = false;
+							node.wait_left_scan = false;
+							ret.join_matched = false;
 						}
-						if result.scan_done {
-							println!("!scan {}", right.matched);
-							if !right.matched {
+						if right.scan_done {
+							if right.nmatches == 0 {
+								println!("right.scan_done {}", right.nmatches);
+								context.replace_scanned_record_to_nil_record(&right.table_name)?;
 								ret.join_matched = true;
 								ret.record_is_empty = false;
-								let table_names = right.finished_scan_table_names.clone();
-								for table_name in table_names.iter() {
-									println!("table_name {}", table_name);
-									context.replace_scanned_record_to_nil_record(table_name)?;
-								}
+								context.print_tables_scanned_records();
 							}
+							node.wait_left_scan = false;
+							right.scan_done = false;
+							right.wait_left_scan = false;
 							right.matched = false;
-							right.finished_scan_table_names.clear();
+							right.nmatches = 0;
+						} else {
+							node.wait_left_scan = true;
 						}
+						// println!("wait_left_scan {}", right.wait_left_scan);
 					}
 					JoinItemNode::RightJoin(_) => {
 						match right.right_mode {
@@ -2620,10 +2681,6 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 			JoinItemNode::InnerJoin(inner_join) => {
 				if let Some(csv_file_scan) = inner_join.csv_file_scan.as_mut() {
 				if let Some(expr) = &inner_join.expr {
-					context.counter += 1;
-					if context.counter >= 10000 {
-						panic!("hige");
-					}
 					if let Some(right) = node.join.as_mut() {
 						right.depth = node.depth + 1;
 						if !node.wait_left_scan {
@@ -2661,6 +2718,75 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 							right.scan_done = false;
 							right.wait_left_scan = false;
 							right.matched = false;
+						} else {
+							node.wait_left_scan = true;
+						}
+					} else {
+						let result = exec_csv_file_scan(context, csv_file_scan)?;
+						ret.merge(&result);
+						if result.scan_done {
+							print_pad!(node); println!("scan done 2");
+							node.scan_done = true;
+							return Ok(ret);
+						}
+						let o = exec_expr(context, expr)?;
+						if o.kind == ObjectKind::Bool && o.bool_value {
+							println!("matched 2");
+							node.matched = true;
+						} else {
+							node.matched = false;
+						}
+					}
+				}}
+			}
+			JoinItemNode::LeftJoin(left_join) => {
+				if let Some(csv_file_scan) = left_join.csv_file_scan.as_mut() {
+				if let Some(expr) = &left_join.expr {
+					if let Some(right) = node.join.as_mut() {
+						right.depth = node.depth + 1;
+						if !node.wait_left_scan {
+							let result = exec_csv_file_scan(context, csv_file_scan)?;
+							if result.scan_done {
+								print_pad!(right); println!("scan done");
+								ret.merge(&result);
+								node.scan_done = true;
+								return Ok(ret);
+							}
+						}
+
+						let o = exec_expr(context, expr)?;
+						if o.kind == ObjectKind::Bool && o.bool_value {
+							println!("matched 1");
+							node.matched = true;
+							node.wait_left_scan = true;
+							right.nmatches += 1;
+						} else {
+							node.matched = false;
+							node.wait_left_scan = true;
+						}
+
+						right.matched = false;
+						let result = exec_join(context, right)?;	
+						ret.merge(&result);
+						if right.matched {
+							node.wait_left_scan = true;
+							node.matched = node.matched && right.matched;
+							right.nmatches += 1;
+						} else {
+							node.wait_left_scan = false;
+							node.matched = false;
+							context.replace_scanned_record_to_nil_record(&right.table_name)?;
+						}
+						if right.scan_done {
+							if right.nmatches == 0 {
+								println!("nmatches {}", right.nmatches);
+								context.replace_scanned_record_to_nil_record(&right.table_name)?;
+							}
+							node.wait_left_scan = false;
+							right.scan_done = false;
+							right.wait_left_scan = false;
+							right.matched = false;
+							right.nmatches = 0;
 						} else {
 							node.wait_left_scan = true;
 						}
@@ -2774,26 +2900,6 @@ pub fn exec_join(context: &mut Context, node: &mut JoinNode) -> Result<ExecResul
 						RightJoinMode::Finished => {
 							ret.scan_done = true;
 							ret.join_matched = false;
-						}
-					}
-				}}
-			}
-			JoinItemNode::LeftJoin(left_join) => {
-				if let Some(csv_file_scan) = left_join.csv_file_scan.as_mut() {
-				if let Some(expr) = &left_join.expr {
-					let table_name = &left_join.table_name;
-					loop {
-						if let Some(join) = node.join.as_mut() {
-							let result = exec_join(context, join)?;
-							ret.merge(&result);
-							if result.scan_done {
-								solve_left_scan!(context, node, table_name, csv_file_scan, expr, ret);
-							}
-							if join.matched {
-								break;
-							}
-						} else {
-							solve_left_scan!(context, node, table_name, csv_file_scan, expr, ret);
 						}
 					}
 				}}
