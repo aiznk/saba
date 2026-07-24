@@ -6090,6 +6090,62 @@ $nil,5
 	}
 
 	#[test]
+	fn test_right_join_multi() {
+		let mut context = Context::new();
+		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
+		do_exec(&mut context, "CREATE DATABASE test_db").unwrap();
+		do_exec(&mut context, "USE test_db").unwrap();
+
+		do_exec(&mut context, "DROP TABLE IF EXISTS rtab1").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS rtab2").unwrap();
+		do_exec(&mut context, "DROP TABLE IF EXISTS rtab3").unwrap();
+
+		do_exec(&mut context, "CREATE TABLE rtab1 (id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE rtab2 (id: INT, rtab1_id: INT, name: CHAR[128])").unwrap();
+		do_exec(&mut context, "CREATE TABLE rtab3 (id: INT, rtab2_id: INT, name: CHAR[128])").unwrap();
+
+		// rtab1
+		do_exec(&mut context, "ADD id = 1, name = \"aaa\" OF rtab1").unwrap();
+		do_exec(&mut context, "ADD id = 2, name = \"bbb\" OF rtab1").unwrap();
+		do_exec(&mut context, "ADD id = 3, name = \"ccc\" OF rtab1").unwrap();
+		do_exec(&mut context, "ADD id = 4, name = \"ddd\" OF rtab1").unwrap();
+		do_exec(&mut context, "ADD id = 5, name = \"eee\" OF rtab1").unwrap();
+
+		// rtab2
+		do_exec(&mut context, "ADD id = 1, rtab1_id = 1, name = \"A\" OF rtab2").unwrap();
+		do_exec(&mut context, "ADD id = 2, rtab1_id = 1, name = \"B\" OF rtab2").unwrap();
+		do_exec(&mut context, "ADD id = 3, rtab1_id = 2, name = \"C\" OF rtab2").unwrap();
+
+		// rtab3
+		do_exec(&mut context, "ADD id = 1, rtab2_id = 1, name = \"X\" OF rtab3").unwrap();
+		do_exec(&mut context, "ADD id = 2, rtab2_id = 1, name = \"Y\" OF rtab3").unwrap();
+		do_exec(&mut context, "ADD id = 3, rtab2_id = 3, name = \"Z\" OF rtab3").unwrap();
+
+		context.test_selected_records = Some(vec![]);
+
+		do_exec(
+			&mut context,
+			"GET ALL rtab3.id, rtab2.id, rtab1.id \
+			 OF rtab3 \
+			 RIGHT JOIN rtab2 ON rtab3.rtab2_id == rtab2.id \
+			 RIGHT JOIN rtab1 ON rtab2.rtab1_id == rtab1.id",
+		)
+		.unwrap();
+
+		let s = test_selected_records_to_string(&mut context);
+		println!("s[{}]", s);
+
+		assert!(s == "1,1,1
+	2,1,1
+	$nil,2,1
+	3,3,2
+	$nil,$nil,3
+	$nil,$nil,4
+	$nil,$nil,5
+	");
+	}
+
+	#[test]
 	fn test_inner_join_where() {
 		let mut context = Context::new();
 		do_exec(&mut context, "DROP DATABASE IF EXISTS test_db").unwrap();
