@@ -512,8 +512,9 @@ impl JoinsNode {
 		}
 	}
 
-	pub fn append(&mut self, join: JoinNode) {
+	pub fn append(&mut self, mut join: JoinNode) {
 		if let Some(j) = self.join.as_mut() {
+			join.depth = j.depth + 1;
 			j.as_mut().append(join);
 		} else {
 			self.join = Some(Box::new(join));
@@ -597,8 +598,9 @@ impl JoinNode {
 		}
 	}
 
-	pub fn append(&mut self, join: JoinNode) {
+	pub fn append(&mut self, mut join: JoinNode) {
 		if let Some(j) = self.join.as_mut() {
+			join.depth = j.depth + 1;
 			j.as_mut().append(join);
 		} else {
 			self.join = Some(Box::new(join));
